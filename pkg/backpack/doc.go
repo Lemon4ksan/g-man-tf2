@@ -3,50 +3,40 @@
 // license that can be found in the LICENSE file.
 
 /*
-Package backpack provides a dual-purpose system for managing Team Fortress 2
-inventories. It handles both the bot's own real-time backpack state and
-the auditing of external profiles.
+Package backpack manages the Team Fortress 2 inventory state for both local and remote profiles.
 
-# 1. The Backpack Module (Bot's Inventory)
+The package addresses local inventory layout sorting, trade locking, and remote audit tasks.
+It provides duplicate item history checking and anti-scam validation for trading partners.
 
-The 'Backpack' struct is a high-level steam.Module designed for the bot's
-own inventory management. It acts as a lightweight view over the 'tf2.SOCache',
-providing:
-  - SKU-based filtering and stock counting.
-  - Item locking for active trades to prevent redundant usage.
-  - Automated layout application to keep the backpack sorted.
-  - Pure metal stock management for the trading engine.
+Key Types:
+  - [Backpack] represents the local bot inventory, synchronized with the Game Coordinator.
+  - [Remote] represents an external player inventory, loaded lazily for scouting.
+  - [DupeChecker] defines an interface to verify item histories and detect duplicates.
 
-It remains perfectly synchronized with the Game Coordinator and is the
-primary interface for local inventory business logic.
+Basic Example:
 
-# 2. External Auditing (Remote Inventories)
+	package main
 
-The 'Remote' struct is designed for "scouting" and "auditing" external
-profiles, such as potential trade partners.
+	import (
+		"context"
+		"fmt"
+		"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
+		"github.com/lemon4ksan/g-man/pkg/steam"
+	)
 
-Key Use Cases:
-  - Anti-Scam Validation: Verifying if a partner's high-value items (Unusuals,
-    Australiums) are "clean" or "duplicated" by checking history.
-  - Public Scouting: Inspecting public profiles to assess wealth or holdings.
-  - Historical Auditing: Accessing an item's 'original_id' (permanent fingerprint).
+	func main() {
+		ctx := context.Background()
+		client := steam.NewClient(...)
 
-# Pluggable Duplicate Detection:
+		// Get the registered local backpack module
+		bp := backpack.From(client)
+		if bp == nil {
+			return
+		}
 
-The package features a 'DupeChecker' interface, allowing the inventory to
-delegate item history verification to external services. A standard
-implementation for 'backpack.tf' (via history auditing) is supported.
-
-# Lazy Loading & Thread Safety:
-
-Remote inventory data is loaded lazily upon the first request (e.g., calling
-'IsDuped'). Internal synchronization ensures that concurrent requests for
-the same inventory do not trigger redundant WebAPI calls.
-
-# Limitations:
-
-  - Privacy: Cannot view inventories of users with private profiles.
-  - Caching: Steam's WebAPI is subject to caching (up to 15 minutes).
-  - Rate Limits: Excessive use may lead to temporary IP bans. Use judiciously.
+		// Retrieve stock counts or lock items during trades
+		count := bp.GetStock("5021;6")
+		fmt.Printf("Current keys stock: %d\n", count)
+	}
 */
 package backpack

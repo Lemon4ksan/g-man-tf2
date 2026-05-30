@@ -14,10 +14,28 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 )
 
-func TestMapCEconToTF2(t *testing.T) {
-	s := mockSchema()
+func mockSchemaWithSunbeams() *schema.Schema {
+	raw := &schema.Raw{}
+	raw.Schema.Items = []*schema.Item{
+		{
+			Defindex:      1,
+			ItemQuality:   6,
+			UsedByClasses: []string{"Scout", "Sniper"},
+		},
+	}
+	raw.Schema.AttributeControlledAttachedParticles = []*schema.ParticleEffect{
+		{ID: 17, Name: "Sunbeams"},
+	}
 
-	t.Run("Basic item", func(t *testing.T) {
+	return schema.New(raw)
+}
+
+func TestMapCEconToTF2_EconMapping_ReturnsNormalizedTF2Item(t *testing.T) {
+	t.Parallel()
+
+	s := mockSchemaWithSunbeams()
+
+	t.Run("basic_item", func(t *testing.T) {
 		econ := inventory.CEconItem{
 			Asset: inventory.Asset{
 				AssetID: "100",
@@ -40,7 +58,7 @@ func TestMapCEconToTF2(t *testing.T) {
 		assert.False(t, item.FlagCannotCraft)
 	})
 
-	t.Run("Uncraftable item", func(t *testing.T) {
+	t.Run("uncraftable_item", func(t *testing.T) {
 		econ := inventory.CEconItem{
 			Asset: inventory.Asset{AssetID: "101"},
 			Description: &inventory.Description{
@@ -57,7 +75,7 @@ func TestMapCEconToTF2(t *testing.T) {
 		assert.True(t, item.FlagCannotCraft)
 	})
 
-	t.Run("Unusual item with effect", func(t *testing.T) {
+	t.Run("unusual_item_with_effect", func(t *testing.T) {
 		econ := inventory.CEconItem{
 			Asset: inventory.Asset{AssetID: "102"},
 			Description: &inventory.Description{
@@ -72,41 +90,44 @@ func TestMapCEconToTF2(t *testing.T) {
 
 		item := mapCEconToTF2(econ, s)
 		assert.Equal(t, uint64(102), item.ID)
-		// sunbeams is ID 17 in TF2, but our mockSchema is empty.
-		// Let's improve mockSchema in layout_test.go or here.
+		assert.Len(t, item.Attributes, 1)
+		assert.Equal(t, schema.AttrUnusualEffect, item.Attributes[0].Defindex)
+		assert.Equal(t, float64(17), item.Attributes[0].Value)
 	})
 }
 
-func TestTF2Item_ToSKU(t *testing.T) {
+func TestTF2Item_ToSKU_AttributesAndQualities_GeneratesCorrectSKU(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		item TF2Item
 		want string
 	}{
 		{
-			name: "Unique Weapon",
+			name: "unique_weapon",
 			item: TF2Item{Defindex: 1, Quality: 6, FlagCannotTrade: false},
 			want: "1;6",
 		},
 		{
-			name: "Uncraftable Unique Weapon",
+			name: "uncraftable_unique_weapon",
 			item: TF2Item{Defindex: 1, Quality: 6, FlagCannotCraft: true, FlagCannotTrade: false},
 			want: "1;6;uncraftable",
 		},
 		{
-			name: "Unusual Hat",
+			name: "unusual_hat",
 			item: TF2Item{
 				Defindex:        100,
 				Quality:         5,
 				FlagCannotTrade: false,
 				Attributes: []TF2Attribute{
-					{Defindex: 134, Value: float64(17)}, // Sunbeams
+					{Defindex: 134, Value: float64(17)},
 				},
 			},
 			want: "100;5;u17",
 		},
 		{
-			name: "Australium",
+			name: "australium",
 			item: TF2Item{
 				Defindex:        200,
 				Quality:         11,
@@ -118,7 +139,7 @@ func TestTF2Item_ToSKU(t *testing.T) {
 			want: "200;11;australium",
 		},
 		{
-			name: "Strange Unusual (Elevated)",
+			name: "strange_unusual_elevated",
 			item: TF2Item{
 				Defindex: 378,
 				Quality:  5,
@@ -130,19 +151,19 @@ func TestTF2Item_ToSKU(t *testing.T) {
 			want: "378;5;u33;strange",
 		},
 		{
-			name: "Strange Parts",
+			name: "strange_parts",
 			item: TF2Item{
 				Defindex: 1,
 				Quality:  11,
 				Attributes: []TF2Attribute{
-					{Defindex: 10000, Value: float64(10)}, // Part ID 10
-					{Defindex: 10001, Value: float64(12)}, // Part ID 12
+					{Defindex: 10000, Value: float64(10)},
+					{Defindex: 10001, Value: float64(12)},
 				},
 			},
 			want: "1;11;sp10;sp12",
 		},
 		{
-			name: "Spells",
+			name: "spells",
 			item: TF2Item{
 				Defindex: 1,
 				Quality:  6,
@@ -151,6 +172,18 @@ func TestTF2Item_ToSKU(t *testing.T) {
 				},
 			},
 			want: "1;6;s-1004-3",
+		},
+		{
+			name: "decorated_skin_paintkit_and_wear",
+			item: TF2Item{
+				Defindex: 100,
+				Quality:  15,
+				Attributes: []TF2Attribute{
+					{Defindex: 834, Value: float64(10)},
+					{Defindex: 725, Value: float64(0.2)},
+				},
+			},
+			want: "100;15;w1;pk10",
 		},
 	}
 
@@ -161,7 +194,9 @@ func TestTF2Item_ToSKU(t *testing.T) {
 	}
 }
 
-func TestTF2Item_ToEconItem(t *testing.T) {
+func TestTF2Item_ToEconItem_ValidTF2Item_MapsCorrectly(t *testing.T) {
+	t.Parallel()
+
 	item := TF2Item{
 		ID:         123,
 		Defindex:   1,
@@ -183,19 +218,24 @@ func TestTF2Item_ToEconItem(t *testing.T) {
 	assert.Contains(t, econ.Descriptions[0].Value, "Not Usable in Crafting")
 }
 
-func TestNormalizeDefindex(t *testing.T) {
+func TestNormalizeDefindex_VariousInputs_ReturnsCanonicalID(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
+		name     string
 		defindex int
 		expected int
 	}{
-		{5021, 5021}, // Key stays Key
-		{5049, 5021}, // Festive Key -> Key
-		{5717, 5021}, // End of the Line Key -> Key
-		{294, 160},   // Lugermorph
-		{6523, 6522}, // Specialized Killstreak Kit -> Strangifier
+		{"key_remains_key", 5021, 5021},
+		{"festive_key_normalizes_to_key", 5049, 5021},
+		{"eotl_key_normalizes_to_key", 5717, 5021},
+		{"lugermorph_normalizes", 294, 160},
+		{"killstreak_kit_normalizes_to_strangifier", 6523, 6522},
 	}
 
 	for _, tt := range tests {
-		assert.Equal(t, tt.expected, schema.NormalizeDefindex(tt.defindex))
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, schema.NormalizeDefindex(tt.defindex))
+		})
 	}
 }

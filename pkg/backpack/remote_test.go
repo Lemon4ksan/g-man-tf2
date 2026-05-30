@@ -26,22 +26,23 @@ func (m *MockDupeChecker) CheckHistory(ctx context.Context, id uint64) (HistoryS
 	return m.Responses[id], nil
 }
 
-func TestPlayerInventory_IsDuped(t *testing.T) {
+func newMockPlayerItemsResponse(items []TF2Item) PlayerItemsResponse {
+	resp := PlayerItemsResponse{}
+	resp.Result.Status = 1
+	resp.Result.NumBackpackSlots = 100
+	resp.Result.Items = items
+
+	return resp
+}
+
+func TestRemote_IsDuped_DupedAndCleanItems_ReturnsExpectedFlags(t *testing.T) {
+	t.Parallel()
+
 	mockAPI := requester.New()
-	mockAPI.SetJSONResponse("IEconItems_440", "GetPlayerItems", PlayerItemsResponse{
-		Result: struct {
-			Status           int       `json:"status"`
-			StatusDetail     string    `json:"statusDetail"`
-			NumBackpackSlots int       `json:"num_backpack_slots"`
-			Items            []TF2Item `json:"items"`
-		}{
-			Status: 1,
-			Items: []TF2Item{
-				{ID: 100, OriginalID: 50},
-				{ID: 200, OriginalID: 200},
-			},
-		},
-	})
+	mockAPI.SetJSONResponse("IEconItems_440", "GetPlayerItems", newMockPlayerItemsResponse([]TF2Item{
+		{ID: 100, OriginalID: 50},
+		{ID: 200, OriginalID: 200},
+	}))
 
 	checker1 := &MockDupeChecker{
 		Responses: map[uint64]HistoryStatus{
@@ -58,26 +59,14 @@ func TestPlayerInventory_IsDuped(t *testing.T) {
 		wantDuped *bool
 		wantErr   error
 	}{
-		{
-			name:      "Clean item",
-			assetID:   200,
-			wantDuped: boolPtr(false),
-		},
-		{
-			name:      "Duped via OriginalID",
-			assetID:   100,
-			wantDuped: boolPtr(true),
-		},
-		{
-			name:    "Item not in inventory",
-			assetID: 999,
-			wantErr: ErrItemNotFound,
-		},
+		{"clean_item", 200, boolPtr(false), nil},
+		{"duped_via_original_id", 100, boolPtr(true), nil},
+		{"item_not_in_inventory", 999, nil, ErrItemNotFound},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := inv.IsDuped(context.Background(), tt.assetID)
+			got, err := inv.IsDuped(t.Context(), tt.assetID)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("IsDuped() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -95,7 +84,9 @@ func TestPlayerInventory_IsDuped(t *testing.T) {
 	}
 }
 
-func TestPlayerInventory_MultipleCheckers(t *testing.T) {
+func TestRemote_IsDuped_MultipleCheckers_VerifiesWithSubsequentCheckers(t *testing.T) {
+	t.Parallel()
+
 	checker1 := &MockDupeChecker{
 		Responses: map[uint64]HistoryStatus{
 			100: {Recorded: false},
@@ -109,32 +100,24 @@ func TestPlayerInventory_MultipleCheckers(t *testing.T) {
 
 	inv := NewRemote(7656119, nil, WithDupeCheckers([]DupeChecker{checker1, checker2}))
 
-	got, _ := inv.IsDuped(context.Background(), 100)
+	got, _ := inv.IsDuped(t.Context(), 100)
 	if got == nil || !*got {
 		t.Error("expected IsDuped to be true from second checker")
 	}
 }
 
-func TestRemote_GetItemsBySKU(t *testing.T) {
+func TestRemote_GetItemsBySKU_ValidInventory_FiltersBySKU(t *testing.T) {
+	t.Parallel()
+
 	mockAPI := requester.New()
-	mockAPI.SetJSONResponse("IEconItems_440", "GetPlayerItems", PlayerItemsResponse{
-		Result: struct {
-			Status           int       `json:"status"`
-			StatusDetail     string    `json:"statusDetail"`
-			NumBackpackSlots int       `json:"num_backpack_slots"`
-			Items            []TF2Item `json:"items"`
-		}{
-			Status: 1,
-			Items: []TF2Item{
-				{ID: 1, Defindex: 5021, Quality: 6, FlagCannotTrade: false}, // Key
-				{ID: 2, Defindex: 1, Quality: 6, FlagCannotTrade: false},    // Weapon
-			},
-		},
-	})
+	mockAPI.SetJSONResponse("IEconItems_440", "GetPlayerItems", newMockPlayerItemsResponse([]TF2Item{
+		{ID: 1, Defindex: 5021, Quality: 6, FlagCannotTrade: false},
+		{ID: 2, Defindex: 1, Quality: 6, FlagCannotTrade: false},
+	}))
 
 	inv := NewRemote(7656119, mockAPI)
 
-	items, err := inv.GetItemsBySKU(context.Background(), "5021;6")
+	items, err := inv.GetItemsBySKU(t.Context(), "5021;6")
 	assert.NoError(t, err)
 
 	if assert.Len(t, items, 1) {
@@ -142,64 +125,47 @@ func TestRemote_GetItemsBySKU(t *testing.T) {
 	}
 }
 
-func TestRemote_CanTradeWithoutHold(t *testing.T) {
-	mockAPI := requester.New()
-	mockAPI.SetJSONResponse("IEconService_440", "GetTradeHoldDurations", map[string]any{
-		"response": map[string]any{
-			"their_escrow": 0,
-			"my_escrow":    0,
-		},
-	})
-	// Wait, the Mock.identifyTarget uses WebAPITarget/UnifiedTarget.
-	// IEconService_GetTradeHoldDurations_v1 seems to be Unified.
+func TestRemote_CanTradeWithoutHold_ValidResponse_ReturnsHoldStatus(t *testing.T) {
+	t.Parallel()
 
+	mockAPI := requester.New()
 	mockAPI.SetJSONResponse("IEconService", "GetTradeHoldDurations", map[string]any{
 		"their_escrow": 0,
 		"my_escrow":    0,
 	})
 
 	inv := NewRemote(7656119, mockAPI)
-	ok, err := inv.CanTradeWithoutHold(context.Background(), "token")
+	ok, err := inv.CanTradeWithoutHold(t.Context(), "token")
 	assert.NoError(t, err)
 	assert.True(t, ok)
 }
 
-func TestRemote_FindMetalInPartnerInventory(t *testing.T) {
+func TestRemote_FindMetalInPartnerInventory_AvailableMetal_ReturnsRequiredChange(t *testing.T) {
+	t.Parallel()
+
 	mockAPI := requester.New()
-	mockAPI.SetJSONResponse("IEconItems_440", "GetPlayerItems", PlayerItemsResponse{
-		Result: struct {
-			Status           int       `json:"status"`
-			StatusDetail     string    `json:"statusDetail"`
-			NumBackpackSlots int       `json:"num_backpack_slots"`
-			Items            []TF2Item `json:"items"`
-		}{
-			Status: 1,
-			Items: []TF2Item{
-				{ID: 10, Defindex: 5002, Quality: 6, FlagCannotTrade: false}, // Ref
-				{ID: 11, Defindex: 5002, Quality: 6, FlagCannotTrade: false}, // Ref
-				{ID: 12, Defindex: 5001, Quality: 6, FlagCannotTrade: false}, // Rec
-				{ID: 13, Defindex: 5000, Quality: 6, FlagCannotTrade: false}, // Scrap
-			},
-		},
-	})
+	mockAPI.SetJSONResponse("IEconItems_440", "GetPlayerItems", newMockPlayerItemsResponse([]TF2Item{
+		{ID: 10, Defindex: 5002, Quality: 6, FlagCannotTrade: false},
+		{ID: 11, Defindex: 5002, Quality: 6, FlagCannotTrade: false},
+		{ID: 12, Defindex: 5001, Quality: 6, FlagCannotTrade: false},
+		{ID: 13, Defindex: 5000, Quality: 6, FlagCannotTrade: false},
+	}))
 
 	inv := NewRemote(7656119, mockAPI)
 
-	// Need 2.33 ref (21 scrap)
-	// 2 ref = 18 scrap, 1 rec = 3 scrap. Total 21.
-	items, err := inv.FindMetalInPartnerInventory(context.Background(), 21)
+	items, err := inv.FindMetalInPartnerInventory(t.Context(), 21)
 	assert.NoError(t, err)
-	assert.Len(t, items, 3) // 2 ref + 1 rec
+	assert.Len(t, items, 3)
 }
 
-func TestRemote_FetchFallback(t *testing.T) {
+func TestRemote_Fetch_WebAPIFailsNoCommunity_ReturnsError(t *testing.T) {
+	t.Parallel()
+
 	mockAPI := requester.New()
-	// WebAPI returns error
 	mockAPI.ResponseErrs["IEconItems_440/GetPlayerItems"] = errors.New("rate limited")
 
 	inv := NewRemote(7656119, mockAPI)
-	// Without community mock, it should fail
-	err := inv.fetch(context.Background())
+	err := inv.fetch(t.Context())
 	assert.Error(t, err)
 }
 

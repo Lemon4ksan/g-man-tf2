@@ -22,47 +22,47 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 )
 
-// ModuleName is the name of the module.
+// ModuleName is the name of the backpack module.
 const ModuleName = "tf2_backpack"
 
-// WithModule returns a steam.Option that registers the backpack module.
+// WithModule returns a [steam.Option] that registers the [Backpack] module with the client.
 func WithModule() steam.Option {
 	return func(c *steam.Client) {
 		c.RegisterModule(New())
 	}
 }
 
-// From returns the backpack module from the client.
+// From returns the [Backpack] module instance retrieved from the [steam.Client].
 func From(c *steam.Client) *Backpack {
 	return steam.GetModule[*Backpack](c)
 }
 
 const (
-	// ItemsPerPage is the number of items per page.
+	// ItemsPerPage defines the number of items contained in a single backpack page.
 	ItemsPerPage = 50
-	// SlotsPerRow is the number of slots per row.
+	// SlotsPerRow defines the number of items displayed in a single slot row.
 	SlotsPerRow = 10
 )
 
-// TradingProvider is an interface for getting active sent offers.
+// TradingProvider defines the interface for retrieving active sent trade offers.
 type TradingProvider interface {
 	GetActiveSentOffers(ctx context.Context) ([]trading.TradeOffer, error)
 }
 
-// SchemaProvider defines the interface for getting the current schema.
+// SchemaProvider defines the interface for accessing the current TF2 item schema.
 type SchemaProvider interface {
 	Get() *schema.Schema
 }
 
-// ItemCache defines the interface for accessing the TF2 item cache.
+// ItemCache defines the interface for accessing the underlying TF2 item cache.
 type ItemCache interface {
 	GetItems() []*tf2.Item
 	GetItem(id uint64) (*tf2.Item, bool)
 	GetMaxSlots() int
 }
 
-// PositionOf converts a page and slot (1-based) into a GC index.
-// Example: Page 2, Slot 1 -> 51
+// PositionOf calculates the Game Coordinator inventory index from page and slot numbers.
+// Index values are 1-based. If page or slot is less than 1, they default to 1.
 func PositionOf(page, slot int) uint32 {
 	if page < 1 {
 		page = 1
@@ -75,13 +75,9 @@ func PositionOf(page, slot int) uint32 {
 	return uint32((page-1)*ItemsPerPage + slot)
 }
 
-// Backpack is a high-level module for managing the TF2 inventory.
-// Unlike traditional implementations, this module does not store a redundant copy of items.
-// Instead, it acts as a lightweight view over the SOCache, providing utility methods
-// for filtering by SKU, managing item locks for trading, and applying inventory layouts.
-//
-// It is designed to be highly memory-efficient and remains perfectly synchronized
-// with the Game Coordinator state at all times.
+// Backpack manages the Team Fortress 2 local inventory.
+// It acts as a lightweight view over the [ItemCache] and coordinates with the Game Coordinator.
+// Use [New] to create a new instance and register it using [WithModule].
 type Backpack struct {
 	module.Base
 
@@ -94,7 +90,7 @@ type Backpack struct {
 	locked map[uint64]bool
 }
 
-// New creates a new backpack module for inventory management.
+// New constructs a new [Backpack] instance with empty lock states and pre-declared dependencies.
 func New() *Backpack {
 	return &Backpack{
 		Base:   module.New(ModuleName).WithDeps(tf2.ModuleName, schema.ModuleName, "trading"),
@@ -102,7 +98,8 @@ func New() *Backpack {
 	}
 }
 
-// Init initializes the backpack module.
+// Init initializes the [Backpack] module by resolving its required dependencies.
+// Returns an error if any of the mandatory dependency modules are missing.
 func (m *Backpack) Init(init module.InitContext) error {
 	if err := m.Base.Init(init); err != nil {
 		return err
@@ -131,7 +128,8 @@ func (m *Backpack) Init(init module.InitContext) error {
 	return nil
 }
 
-// StartAuthed starts the backpack module.
+// StartAuthed starts the asynchronous event loops and background stale lock cleanup routines.
+// Returns an error if the context is cancelled during startup.
 func (m *Backpack) StartAuthed(ctx context.Context, authCtx module.AuthContext) error {
 	m.Go(m.eventLoop)
 
@@ -156,7 +154,8 @@ func (m *Backpack) StartAuthed(ctx context.Context, authCtx module.AuthContext) 
 	return nil
 }
 
-// LockItems locks items in the backpack.
+// LockItems locks the specified item IDs to prevent them from being selected for other active trades.
+// Nil or empty slices are ignored.
 func (m *Backpack) LockItems(ids []uint64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -166,7 +165,8 @@ func (m *Backpack) LockItems(ids []uint64) {
 	}
 }
 
-// UnlockItems unlocks items in the backpack.
+// UnlockItems releases the locks on the specified item IDs.
+// Nil or empty slices are ignored.
 func (m *Backpack) UnlockItems(ids []uint64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -176,22 +176,24 @@ func (m *Backpack) UnlockItems(ids []uint64) {
 	}
 }
 
-// Cache returns the underlying item cache.
+// Cache returns the underlying [ItemCache] interface.
 func (m *Backpack) Cache() ItemCache {
 	return m.cache
 }
 
-// Schema returns the schema provider.
+// Schema returns the configured [SchemaProvider] interface.
 func (m *Backpack) Schema() SchemaProvider {
 	return m.manager
 }
 
-// GetItem returns the item with the given ID.
+// GetItem searches the [ItemCache] and returns the [tf2.Item] matching the specified ID.
+// Returns false as the second value if the item does not exist.
 func (m *Backpack) GetItem(id uint64) (*tf2.Item, bool) {
 	return m.cache.GetItem(id)
 }
 
-// GetItemsBySKU returns all AssetIDs of items that match the SKU.
+// GetItemsBySKU returns all item IDs matching the specified target SKU.
+// Returns nil if targetSKU is empty or the schema is not loaded.
 func (m *Backpack) GetItemsBySKU(targetSKU string) []uint64 {
 	s := m.manager.Get()
 	if s == nil {
@@ -208,7 +210,8 @@ func (m *Backpack) GetItemsBySKU(targetSKU string) []uint64 {
 	return result
 }
 
-// GetPureStock returns the amount of currency (keys and metal) for the MetalManager.
+// GetPureStock calculates and returns the current tradable keys and metal balances.
+// This value is used by the metal manager to calculate change.
 func (m *Backpack) GetPureStock() currency.PureStock {
 	stock := currency.PureStock{}
 
@@ -305,7 +308,9 @@ func (m *Backpack) GetPureStock() currency.PureStock {
 	return stock
 }
 
-// FindCraftableItems returns a list of AssetIDs for items that can be used in crafting.
+// FindCraftableItems returns a list of tradable item IDs matching the specified defIndex.
+// It filters out locked items and stops once the specified count limit is reached.
+// If count is less than or equal to 0, no limit is applied and all matching items are returned.
 func (m *Backpack) FindCraftableItems(defIndex uint32, count int) []uint64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -323,12 +328,13 @@ func (m *Backpack) FindCraftableItems(defIndex uint32, count int) []uint64 {
 	return result
 }
 
-// GetTotalCount returns the total number of items in the backpack.
+// GetTotalCount returns the total number of items stored in the [ItemCache].
 func (m *Backpack) GetTotalCount() int {
 	return len(m.cache.GetItems())
 }
 
-// GetStock returns the current stock count for a specific SKU.
+// GetStock returns the current stock count for the specified SKU.
+// Returns 0 if the SKU is empty or the schema is not loaded.
 func (m *Backpack) GetStock(sku string) int {
 	s := m.manager.Get()
 	if s == nil {
@@ -345,7 +351,8 @@ func (m *Backpack) GetStock(sku string) int {
 	return count
 }
 
-// FindWeaponsByClass returns all craftable weapons that can be used by the given class.
+// FindWeaponsByClass returns all craftable, tradable, and unlocked weapons usable by the specified class name.
+// Returns nil if the class is invalid or the schema is not loaded.
 func (m *Backpack) FindWeaponsByClass(class string) []*tf2.Item {
 	s := m.manager.Get()
 	if s == nil {
@@ -374,9 +381,10 @@ func (m *Backpack) FindWeaponsByClass(class string) []*tf2.Item {
 	return result
 }
 
-// FindWeaponsByClassForSmelting returns all craftable weapons that can be used by the given class for smelting.
-// It returns only the duplicate copies of weapons (i.e. N-1 copies of a weapon type when N >= 2),
-// ensuring we always keep at least one copy of each weapon type in the inventory.
+// FindWeaponsByClassForSmelting returns a slice of duplicate unique weapons eligible for smelting.
+// It filters out special items such as Australiums, professional killstreaks, painted or custom items.
+// It preserves at least one base copy of each weapon type in the inventory.
+// Returns nil if the class name is invalid or the schema is not loaded.
 func (m *Backpack) FindWeaponsByClassForSmelting(class string) []*tf2.Item {
 	s := m.manager.Get()
 	if s == nil {
@@ -449,14 +457,6 @@ func (m *Backpack) FindWeaponsByClassForSmelting(class string) []*tf2.Item {
 			continue
 		}
 
-		// 160, 294: Lugermorph
-		// 161: Big Kill
-		// 258: Enthusiast's Timepiece
-		// 298: Iron Curtain
-		// 423: Saxxy
-		// 727: Black Rose
-		// 933: AP-SAP
-		// 947: Quäckenbirdt
 		rareDefindexes := []int{160, 294, 161, 258, 298, 423, 727, 933, 947}
 		if slices.Contains(rareDefindexes, int(item.DefIndex)) {
 			continue
@@ -465,7 +465,6 @@ func (m *Backpack) FindWeaponsByClassForSmelting(class string) []*tf2.Item {
 		candidates = append(candidates, item)
 	}
 
-	// For consistent base selection, sort candidates by ID first
 	slices.SortFunc(candidates, func(a, b *tf2.Item) int {
 		if a.ID < b.ID {
 			return -1
@@ -474,7 +473,6 @@ func (m *Backpack) FindWeaponsByClassForSmelting(class string) []*tf2.Item {
 		return 1
 	})
 
-	// Group candidates by DefIndex to identify duplicates
 	byDef := make(map[uint32][]*tf2.Item)
 	for _, item := range candidates {
 		byDef[item.DefIndex] = append(byDef[item.DefIndex], item)
@@ -491,7 +489,6 @@ func (m *Backpack) FindWeaponsByClassForSmelting(class string) []*tf2.Item {
 		}
 	}
 
-	// Sort duplicates for consistent behavior
 	slices.SortFunc(duplicates, func(a, b *tf2.Item) int {
 		if a.ID < b.ID {
 			return -1
@@ -502,13 +499,11 @@ func (m *Backpack) FindWeaponsByClassForSmelting(class string) []*tf2.Item {
 
 	var result []*tf2.Item
 
-	// Pair up duplicates as much as possible
 	for len(duplicates) >= 2 {
 		result = append(result, duplicates[0], duplicates[1])
 		duplicates = duplicates[2:]
 	}
 
-	// If there is 1 unpaired duplicate left, pair it with its corresponding base copy (identical weapon pair)
 	if len(duplicates) == 1 {
 		unpaired := duplicates[0]
 
@@ -521,7 +516,7 @@ func (m *Backpack) FindWeaponsByClassForSmelting(class string) []*tf2.Item {
 	return result
 }
 
-// GetMetalCount returns the number of items with the given DefIndex.
+// GetMetalCount returns the total count of metal items matching the specified DefIndex.
 func (m *Backpack) GetMetalCount(defIndex uint32) int {
 	count := 0
 	for _, item := range m.cache.GetItems() {
@@ -533,8 +528,8 @@ func (m *Backpack) GetMetalCount(defIndex uint32) int {
 	return count
 }
 
-// GetAssetIDs returns a list of available item IDs for a specific SKU.
-// It automatically excludes items that are blocked (in other trades).
+// GetAssetIDs returns available tradable and unlocked item IDs matching the target SKU.
+// It automatically filters out items currently locked in other active trade offers.
 func (m *Backpack) GetAssetIDs(targetSKU string) []uint64 {
 	s := m.manager.Get()
 	if s == nil {
@@ -554,7 +549,7 @@ func (m *Backpack) GetAssetIDs(targetSKU string) []uint64 {
 	return result
 }
 
-// GetLockedAssetIDs returns currently locked asset ids
+// GetLockedAssetIDs returns a slice of all item IDs currently locked in the backpack.
 func (m *Backpack) GetLockedAssetIDs() []uint64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -567,7 +562,8 @@ func (m *Backpack) GetLockedAssetIDs() []uint64 {
 	return result
 }
 
-// ApplyLayout analyzes the current inventory and moves items according to the rules.
+// ApplyLayout executes layout rules and moves items to designated backpack pages.
+// Returns an error if the schema is not ready, if item moves fail, or if the context is cancelled.
 func (m *Backpack) ApplyLayout(ctx context.Context, layout Layout) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -694,8 +690,8 @@ func (m *Backpack) cleanupStaleLocks(ctx context.Context, tradingModule TradingP
 }
 
 func (m *Backpack) getLockedMap() map[uint64]bool {
-	locked := make(map[uint64]bool)
-	for _, id := range m.GetLockedAssetIDs() {
+	locked := make(map[uint64]bool, len(m.locked))
+	for id := range m.locked {
 		locked[id] = true
 	}
 

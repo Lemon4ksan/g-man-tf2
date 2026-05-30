@@ -19,27 +19,26 @@ import (
 )
 
 var (
-	// ErrItemNotFound is returned when an item is not found in the inventory.
+	// ErrItemNotFound is returned when an item cannot be found in the player inventory.
 	ErrItemNotFound = errors.New("backpack: could not find item in inventory")
-	// ErrSteamAPI is returned when the Steam API returns an error status.
+	// ErrSteamAPI is returned when the Steam WebAPI returns an unexpected status code.
 	ErrSteamAPI = errors.New("backpack: steam api returned error status")
 )
 
-// HistoryStatus represents the result of checking the item's history.
+// HistoryStatus defines the tracking state and duplicate check results for an item.
 type HistoryStatus struct {
-	// Recorded reports whether the service knows about this item.
+	// Recorded indicates whether the duplicate checking service has seen this item.
 	Recorded bool
-	// IsDuped reports whether the item is considered a duplicate.
+	// IsDuped indicates whether the item has been flagged as a duplicate copy.
 	IsDuped bool
 }
 
-// DupeChecker defines an interface for any service that can
-// check the history of an item (e.g., backpack.tf, reps.tf).
+// DupeChecker defines the interface for verifying item origin and duplication histories.
 type DupeChecker interface {
 	CheckHistory(ctx context.Context, assetID uint64) (HistoryStatus, error)
 }
 
-// PlayerItemsResponse represents the response from the Steam Community Inventory API.
+// PlayerItemsResponse represents the parsed payload returned by the Steam inventory API.
 type PlayerItemsResponse struct {
 	Result struct {
 		Status           int       `json:"status"`
@@ -49,22 +48,36 @@ type PlayerItemsResponse struct {
 	} `json:"result"`
 }
 
-// TF2Item represents an item in the Team Fortress 2 inventory.
+// TF2Item represents a single item structure in the remote Team Fortress 2 inventory.
 type TF2Item struct {
-	ID              uint64         `json:"id"`
-	OriginalID      uint64         `json:"original_id"`
-	Defindex        int            `json:"defindex"`
-	Level           int            `json:"level"`
-	Quality         int            `json:"quality"`
-	Inventory       uint32         `json:"inventory"`
-	Quantity        int            `json:"quantity"`
-	Origin          int            `json:"origin"`
-	Style           int            `json:"style,omitempty"`
-	FlagCannotTrade bool           `json:"flag_cannot_trade,omitempty"`
-	FlagCannotCraft bool           `json:"flag_cannot_craft,omitempty"`
-	CustomName      string         `json:"custom_name,omitempty"`
-	CustomDesc      string         `json:"custom_desc,omitempty"`
-	Attributes      []TF2Attribute `json:"attributes,omitempty"`
+	// ID represents the unique asset identifier.
+	ID uint64 `json:"id"`
+	// OriginalID represents the permanent origin identifier.
+	OriginalID uint64 `json:"original_id"`
+	// Defindex represents the item definition index.
+	Defindex int `json:"defindex"`
+	// Level represents the cosmetic item level.
+	Level int `json:"level"`
+	// Quality represents the item quality ID.
+	Quality int `json:"quality"`
+	// Inventory represents the raw inventory positioning bits.
+	Inventory uint32 `json:"inventory"`
+	// Quantity represents the stack size of the item.
+	Quantity int `json:"quantity"`
+	// Origin represents the item drop or purchase source ID.
+	Origin int `json:"origin"`
+	// Style represents the cosmetic style index.
+	Style int `json:"style,omitempty"`
+	// FlagCannotTrade indicates whether the item is trade-restricted.
+	FlagCannotTrade bool `json:"flag_cannot_trade,omitempty"`
+	// FlagCannotCraft indicates whether the item is crafting-restricted.
+	FlagCannotCraft bool `json:"flag_cannot_craft,omitempty"`
+	// CustomName represents the custom text applied by a name tag.
+	CustomName string `json:"custom_name,omitempty"`
+	// CustomDesc represents the custom text applied by a description tag.
+	CustomDesc string `json:"custom_desc,omitempty"`
+	// Attributes contains the list of dynamic item modifiers.
+	Attributes []TF2Attribute `json:"attributes,omitempty"`
 }
 
 func mapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
@@ -118,7 +131,6 @@ func mapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 			continue
 		}
 
-		// Exterior (Wear): "Exterior: Factory New"
 		if wearName, ok := strings.CutPrefix(val, "Exterior: "); ok {
 			if wearID := s.WearByName(wearName); wearID != 0 {
 				item.Attributes = append(item.Attributes, TF2Attribute{
@@ -169,7 +181,6 @@ func mapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 			}
 		}
 
-		// Crate Series: "Crate Series #82"
 		if strings.Contains(val, "Crate Series #") {
 			parts := strings.Split(val, "#")
 			if len(parts) == 2 {
@@ -182,7 +193,6 @@ func mapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 			}
 		}
 
-		// Strange detection for non-strange qualities (e.g. Strange Unusual)
 		if item.Quality != schema.QualityStrange &&
 			(strings.Contains(val, "Strange Stat") || strings.Contains(val, "Strange Part")) {
 			item.Attributes = append(item.Attributes, TF2Attribute{
@@ -191,13 +201,10 @@ func mapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 			})
 		}
 
-		// Strange Parts (Color: 756b5e)
 		if d.Color == "756b5e" {
-			// Extract part name from string like "Kills: 123" or "(Airborne Enemies Killed: 0)"
 			clean := strings.Trim(val, "()")
 			if before, _, ok := strings.Cut(clean, ":"); ok {
 				partName := strings.TrimSpace(before)
-				// Match against schema parts
 				for name, suffix := range s.StrangeParts() {
 					if strings.Contains(partName, name) {
 						if partID, err := strconv.Atoi(strings.TrimPrefix(suffix, "sp")); err == nil {
@@ -213,7 +220,6 @@ func mapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 			}
 		}
 
-		// Spells (Color: 7ea9d1)
 		if d.Color == "7ea9d1" {
 			spellName := strings.TrimSpace(val)
 			if spell, ok := s.SpellIDByName(spellName); ok {
@@ -225,7 +231,6 @@ func mapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 		}
 	}
 
-	// Paintkit detection for Decorated Weapons
 	if item.Quality == 15 {
 		name := strings.ToLower(desc.MarketHashName)
 		for pkName, pkID := range s.PaintKitsByName() {
@@ -240,8 +245,6 @@ func mapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 		}
 	}
 
-	// Australium detection (Attribute 2027)
-	// 1. Try to find it in AppData attributes if available
 	hasAustraliumAttr := false
 	if attrData, ok := desc.AppData["attributes"].(map[string]any); ok {
 		if _, exists := attrData["2027"]; exists {
@@ -249,8 +252,6 @@ func mapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 		}
 	}
 
-	// 2. Fallback to name check (only on MarketHashName to avoid custom name baiting)
-	// Australiums are always Strange and must be in the whitelist
 	if !hasAustraliumAttr && item.Quality == schema.QualityStrange &&
 		s.IsAustraliumDefindex(item.Defindex) &&
 		strings.Contains(desc.MarketHashName, "Australium") {
@@ -264,7 +265,6 @@ func mapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 		})
 	}
 
-	// Festive logic: Native Festive items OR Festivized attribute
 	isFestive := strings.Contains(desc.Name, "Festivized") || s.IsNativeFestive(item.Defindex)
 	if isFestive {
 		item.Attributes = append(item.Attributes, TF2Attribute{
@@ -278,8 +278,7 @@ func mapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 	return item
 }
 
-// ToSKU generates an SKU string for an item using inventory data.
-// This allows you to compare items in someone else's inventory with our price list.
+// ToSKU generates and returns a standard SKU string matching the [TF2Item] state.
 func (it *TF2Item) ToSKU() string {
 	quality := it.Quality
 	defindex := it.Defindex
@@ -366,7 +365,7 @@ func (it *TF2Item) ToSKU() string {
 	})
 }
 
-// ToEconItem converts the internal TF2Item structure into a universal exchange format (Econ Item).
+// ToEconItem maps the [TF2Item] fields into a universal exchange [trading.Item] format.
 func (it *TF2Item) ToEconItem() *trading.Item {
 	item := &trading.Item{
 		AppID:     440,
@@ -418,10 +417,13 @@ func (it *TF2Item) ToEconItem() *trading.Item {
 	return item
 }
 
-// TF2Attribute represents an attribute of an item.
+// TF2Attribute represents a dynamic item modifier or state tag.
 type TF2Attribute struct {
-	Defindex   int     `json:"defindex"`
-	Value      any     `json:"value"` // int or string
+	// Defindex represents the attribute definition index.
+	Defindex int `json:"defindex"`
+	// Value represents the dynamic typed value of the attribute.
+	Value any `json:"value"`
+	// FloatValue represents the floating-point interpretation of the value.
 	FloatValue float64 `json:"float_value,omitempty"`
 }
 

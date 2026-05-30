@@ -11,34 +11,36 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 )
 
-// Filter is a function that filters items in the backpack.
+// Filter represents a function used to screen and match items in the backpack.
 type Filter func(item *tf2.Item, s *schema.Schema) bool
 
-// PageLayout represents a layout of a page in the backpack.
+// PageLayout defines the matching rules and filters applied to a specific backpack page.
 type PageLayout struct {
+	// Filters contains the selection functions applied to items on this page.
 	Filters []Filter
 }
 
-// Layout represents a layout of the backpack.
+// Layout defines the complete page-by-page organization of the backpack.
 type Layout struct {
+	// Pages maps page numbers to their respective layout rules.
 	Pages map[int]PageLayout
 }
 
-// BySKU returns a filter that checks if the item matches the specified SKU.
+// BySKU returns a [Filter] that checks if an item matches the specified target SKU.
 func BySKU(targetSKU string) Filter {
 	return func(item *tf2.Item, s *schema.Schema) bool {
 		return item.GetSKU(s) == targetSKU
 	}
 }
 
-// ByQuality returns a filter that checks if the item has the specified quality.
+// ByQuality returns a [Filter] that checks if an item matches the specified numeric quality ID.
 func ByQuality(q uint32) Filter {
 	return func(item *tf2.Item, s *schema.Schema) bool {
 		return item.Quality == q
 	}
 }
 
-// ByClass returns a filter that checks if the item is used by the specified class.
+// ByClass returns a [Filter] that checks if an item can be used by the specified character class.
 func ByClass(class string) Filter {
 	return func(item *tf2.Item, s *schema.Schema) bool {
 		sch := item.GetSchema(s)
@@ -50,7 +52,7 @@ func ByClass(class string) Filter {
 	}
 }
 
-// IsPure returns a filter that checks if the item is pure (reclaimed metal, refined metal, keys).
+// IsPure returns a [Filter] that checks if an item is a pure currency type (keys or metal).
 func IsPure() Filter {
 	return func(item *tf2.Item, s *schema.Schema) bool {
 		d := s.NormalizeDefindex(int(item.DefIndex))

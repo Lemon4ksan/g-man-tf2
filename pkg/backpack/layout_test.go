@@ -13,7 +13,6 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 )
 
-// mockSchema returns a minimal Schema instance for testing
 func mockSchema() *schema.Schema {
 	raw := &schema.Raw{}
 	raw.Schema.Items = []*schema.Item{
@@ -24,17 +23,19 @@ func mockSchema() *schema.Schema {
 		},
 		{
 			Defindex:      5000,
-			UsedByClasses: []string{}, // Metal
+			UsedByClasses: []string{},
 		},
 	}
 
 	return schema.New(raw)
 }
 
-func TestLayoutFilters(t *testing.T) {
+func TestLayoutFilters_StandardFilters_ExpectedMatching(t *testing.T) {
+	t.Parallel()
+
 	s := mockSchema()
 
-	t.Run("ByQuality", func(t *testing.T) {
+	t.Run("by_quality", func(t *testing.T) {
 		itemUnique := &tf2.Item{Quality: 6}
 		itemStrange := &tf2.Item{Quality: 11}
 
@@ -44,9 +45,9 @@ func TestLayoutFilters(t *testing.T) {
 		assert.False(t, filterUnique(itemStrange, s))
 	})
 
-	t.Run("ByClass", func(t *testing.T) {
-		itemWeapon := &tf2.Item{DefIndex: 1}   // Has Scout, Sniper
-		itemMetal := &tf2.Item{DefIndex: 5000} // No classes
+	t.Run("by_class", func(t *testing.T) {
+		itemWeapon := &tf2.Item{DefIndex: 1}
+		itemMetal := &tf2.Item{DefIndex: 5000}
 
 		filterScout := ByClass("Scout")
 		filterSoldier := ByClass("Soldier")
@@ -56,12 +57,12 @@ func TestLayoutFilters(t *testing.T) {
 		assert.False(t, filterScout(itemMetal, s))
 	})
 
-	t.Run("IsPure", func(t *testing.T) {
+	t.Run("is_pure", func(t *testing.T) {
 		pureItems := []*tf2.Item{
-			{DefIndex: 5000, IsCraftable: true}, // Scrap
-			{DefIndex: 5001, IsCraftable: true}, // Rec
-			{DefIndex: 5002, IsCraftable: true}, // Ref
-			{DefIndex: 5021, IsCraftable: true}, // Key
+			{DefIndex: 5000, IsCraftable: true},
+			{DefIndex: 5001, IsCraftable: true},
+			{DefIndex: 5002, IsCraftable: true},
+			{DefIndex: 5021, IsCraftable: true},
 		}
 
 		notPureItem := &tf2.Item{DefIndex: 123}
@@ -75,8 +76,7 @@ func TestLayoutFilters(t *testing.T) {
 		assert.False(t, filter(notPureItem, s))
 	})
 
-	t.Run("BySKU", func(t *testing.T) {
-		// Mock schema doesn't have complex SKU logic, but we can test the basic behavior
+	t.Run("by_sku", func(t *testing.T) {
 		item := &tf2.Item{DefIndex: 1, Quality: 6, IsTradable: true, IsCraftable: true}
 
 		filter := BySKU("1;6")

@@ -6,13 +6,11 @@ package backpack
 
 import "github.com/lemon4ksan/g-man/pkg/bus"
 
-// FullEvent is published when the backpack reaches its maximum capacity.
+// FullEvent is published when the backpack storage reaches its maximum capacity.
 type FullEvent struct {
 	bus.BaseEvent
-	Count, Max int
-}
-
-// Topic returns the topic for the event.
-func (b FullEvent) Topic() string {
-	return "backpack.full"
+	// Count represents the current number of items in the backpack.
+	Count int
+	// Max represents the maximum available slots in the backpack.
+	Max int
 }

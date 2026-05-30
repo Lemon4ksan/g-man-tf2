@@ -23,8 +23,9 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 )
 
-// Remote represents a specific player's TF2 inventory.
-// Data is lazy-loaded on the first request.
+// Remote manages auditing and validation tasks for external player inventories.
+// It loads inventory data lazily from Steam WebAPI or falls back to community inventory endpoints.
+// Use [NewRemote] to instantiate and configure remote profile sessions.
 type Remote struct {
 	steamID   uint64
 	client    service.Doer
@@ -40,32 +41,31 @@ type Remote struct {
 	fetched bool
 }
 
-// Option defines a functional configuration for the Remote.
+// Option defines configuration setter functions for initializing [Remote] instances.
 type Option = bus.Option[*Remote]
 
-// WithLogger sets a custom logger for the inventory.
+// WithLogger configures a custom [log.Logger] for logging [Remote] operations.
 func WithLogger(l log.Logger) Option {
 	return func(inv *Remote) {
 		inv.logger = l
 	}
 }
 
-// WithCommunityBackoff sets the community client for fetching inventory when web api fails.
+// WithCommunityBackoff configures an alternate community inventory request pipeline.
 func WithCommunityBackoff(r community.Requester) Option {
 	return func(inv *Remote) {
 		inv.community = r
 	}
 }
 
-// WithDupeCheckers allows to check duped items.
+// WithDupeCheckers registers an array of historical verification engines with the [Remote] auditor.
 func WithDupeCheckers(dc []DupeChecker) Option {
 	return func(inv *Remote) {
 		inv.dupeCheckers = dc
 	}
 }
 
-// NewRemote creates an inventory for a specific player.
-// dupeCheckers is a slice of implementations (e.g. [NewBackpackTFChecker]).
+// NewRemote constructs a new configured [Remote] instance for auditing external profiles.
 func NewRemote(steamID uint64, client service.Doer, opts ...Option) *Remote {
 	p := &Remote{
 		steamID:      steamID,
@@ -82,8 +82,8 @@ func NewRemote(steamID uint64, client service.Doer, opts ...Option) *Remote {
 	return p
 }
 
-// GetItemsBySKU returns all assets in someone else's inventory that match the specified SKU.
-// This is necessary to check: "Did the partner actually offer the item we agreed on?"
+// GetItemsBySKU retrieves all items in the external inventory matching the specified SKU.
+// Returns an error if the inventory fails to load due to privacy settings or API rate limits.
 func (r *Remote) GetItemsBySKU(ctx context.Context, targetSKU string) ([]TF2Item, error) {
 	r.mu.Lock()
 	if !r.fetched {
@@ -107,8 +107,8 @@ func (r *Remote) GetItemsBySKU(ctx context.Context, targetSKU string) ([]TF2Item
 	return result, nil
 }
 
-// CanTradeWithoutHold calls the steam api to check whether
-// the trade with remote user can be performed without hold.
+// CanTradeWithoutHold queries Steam API trade escrow times for the external account.
+// Returns true if the trade can be completed instantly, or an error if the request fails.
 func (r *Remote) CanTradeWithoutHold(ctx context.Context, token string) (bool, error) {
 	req := &webapi.IEconService_GetTradeHoldDurations_v1_Request{
 		SteamIDTarget: r.steamID, TradeOfferAccessToken: token,
@@ -127,10 +127,9 @@ func (r *Remote) CanTradeWithoutHold(ctx context.Context, token string) (bool, e
 	return res.TheirHold == 0, nil
 }
 
-// IsDuped checks whether the item is a duplicate.
-// It queries all registered DupeCheckers in turn.
-// If at least one service considers the item a duplicate, true is returned.
-// If no service knows about the item, nil is returned.
+// IsDuped queries history checking engines to verify if the specified asset is a duplicate.
+// It verifies the current asset ID first, then falls back to verifying the item's original ID.
+// Returns a boolean flag pointer, or an error if the asset is not found.
 func (r *Remote) IsDuped(ctx context.Context, assetID uint64) (*bool, error) {
 	duped, recorded, err := r.checkWithServices(ctx, assetID)
 	if err != nil {
@@ -177,8 +176,8 @@ func (r *Remote) IsDuped(ctx context.Context, assetID uint64) (*bool, error) {
 	return nil, nil
 }
 
-// FindMetalInPartnerInventory finds metal items in the partner's inventory.
-// It uses GetItemsBySKU to find items that match the specified SKUs.
+// FindMetalInPartnerInventory searches the partner's inventory to match the required scrap value.
+// It returns a slice of matching [trading.Item] currencies, or an error if the partner lacks change.
 func (r *Remote) FindMetalInPartnerInventory(ctx context.Context, amount currency.Scrap) ([]*trading.Item, error) {
 	skus := []string{currency.SKURefined, currency.SKUReclaimed, currency.SKUScrap}
 	values := map[string]currency.Scrap{
