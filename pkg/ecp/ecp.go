@@ -7,6 +7,7 @@ package ecp
 import (
 	"errors"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -39,18 +40,23 @@ var keyWordReplacements = []struct {
 
 // MappedValue holds an original item name and its corresponding generated ECP string variants.
 type MappedValue struct {
-	Key   string
+	// Key is the original name of the item.
+	Key string
+	// Value contains the list of all generated ECP string abbreviations for this item.
 	Value []string
 }
 
 // DecodedECP holds the decoded original item name and customer intent parsed from an ECP string.
 type DecodedECP struct {
+	// OriginalItemName is the canonical name of the decoded item.
 	OriginalItemName string
-	DecodedIntent    string
+	// DecodedIntent is the decoded customer action, which can be "buy" or "sell".
+	DecodedIntent string
 }
 
-// EasyCopyPaste provides methods for encoding and decoding ECP strings
-// with support for mathematical Unicode bold characters and keyword abbreviations.
+// EasyCopyPaste provides methods for encoding and decoding ECP strings.
+// It maintains an in-memory cache of previously mapped items to support stateful decoding.
+// Use [New] to instantiate and configure it using [EasyCopyPaste.SetUseBoldChars] and [EasyCopyPaste.SetUseWordSwap].
 type EasyCopyPaste struct {
 	mu           sync.RWMutex
 	useBoldChars bool
@@ -59,7 +65,7 @@ type EasyCopyPaste struct {
 	mappedItems  map[string][]string // Key: original name, Value: generated ECP strings
 }
 
-// New creates a new EasyCopyPaste instance.
+// New creates and returns a new initialized [EasyCopyPaste] instance.
 func New() *EasyCopyPaste {
 	return &EasyCopyPaste{
 		useBoldChars: false,
@@ -69,7 +75,8 @@ func New() *EasyCopyPaste {
 	}
 }
 
-// SetUseBoldChars configures whether to stylize strings in Unicode bold.
+// SetUseBoldChars configures whether to stylize generated ECP strings in Unicode mathematical bold.
+// Stylizing is useful for visual highlighting or bypassing chat spam filters.
 func (e *EasyCopyPaste) SetUseBoldChars(val bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -77,7 +84,8 @@ func (e *EasyCopyPaste) SetUseBoldChars(val bool) {
 	e.useBoldChars = val
 }
 
-// SetUseWordSwap configures whether to use compressed keywords like Aus, Ks, Spec.
+// SetUseWordSwap configures whether to use compressed keyword abbreviations (e.g., "Aus" or "Ks").
+// This is useful for minimizing message length in chat environments with character limits.
 func (e *EasyCopyPaste) SetUseWordSwap(val bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -85,7 +93,10 @@ func (e *EasyCopyPaste) SetUseWordSwap(val bool) {
 	e.useWordSwap = val
 }
 
-// ToEcpString encodes a TF2 item name and intent to an ECP string.
+// ToEcpString encodes a Team Fortress 2 item name and intent into a compact ECP string.
+// The botSideIntent represents the bot's trade intent. It is flipped to match the customer's perspective
+// (e.g., a bot "buy" intent results in a customer "sell" ECP prefix).
+// Returns an error if itemOriginalName is empty or if encoding fails.
 func (e *EasyCopyPaste) ToEcpString(itemOriginalName, botSideIntent string) (string, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -121,7 +132,11 @@ func (e *EasyCopyPaste) ToEcpString(itemOriginalName, botSideIntent string) (str
 	return nativeEcpString, nil
 }
 
-// ReverseEcpString decodes an ECP string back to the original item name and intent.
+// ReverseEcpString decodes an ECP string back into the original item name and customer intent.
+// Decoding is a stateful operation. The decoded item name must have been previously registered
+// in memory (typically via a prior call to [EasyCopyPaste.ToEcpString]).
+// Returns an error if the input string is empty, the customer intent is unrecognized, or the
+// item name cannot be resolved from the internal mapping database.
 func (e *EasyCopyPaste) ReverseEcpString(escaped string) (*DecodedECP, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -212,13 +227,7 @@ func (e *EasyCopyPaste) constructEcpCharSequence(originalItemName string) string
 }
 
 func (e *EasyCopyPaste) isDelimiter(r rune) bool {
-	for _, d := range e.delimiters {
-		if d == r {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(e.delimiters, r)
 }
 
 func (e *EasyCopyPaste) findMappedValue(str string) (MappedValue, bool) {

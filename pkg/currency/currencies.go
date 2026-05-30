@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package currency provides structures for tf2 currencies calculations.
 package currency
 
 import (
@@ -13,29 +12,33 @@ import (
 	"strings"
 )
 
-// Scrap is the single tf2 currency unit.
+// Scrap represents the absolute atomic unit of currency in Team Fortress 2.
+// Calculations in Scrap prevent floating-point rounding errors during trades.
 type Scrap int
 
 const (
-	// ScrapInRec is the number of scrap in one reclaimed.
+	// ScrapInRec defines the number of individual scrap units contained in one reclaimed metal.
 	ScrapInRec = 3
-	// ScrapInRef is the number of scrap in one refined.
+	// ScrapInRef defines the number of individual scrap units contained in one refined metal.
 	ScrapInRef = 9
 )
 
-// Currency represent a currency object (keys and metal).
+// Currency represents a combined balance of keys and refined metal.
+// It models item pricing, listing values, and trade session totals.
 type Currency struct {
-	Keys  float64 `json:"keys"`
+	// Keys represents the count of keys in the balance.
+	Keys float64 `json:"keys"`
+	// Metal represents the amount of refined metal in the balance.
 	Metal float64 `json:"metal"`
 }
 
-// New creates a new Currencies instance.
+// New creates and returns a pointer to a new [Currency] instance.
 func New(keys, metal float64) *Currency {
 	return &Currency{Keys: keys, Metal: metal}
 }
 
-// String implements the Stringer interface.
-// Returns a string representation, for example: "1 key, 20.11 ref".
+// String formats the [Currency] instance into a human-readable string.
+// Returns formats such as "1 key, 20.11 ref" or "0 keys, 0 ref".
 func (c *Currency) String() string {
 	if c.Keys == 0 && c.Metal == 0 {
 		return "0 keys, 0 ref"
@@ -44,7 +47,6 @@ func (c *Currency) String() string {
 	var parts []string
 
 	if c.Keys != 0 {
-		// %g removes extra zeros (1.0 -> "1", 1.5 -> "1.5")
 		kStr := fmt.Sprintf("%g key", c.Keys)
 		if c.Keys != 1 {
 			kStr += "s"
@@ -57,7 +59,6 @@ func (c *Currency) String() string {
 		scrap := ToScrap(c.Metal)
 		refined := float64(scrap) / 9.0
 		rounded := math.Round(refined*100) / 100
-		// 1.00 -> "1"
 		metalStr := strconv.FormatFloat(rounded, 'f', -1, 64)
 		parts = append(parts, metalStr+" ref")
 	}
@@ -65,9 +66,9 @@ func (c *Currency) String() string {
 	return strings.Join(parts, ", ")
 }
 
-// ToValue returns the value of currencies in scrap metal.
-// Conversion is the cost of one key in refined units.
-// If there are no keys, conversion can be passed as 0.
+// ToValue calculates the total value of the [Currency] in [Scrap] units.
+// It uses the provided key exchange rate in refined units to convert keys.
+// Returns an error if keys are present but the key exchange rate is zero or negative.
 func (c *Currency) ToValue(keyPriceRef float64) (Scrap, error) {
 	if keyPriceRef == 0 && c.Keys != 0 {
 		return 0, errors.New("missing conversion rate")
@@ -84,7 +85,8 @@ func (c *Currency) ToValue(keyPriceRef float64) (Scrap, error) {
 	return metalValue, nil
 }
 
-// AddRefined adds the values ​​of the refs.
+// AddRefined sums multiple refined metal values in floating-point format.
+// It converts internally to [Scrap] to eliminate standard floating-point precision errors.
 func AddRefined(args ...float64) float64 {
 	var total Scrap
 	for _, ref := range args {
@@ -94,9 +96,9 @@ func AddRefined(args ...float64) float64 {
 	return ToRefined(total)
 }
 
-// ScrapToCurrencies converts scrap metal into a Currencies object.
-// value - the value in scrap.
-// conversion - the key exchange rate in refs (if 0/undefined, returns only metal).
+// ScrapToCurrencies converts total [Scrap] units into a [Currency] structure.
+// It splits the scrap into keys and remaining metal based on the provided key price in refined.
+// If the key price is zero or negative, the result contains only metal.
 func ScrapToCurrencies(total Scrap, keyPriceRef float64) *Currency {
 	if keyPriceRef <= 0 {
 		return New(0, ToRefined(total))
@@ -109,17 +111,18 @@ func ScrapToCurrencies(total Scrap, keyPriceRef float64) *Currency {
 	return New(float64(keys), ToRefined(leftover))
 }
 
-// ToScrap converts refs (refined) to scrap.
+// ToScrap converts refined metal in floating-point format into [Scrap] units.
 func ToScrap(refined float64) Scrap {
 	return Scrap(math.Round(refined * float64(ScrapInRef)))
 }
 
-// ToRefined converts scrap to refs.
+// ToRefined converts [Scrap] units into a refined metal floating-point value.
 func ToRefined(s Scrap) float64 {
 	return float64(s) / float64(ScrapInRef)
 }
 
-// FormatRefined uses %.2f, which correctly rounds 0.555... to 0.56
+// FormatRefined formats [Scrap] units into a refined metal string with two decimal places.
+// It rounds the last digit up if the trailing remainder is half or greater.
 func FormatRefined(s Scrap) string {
 	return fmt.Sprintf("%.2f ref", float64(s)/9.0)
 }

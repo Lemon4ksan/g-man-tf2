@@ -10,26 +10,30 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/bus"
 )
 
-// ReadyEvent is emitted when the schema is ready.
+// ReadyEvent is emitted when the schema has loaded and is ready for use.
 type ReadyEvent struct {
 	bus.BaseEvent
 }
 
-// UpdatedEvent is emitted when the schema is updated.
+// UpdatedEvent is emitted when the schema has successfully updated.
 type UpdatedEvent struct {
 	bus.BaseEvent
+	// Timestamp represents the time when the schema was updated.
 	Timestamp time.Time
 }
 
-// UpdateFailedEvent is emitted when the schema update fails.
+// UpdateFailedEvent is emitted when a background schema update fails.
 type UpdateFailedEvent struct {
 	bus.BaseEvent
+	// Error contains the failure reason.
 	Error error
 }
 
-// UpdateRequestedEvent is emitted when a schema update is requested (e.g., via GC).
+// UpdateRequestedEvent is emitted when a schema update is requested.
 type UpdateRequestedEvent struct {
 	bus.BaseEvent
-	Version      uint32
+	// Version represents the requested schema version.
+	Version uint32
+	// ItemsGameURL represents the URL of the items_game.txt file.
 	ItemsGameURL string
 }

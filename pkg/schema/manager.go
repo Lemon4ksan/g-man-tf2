@@ -35,25 +35,25 @@ import (
 // ModuleName is the name of the schema manager module.
 const ModuleName string = "tf2_schema"
 
-// Config holds the configuration for the schema manager.
+// Config holds configuration parameters for the [Manager].
 type Config struct {
-	// UpdateInterval is the time interval between schema updates.
+	// UpdateInterval defines the time interval between schema updates.
 	UpdateInterval time.Duration
-	// LiteMode enables pruning of unnecessary items_game data to save RAM.
+	// LiteMode enables pruning of items_game data to reduce RAM usage.
 	LiteMode bool
-	// CachePath is the path to the local schema cache file.
+	// CachePath defines the path to the local schema cache file.
 	CachePath string
-	// PaintKitURL is the URL to use for fetching paintkit data.
+	// PaintKitURL represents the URL used to fetch paintkit translation strings.
 	PaintKitURL string
-	// SchemaMirrorURL is the URL to use for fetching schema data in case the default URL is not reachable.
+	// SchemaMirrorURL represents the backup URL for fetching schema overview data.
 	SchemaMirrorURL string
-	// ItemsMirrorURL is the URL to use for fetching items data in case the default URL is not reachable.
+	// ItemsMirrorURL represents the backup URL for fetching schema item lists.
 	ItemsMirrorURL string
-	// ItemsGameMirrorURL is the URL to use for fetching items_game.txt data in case pricedb fails to provide it.
+	// ItemsGameMirrorURL represents the backup URL for fetching items_game.txt.
 	ItemsGameMirrorURL string
 }
 
-// DefaultConfig returns a default configuration for the schema manager.
+// DefaultConfig returns a [Config] containing production-ready defaults.
 func DefaultConfig() Config {
 	return Config{
 		UpdateInterval:     24 * time.Hour,
@@ -64,20 +64,20 @@ func DefaultConfig() Config {
 	}
 }
 
-// WithModule returns a steam.Option that registers the schema manager with the given configuration.
+// WithModule returns a [steam.Option] that registers the [Manager] module with the client.
 func WithModule(cfg Config) steam.Option {
 	return func(c *steam.Client) {
 		c.RegisterModule(NewManager(cfg))
 	}
 }
 
-// From returns the schema manager module from the client.
+// From returns the [Manager] module instance retrieved from the [steam.Client].
 func From(c *steam.Client) *Manager {
 	return steam.GetModule[*Manager](c)
 }
 
-// Manager manages the TF2 item schema, keeping it up to date.
-// It embeds BaseModule for standardized lifecycle and concurrency management.
+// Manager manages background updates and local caching of the TF2 item schema.
+// Use [NewManager] to create an instance and configure it with [Config].
 type Manager struct {
 	module.Base
 
@@ -93,7 +93,7 @@ type Manager struct {
 	lastGCVersion uint32
 }
 
-// NewManager creates a manager with the given options.
+// NewManager constructs a new [Manager] instance.
 func NewManager(cfg Config) *Manager {
 	if cfg.UpdateInterval < 1*time.Minute {
 		cfg.UpdateInterval = 24 * time.Hour
@@ -105,10 +105,11 @@ func NewManager(cfg Config) *Manager {
 	}
 }
 
-// Name returns the name of the module.
+// Name returns the unique module name [ModuleName].
 func (m *Manager) Name() string { return ModuleName }
 
-// Init initializes the manager with the given context.
+// Init initializes the module dependencies within the [module.InitContext].
+// Returns an error if context resolution fails.
 func (m *Manager) Init(init module.InitContext) error {
 	if err := m.Base.Init(init); err != nil {
 		return err
@@ -130,11 +131,11 @@ func (m *Manager) Init(init module.InitContext) error {
 	return nil
 }
 
-// StartAuthed triggers the initial fetch and sets up the refresh loop.
+// StartAuthed starts background polling, updates, and events listening routines.
+// Returns an error if the context is cancelled during initialization.
 func (m *Manager) StartAuthed(ctx context.Context, _ module.AuthContext) error {
 	m.Logger.Info("Starting TF2 Schema loading...")
 
-	// Listen for manual update requests (e.g. from GC)
 	sub := m.Bus.Subscribe(&UpdateRequestedEvent{})
 
 	m.Go(func(ctx context.Context) {
@@ -155,7 +156,6 @@ func (m *Manager) StartAuthed(ctx context.Context, _ module.AuthContext) error {
 		}
 	})
 
-	// The first run: try cache first, then refresh if needed.
 	if err := m.loadFromCache(); err != nil {
 		m.Logger.InfoContext(ctx, "Cache not available or invalid, performing full refresh", log.Err(err))
 
@@ -190,7 +190,6 @@ func (m *Manager) handleUpdateRequested(req *UpdateRequestedEvent) {
 	lastGC := m.lastGCVersion
 	m.mu.Unlock()
 
-	// Skip if we already have this version or the items_game URL matches
 	if hasSchema && (req.ItemsGameURL == "" || currentVersion == req.ItemsGameURL || lastGC == req.Version) {
 		m.Logger.Debug("Schema is already up-to-date, skipping update request",
 			log.Uint32("requested_version", req.Version),
@@ -212,7 +211,6 @@ func (m *Manager) handleUpdateRequested(req *UpdateRequestedEvent) {
 		log.String("url", req.ItemsGameURL),
 	)
 
-	// Trigger a refresh in a separate goroutine to avoid blocking the bus
 	m.Go(func(ctx context.Context) {
 		if err := m.doRefresh(ctx, req.ItemsGameURL); err != nil {
 			if errors.Is(err, context.Canceled) {
@@ -233,7 +231,8 @@ func (m *Manager) handleUpdateRequested(req *UpdateRequestedEvent) {
 	})
 }
 
-// Get returns the current active  Returns nil if not ready.
+// Get returns the current active [Schema] instance.
+// Returns nil if the schema has not finished loading.
 func (m *Manager) Get() *Schema {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -242,15 +241,14 @@ func (m *Manager) Get() *Schema {
 }
 
 // Refresh manually triggers a full schema update from PriceDB and GitHub sources.
+// Returns an error if the fetch fails or the context is cancelled.
 func (m *Manager) Refresh(ctx context.Context) error {
 	return m.doRefresh(ctx, m.config.ItemsGameMirrorURL)
 }
 
-// doRefresh prevents parallel schema refreshes by grouping duplicate concurrent calls.
 func (m *Manager) doRefresh(ctx context.Context, itemsGameURL string) error {
 	m.refreshMu.Lock()
 	if m.refreshChan != nil {
-		// A refresh is already in progress. Wait for it to complete.
 		ch := m.refreshChan
 		m.refreshMu.Unlock()
 
@@ -280,7 +278,6 @@ func (m *Manager) doRefresh(ctx context.Context, itemsGameURL string) error {
 }
 
 func (m *Manager) refreshSchema(ctx context.Context, itemsGameURL string) error {
-	// Prioritize PriceDB first
 	if err := m.refreshPriceDB(ctx); err == nil {
 		return nil
 	} else {
@@ -294,7 +291,6 @@ func (m *Manager) refreshSchema(ctx context.Context, itemsGameURL string) error 
 	return m.refreshLegacy(ctx, itemsGameURL)
 }
 
-// refreshPriceDB updates the schema from PriceDB.
 func (m *Manager) refreshPriceDB(ctx context.Context) error {
 	m.Logger.DebugContext(ctx, "Fetching complete schema from PriceDB...")
 
@@ -332,13 +328,11 @@ func (m *Manager) refreshPriceDB(ctx context.Context) error {
 		return fmt.Errorf("failed to fetch items_game.txt: %w", err)
 	}
 
-	// Use the existing buildSchema logic to ensure indices are built and memory is optimized
 	overview := map[string]any{"result": rawSchema}
 	if err := m.buildSchema(overview, items, paintKits, itemsGame); err != nil {
 		return err
 	}
 
-	// Override version and time if provided by PriceDB
 	m.mu.Lock()
 	if v, ok := resp["version"].(string); ok && v != "" {
 		m.schema.Version = v
@@ -363,7 +357,6 @@ func (m *Manager) refreshPriceDB(ctx context.Context) error {
 	return nil
 }
 
-// refreshLegacy is the original refresh logic using Steam WebAPI as a fallback.
 func (m *Manager) refreshLegacy(ctx context.Context, itemsGameURL string) error {
 	m.Logger.DebugContext(ctx, "Fetching schema components from Steam and GitHub (Legacy)...")
 
@@ -461,7 +454,7 @@ func (m *Manager) buildSchema(
 	version := ""
 	if res, ok := overview["result"].(map[string]any); ok {
 		if url, ok := res["items_game_url"].(string); ok {
-			version = url // Use URL as version for now as it contains the hash
+			version = url
 		}
 	}
 
@@ -492,7 +485,7 @@ func (m *Manager) buildSchema(
 
 		decoder, err := mapstructure.NewDecoder(config)
 		if err != nil {
-			m.Logger.Error("Не удалось создать декодер схемы", log.Err(err))
+			m.Logger.Error("Failed to build schema decoder", log.Err(err))
 			return err
 		}
 
@@ -528,8 +521,6 @@ func (m *Manager) buildSchema(
 	return nil
 }
 
-// pruneItemsGame deletes unnecessary fields from the massive items_game map
-// to save RAM. Used when LiteMode is true.
 func (m *Manager) pruneItemsGame(raw *Raw) {
 	if raw.ItemsGame == nil {
 		return
@@ -919,12 +910,10 @@ func (m *Manager) loadFromCache() error {
 		return err
 	}
 
-	// Simple validation - verify that raw schema and item definitions are present
 	if s.Raw == nil || len(s.Raw.Schema.Items) == 0 {
 		return errors.New("cached schema is incomplete")
 	}
 
-	// Initialize the schema maps and indices which are private and not serialized
 	loadedSchema := New(s.Raw)
 	loadedSchema.Version = s.Version
 	loadedSchema.Time = s.Time

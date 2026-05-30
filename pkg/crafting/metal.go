@@ -16,31 +16,36 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 )
 
-// ErrNotEnoughChange is returned when there is not enough pure metal to make exact change.
+// ErrNotEnoughChange is returned when the inventory lacks the metal units required to make exact change.
 var ErrNotEnoughChange = errors.New("tf2econ: not enough pure metal to make exact change")
 
-// AssetFetcher provides access to the asset storage.
+// AssetFetcher defines the inventory retrieval methods needed for trade metal selection.
 type AssetFetcher interface {
+	// GetAssetIDs returns available item IDs matching the target SKU.
 	GetAssetIDs(sku string) []uint64
+	// GetPureStock returns the current total pure currency balances.
 	GetPureStock() currency.PureStock
+	// FindWeaponsByClassForSmelting returns duplicate weapons eligible for smelting.
 	FindWeaponsByClassForSmelting(class string) []*tf2.Item
+	// GetMetalCount returns the total count of metal items matching the specified DefIndex.
 	GetMetalCount(defIndex uint32) int
 }
 
-// MetalManager manages the selection and crafting of metal.
+// MetalManager manages greedy metal selection, change calculations, and manual change smelting.
 type MetalManager struct {
 	fetcher AssetFetcher
 	logger  log.Logger
 	craft   *Manager
 }
 
-// NewMetalManager creates a new metal manager.
+// NewMetalManager constructs a new [MetalManager] instance.
 func NewMetalManager(fetcher AssetFetcher, craft *Manager, logger log.Logger) *MetalManager {
 	return &MetalManager{fetcher: fetcher, craft: craft, logger: logger}
 }
 
-// SelectMetal selects a metal for exchange.
-// If there is no exact exchange, it tries to craft it.
+// SelectMetal selects metal IDs from the inventory to match the specified scrap value.
+// If exact change cannot be collected, it executes a smelting cycle before retrying selection.
+// Returns the selected item IDs, or an error if the overall balance is insufficient.
 func (m *MetalManager) SelectMetal(ctx context.Context, needed currency.Scrap) ([]uint64, error) {
 	if needed <= 0 {
 		return nil, nil
@@ -62,7 +67,8 @@ func (m *MetalManager) SelectMetal(ctx context.Context, needed currency.Scrap) (
 	return selected, nil
 }
 
-// SelectChange collects an array of AssetIDs whose sum is exactly equal to amountScrap.
+// SelectChange collects an array of metal item IDs whose total value is exactly equal to the specified scrap value.
+// Returns [ErrNotEnoughChange] if exact coin-change combinations cannot be formed.
 func (m *MetalManager) SelectChange(amount currency.Scrap) ([]uint64, error) {
 	selected, remaining := m.greedySelect(int(amount))
 	if remaining > 0 {
@@ -72,7 +78,8 @@ func (m *MetalManager) SelectChange(amount currency.Scrap) ([]uint64, error) {
 	return selected, nil
 }
 
-// SelectKeysAndMetal selects keys and metal for the offer.
+// SelectKeysAndMetal selects keys and exact metal change item IDs to fulfill the specified offer requirement.
+// Returns an error if there are insufficient keys or if exact metal change cannot be formed.
 func (m *MetalManager) SelectKeysAndMetal(keys int, metal currency.Scrap) ([]uint64, error) {
 	var selected []uint64
 
@@ -104,7 +111,6 @@ func (m *MetalManager) greedySelect(needed int) (selected []uint64, remaining in
 
 	current := needed
 
-	// Helper to pick items until needed amount is covered or we run out of items
 	pick := func(items []uint64, value int) {
 		for current >= value && len(items) > 0 {
 			selected = append(selected, items[0])
@@ -120,7 +126,9 @@ func (m *MetalManager) greedySelect(needed int) (selected []uint64, remaining in
 	return selected, current
 }
 
-// TryToSmeltForChange checks whether the required amount can be collected from the current metal.
+// TryToSmeltForChange verifies if the target scrap value is obtainable and smelts metal units to make change.
+// If metal smelting does not resolve the change requirement, it attempts to smelt duplicate weapons as a fallback.
+// Returns an error if the total balance is insufficient or if smelting fails to form exact change.
 func (m *MetalManager) TryToSmeltForChange(ctx context.Context, needed currency.Scrap) error {
 	stock := m.fetcher.GetPureStock()
 	totalValue := stock.TotalScrap()
@@ -145,14 +153,12 @@ func (m *MetalManager) TryToSmeltForChange(ctx context.Context, needed currency.
 
 	_, finalRemaining := m.greedySelect(int(needed))
 	if finalRemaining > 0 {
-		// If we still need change, try smelting duplicate weapons
 		m.logger.Info(
 			"Still need change after smelting metal, checking for duplicate weapons...",
 			log.Int("remaining", finalRemaining),
 		)
 
 		if err := m.SmeltDuplicates(ctx, currency.Scrap(finalRemaining)); err == nil {
-			// Check again after smelting weapons
 			_, afterWeapons := m.greedySelect(int(needed))
 			if afterWeapons == 0 {
 				return nil
@@ -165,7 +171,8 @@ func (m *MetalManager) TryToSmeltForChange(ctx context.Context, needed currency.
 	return nil
 }
 
-// SmeltDuplicates finds duplicate weapons and smelts them into scrap metal.
+// SmeltDuplicates identifies duplicate weapons across classes and smelts them until the needed scrap value is covered.
+// Returns an error if no duplicate weapons are available or if non-tradable weapons are encountered.
 func (m *MetalManager) SmeltDuplicates(ctx context.Context, needed currency.Scrap) error {
 	classes := []string{"Scout", "Soldier", "Pyro", "Demoman", "Heavy", "Engineer", "Medic", "Sniper", "Spy"}
 	smelted := 0
@@ -196,7 +203,6 @@ func (m *MetalManager) SmeltDuplicates(ctx context.Context, needed currency.Scra
 				return nil
 			}
 
-			// Small delay between crafts to be safe with GC
 			time.Sleep(500 * time.Millisecond)
 		}
 	}

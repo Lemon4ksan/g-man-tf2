@@ -3,48 +3,40 @@
 // license that can be found in the LICENSE file.
 
 /*
-Package tf2 implements the primary module for interacting with Team Fortress 2.
-It acts as the central hub for all TF2-specific logic, from managing the Game
-Coordinator (GC) connection to maintaining a real-time inventory snapshot.
+Package tf2 implements the Team Fortress 2 Game Coordinator communication and inventory cache.
 
-# Architectural Role
+The package handles connection state handshakes, in-game actions, and real-time inventory updates.
+It parses raw shared object notifications into structured, queryable data models.
 
-This module is designed to be the single source of truth for all things TF2
-within the G-man framework. It provides the core primitives (Items, SKUs,
-GC actions) used by the high-level trading engine.
+Key Types:
+  - [TF2] manages the Game Coordinator session connection state and action commands.
+  - [SOCache] maintains the local inventory replica updated by shared object packets.
+  - [Item] represents an inventory item parsed with all standard economic attributes.
 
-The package is supported by several specialized sub-packages:
-  - 'backpack': High-level management of the bot's inventory (via SOCache) and external auditing.
-  - 'bptf': Integration with backpack.tf for listings and reputation.
-  - 'pricedb': Real-time consolidated price authority.
-  - 'schema': High-fidelity item schema manager and SKU generator.
-  - 'trading': The business logic and middleware engine for automated trades.
+Basic Example:
 
-# Core Components
+	package main
 
- 1. The GC Client (TF2 struct):
-    The state machine responsible for managing the connection to the TF2
-    Game Coordinator. It handles the 'ClientHello' handshake, manages
-    connection lifecycle, and provides high-level actions like 'Craft()'
-    or 'UseItem()'.
+	import (
+		"context"
+		"fmt"
+		"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
+		"github.com/lemon4ksan/g-man/pkg/steam"
+	)
 
- 2. The SOCache (SOCache struct):
-    The "live" in-memory inventory manager. It subscribes to GC Shared Object
-    (SO) updates to maintain an up-to-the-millisecond representation of
-    the bot's backpack. It is the primary source of inventory data for
-    all internal logic.
+	func main() {
+		ctx := context.Background()
+		client := steam.NewClient(...)
 
-# Event-Driven Integration
+		// Get the registered TF2 module
+		tf2Module := tf2.From(client)
+		if tf2Module == nil {
+			return
+		}
 
-The module communicates its state to the rest of the application via the global
-Event Bus. Key events include:
-
-  - 'ConnectedEvent': Fired when the GC handshake is complete.
-  - 'BackpackLoadedEvent': Fired after the SOCache has finished its initial sync.
-  - 'ItemAcquiredEvent'/'ItemRemovedEvent': Fired in real-time as the inventory changes.
-
-By subscribing to 'BackpackLoadedEvent', other modules can safely begin operations
-that depend on knowing the current inventory state, such as price seeding or
-listing synchronization.
+		// Access the local synchronized inventory cache
+		cache := tf2Module.Cache()
+		fmt.Printf("Total backpack items: %d\n", len(cache.GetItems()))
+	}
 */
 package tf2

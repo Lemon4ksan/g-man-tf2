@@ -6,13 +6,18 @@ package currency
 
 import "fmt"
 
-// ValueDiff represents the difference between their side and our side.
+// ValueDiff represents the disparity between items offered and items received in a trade.
+// It evaluates profitability and calculates missing balances for automated counter-offers.
 type ValueDiff struct {
-	Our, Their, KeyPrice Scrap
+	// Our represents the total value of items given on our side in [Scrap].
+	Our Scrap
+	// Their represents the total value of items received on their side in [Scrap].
+	Their Scrap
+	// KeyPrice represents the active key exchange rate in [Scrap] used for calculations.
+	KeyPrice Scrap
 }
 
-// NewValueDiff calculates the difference in trade value.
-// values are expected to be in Scrap.
+// NewValueDiff creates a new [ValueDiff] instance with the specified values in [Scrap].
 func NewValueDiff(our, their, keyPrice Scrap) ValueDiff {
 	return ValueDiff{
 		Our:      our,
@@ -21,17 +26,18 @@ func NewValueDiff(our, their, keyPrice Scrap) ValueDiff {
 	}
 }
 
-// Diff returns the difference between their side and our side.
+// Diff returns the raw value difference between their side and our side in [Scrap].
 func (v ValueDiff) Diff() Scrap {
 	return v.Their - v.Our
 }
 
-// IsProfitable returns true if they are paying equal or more than us.
+// IsProfitable returns true if the value of items received is greater than or equal to the items given.
 func (v ValueDiff) IsProfitable() bool {
 	return v.Their >= v.Our
 }
 
-// MissingRefined returns how much metal is missing in Refined format.
+// MissingRefined returns the amount of missing metal in refined floating-point format.
+// Returns 0 if the transaction is already profitable.
 func (v ValueDiff) MissingRefined() float64 {
 	if v.IsProfitable() {
 		return 0
@@ -42,7 +48,8 @@ func (v ValueDiff) MissingRefined() float64 {
 	return float64(diff) / 9.0
 }
 
-// MissingString formats the missing amount (e.g., "0.55 ref" or "1 key, 2 ref").
+// MissingString formats the missing value into a structured currency string.
+// Returns strings such as "1 key, 2 ref" or "0.55 ref". Returns "0 ref" if profitable.
 func (v ValueDiff) MissingString() string {
 	if v.IsProfitable() {
 		return "0 ref"

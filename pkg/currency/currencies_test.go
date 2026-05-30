@@ -5,75 +5,92 @@
 package currency_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
 )
 
-func TestToScrap(t *testing.T) {
+func TestToScrap_VariousValues_ReturnsCorrectScrap(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
+		name    string
 		refined float64
 		want    currency.Scrap
 	}{
-		{0.11, 1},
-		{0.33, 3},
-		{1.00, 9},
-		{1.11, 10},
-		{2.33, 21},
-		{50.00, 450},
+		{"one_scrap", 0.11, 1},
+		{"three_scrap", 0.33, 3},
+		{"nine_scrap", 1.00, 9},
+		{"ten_scrap", 1.11, 10},
+		{"twenty_one_scrap", 2.33, 21},
+		{"four_hundred_fifty_scrap", 50.00, 450},
 	}
 
 	for _, tt := range tests {
-		got := currency.ToScrap(tt.refined)
-		if got != tt.want {
-			t.Errorf("ToScrap(%v) = %v, want %v", tt.refined, got, tt.want)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := currency.ToScrap(tt.refined)
+			if got != tt.want {
+				t.Errorf("ToScrap(%v) = %v, want %v", tt.refined, got, tt.want)
+			}
+		})
 	}
 }
 
-func TestToRefined(t *testing.T) {
+func TestToRefined_VariousValues_ReturnsCorrectRefined(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
+		name  string
 		scrap currency.Scrap
 		want  float64
 	}{
-		{1, 1.0 / 9.0}, // 0.1111...
-		{3, 3.0 / 9.0}, // 0.3333...
-		{9, 1.0},
-		{10, 10.0 / 9.0}, // 1.1111...
-		{13, 13.0 / 9.0}, // 1.4444...
+		{"one_scrap", 1, 1.0 / 9.0},
+		{"three_scrap", 3, 3.0 / 9.0},
+		{"nine_scrap", 9, 1.0},
+		{"ten_scrap", 10, 10.0 / 9.0},
+		{"thirteen_scrap", 13, 13.0 / 9.0},
 	}
 
 	for _, tt := range tests {
-		got := currency.ToRefined(tt.scrap)
-		if got != tt.want {
-			t.Errorf("ToRefined(%v) = %v, want %v", tt.scrap, got, tt.want)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := currency.ToRefined(tt.scrap)
+			if math.Abs(got-tt.want) > 1e-9 {
+				t.Errorf("ToRefined(%v) = %v, want %v", tt.scrap, got, tt.want)
+			}
+		})
 	}
 }
 
-func TestCurrencies_String(t *testing.T) {
+func TestCurrency_String_VariousBalances_ReturnsCorrectString(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		c    *currency.Currency
 		want string
 	}{
 		{
-			name: "Single key and metal",
+			name: "single_key_and_metal",
 			c:    currency.New(1, 20.11),
 			want: "1 key, 20.11 ref",
 		},
 		{
-			name: "Multiple keys",
+			name: "multiple_keys",
 			c:    currency.New(5, 0),
 			want: "5 keys",
 		},
 		{
-			name: "Only metal",
+			name: "only_metal",
 			c:    currency.New(0, 15.33),
 			want: "15.33 ref",
 		},
 		{
-			name: "Zero value",
+			name: "zero_value",
 			c:    currency.New(0, 0),
 			want: "0 keys, 0 ref",
 		},
@@ -81,6 +98,8 @@ func TestCurrencies_String(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			if got := tt.c.String(); got != tt.want {
 				t.Errorf("String() = %v, want %v", got, tt.want)
 			}
@@ -88,8 +107,9 @@ func TestCurrencies_String(t *testing.T) {
 	}
 }
 
-func TestCurrencies_ToValue(t *testing.T) {
-	// 1 key = 50 ref = 450 scrap
+func TestCurrency_ToValue_ConversionRates_ReturnsExpectedScrap(t *testing.T) {
+	t.Parallel()
+
 	const conv = 50.0
 
 	tests := []struct {
@@ -99,14 +119,16 @@ func TestCurrencies_ToValue(t *testing.T) {
 		want    currency.Scrap
 		wantErr bool
 	}{
-		{"1 key only", 1, 0, 450, false},
-		{"1 key 1.11 ref", 1, 1.11, 460, false}, // 450 + 10
-		{"0.5 key", 0.5, 0, 225, false},
-		{"Error on missing conversion", 1, 0, 0, true},
+		{"one_key_only", 1, 0, 450, false},
+		{"one_key_with_metal", 1, 1.11, 460, false},
+		{"half_key", 0.5, 0, 225, false},
+		{"error_missing_conversion", 1, 0, 0, true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			c := currency.New(tt.keys, tt.metal)
 
 			conversion := conv
@@ -127,8 +149,9 @@ func TestCurrencies_ToValue(t *testing.T) {
 	}
 }
 
-func TestScrapToCurrencies(t *testing.T) {
-	// 1 key = 50 ref = 450 scrap
+func TestScrapToCurrencies_VariousScrapValues_ReturnsCurrencyBalances(t *testing.T) {
+	t.Parallel()
+
 	const conv = 50.0
 
 	tests := []struct {
@@ -137,16 +160,18 @@ func TestScrapToCurrencies(t *testing.T) {
 		wantK float64
 		wantM float64
 	}{
-		{"Exactly 1 key", 450, 1, 0},
-		{"1 key and 1 scrap", 451, 1, 1.0 / 9.0},
-		{"Less than 1 key", 100, 0, 100.0 / 9.0},
-		{"Multiple keys", 1000, 2, 100.0 / 9.0}, // (1000 - 900) / 9 = 11.11
+		{"exactly_one_key", 450, 1, 0},
+		{"one_key_and_one_scrap", 451, 1, 1.0 / 9.0},
+		{"less_than_one_key", 100, 0, 100.0 / 9.0},
+		{"multiple_keys", 1000, 2, 100.0 / 9.0},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := currency.ScrapToCurrencies(tt.scrap, conv)
-			if got.Keys != tt.wantK || got.Metal != tt.wantM {
+			if got.Keys != tt.wantK || math.Abs(got.Metal-tt.wantM) > 1e-9 {
 				t.Errorf("ScrapToCurrencies() = %v keys, %v metal; want %v keys, %v metal",
 					got.Keys, got.Metal, tt.wantK, tt.wantM)
 			}
@@ -154,11 +179,13 @@ func TestScrapToCurrencies(t *testing.T) {
 	}
 }
 
-func TestAddRefined(t *testing.T) {
+func TestAddRefined_MultipleFloatValues_SumsWithoutPrecisionLoss(t *testing.T) {
+	t.Parallel()
+
 	res := currency.AddRefined(1.11, 2.22, 0.11)
-	// 10 + 20 + 1 = 31 scrap = 3.44 ref
+
 	want := 31.0 / 9.0
-	if res != want {
+	if math.Abs(res-want) > 1e-9 {
 		t.Errorf("AddRefined() = %v, want %v", res, want)
 	}
 }

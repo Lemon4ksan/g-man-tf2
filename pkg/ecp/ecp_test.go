@@ -8,102 +8,78 @@ import (
 	"testing"
 )
 
-func TestEasyCopyPaste_Basic(t *testing.T) {
-	e := New()
-	e.SetUseBoldChars(false)
-	e.SetUseWordSwap(false)
+func TestEasyCopyPaste_ToEcpAndReverse_ExpectedFormAndIntent(t *testing.T) {
+	t.Parallel()
 
-	originalName := "Mann Co. Supply Crate Key"
-
-	// Test encoding
-	ecpStr, err := e.ToEcpString(originalName, "sell")
-	if err != nil {
-		t.Fatalf("Failed to encode: %v", err)
+	tests := []struct {
+		name         string
+		originalName string
+		botIntent    string
+		useBold      bool
+		useWordSwap  bool
+		wantEcpStr   string
+		wantIntent   string
+	}{
+		{
+			name:         "basic_encoding_without_modifiers",
+			originalName: "Mann Co. Supply Crate Key",
+			botIntent:    "sell",
+			useBold:      false,
+			useWordSwap:  false,
+			wantEcpStr:   "buy_Mann_Co_Supply_Crate_Key",
+			wantIntent:   "buy",
+		},
+		{
+			name:         "word_swap_and_bold_enabled",
+			originalName: "Specialized Killstreak Scattergun",
+			botIntent:    "sell",
+			useBold:      true,
+			useWordSwap:  true,
+			wantEcpStr:   "𝗯𝘂𝘆_𝗦𝗽𝗲𝗰_𝗞𝘀_𝗦𝗰𝗮𝘁𝘁𝗲𝗿𝗴𝘂𝗻",
+			wantIntent:   "buy",
+		},
+		{
+			name:         "australium_with_word_swap",
+			originalName: "Strange Golden Frying Pan",
+			botIntent:    "buy",
+			useBold:      false,
+			useWordSwap:  true,
+			wantEcpStr:   "sell_Strange_Golden_Frying_Pan",
+			wantIntent:   "sell",
+		},
 	}
 
-	expected := "buy_Mann_Co_Supply_Crate_Key"
-	if ecpStr != expected {
-		t.Errorf("Expected encoded string to be %q, got %q", expected, ecpStr)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	// Test decoding
-	decoded, err := e.ReverseEcpString(ecpStr)
-	if err != nil {
-		t.Fatalf("Failed to decode: %v", err)
-	}
+			e := New()
+			e.SetUseBoldChars(tt.useBold)
+			e.SetUseWordSwap(tt.useWordSwap)
 
-	if decoded.OriginalItemName != originalName {
-		t.Errorf("Expected decoded name to be %q, got %q", originalName, decoded.OriginalItemName)
-	}
+			// Test encoding phase
+			ecpStr, err := e.ToEcpString(tt.originalName, tt.botIntent)
+			if err != nil {
+				t.Fatalf("Failed to encode item name: %v", err)
+			}
 
-	if decoded.DecodedIntent != "buy" {
-		t.Errorf("Expected decoded intent to be 'buy', got %q", decoded.DecodedIntent)
-	}
-}
+			if ecpStr != tt.wantEcpStr {
+				t.Errorf("ToEcpString(%q, %q) = %q, want %q", tt.originalName, tt.botIntent, ecpStr, tt.wantEcpStr)
+			}
 
-func TestEasyCopyPaste_WordSwapAndBold(t *testing.T) {
-	e := New()
-	e.SetUseBoldChars(true)
-	e.SetUseWordSwap(true)
+			// Test stateful decoding phase
+			decoded, err := e.ReverseEcpString(ecpStr)
+			if err != nil {
+				t.Fatalf("Failed to decode ECP string: %v", err)
+			}
 
-	originalName := "Specialized Killstreak Scattergun"
+			if decoded.OriginalItemName != tt.originalName {
+				t.Errorf("ReverseEcpString(%q) name = %q, want %q", ecpStr, decoded.OriginalItemName, tt.originalName)
+			}
 
-	// Test encoding with word swap and bold characters
-	ecpStr, err := e.ToEcpString(originalName, "sell")
-	if err != nil {
-		t.Fatalf("Failed to encode: %v", err)
-	}
-
-	// Specialized -> Spec, Killstreak -> Ks
-	// sell listing from bot -> buy from customer
-	// "buy_Spec_Ks_Scattergun" in Unicode Bold:
-	expectedBold := "𝗯𝘂𝘆_𝗦𝗽𝗲𝗰_𝗞𝘀_𝗦𝗰𝗮𝘁𝘁𝗲𝗿𝗴𝘂𝗻"
-	if ecpStr != expectedBold {
-		t.Errorf("Expected bold encoded string to be %q, got %q", expectedBold, ecpStr)
-	}
-
-	// Test decoding back to original
-	decoded, err := e.ReverseEcpString(ecpStr)
-	if err != nil {
-		t.Fatalf("Failed to decode: %v", err)
-	}
-
-	if decoded.OriginalItemName != originalName {
-		t.Errorf("Expected decoded name to be %q, got %q", originalName, decoded.OriginalItemName)
-	}
-
-	if decoded.DecodedIntent != "buy" {
-		t.Errorf("Expected decoded intent to be 'buy', got %q", decoded.DecodedIntent)
-	}
-}
-
-func TestEasyCopyPaste_Australium(t *testing.T) {
-	e := New()
-	e.SetUseBoldChars(false)
-	e.SetUseWordSwap(true)
-
-	originalName := "Strange Golden Frying Pan"
-
-	ecpStr, err := e.ToEcpString(originalName, "buy")
-	if err != nil {
-		t.Fatalf("Failed to encode: %v", err)
-	}
-
-	expected := "sell_Strange_Golden_Frying_Pan"
-	if ecpStr != expected {
-		t.Errorf("Expected encoded string to be %q, got %q", expected, ecpStr)
-	}
-
-	decoded, err := e.ReverseEcpString(ecpStr)
-	if err != nil {
-		t.Fatalf("Failed to decode: %v", err)
-	}
-
-	if decoded.OriginalItemName != originalName {
-		t.Errorf("Expected decoded name to be %q, got %q", originalName, decoded.OriginalItemName)
-	}
-
-	if decoded.DecodedIntent != "sell" {
-		t.Errorf("Expected decoded intent to be 'sell', got %q", decoded.DecodedIntent)
+			if decoded.DecodedIntent != tt.wantIntent {
+				t.Errorf("ReverseEcpString(%q) intent = %q, want %q", ecpStr, decoded.DecodedIntent, tt.wantIntent)
+			}
+		})
 	}
 }

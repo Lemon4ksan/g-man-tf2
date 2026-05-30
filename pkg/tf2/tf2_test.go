@@ -166,13 +166,17 @@ func createItemPayload(id uint64, defIndex uint32) []byte {
 	return b
 }
 
-func TestTF2_SOCacheEvents(t *testing.T) {
+func TestTF2_SOCacheEvents_TriggerBusSignals_FiresCorrectEvents(t *testing.T) {
+	t.Parallel()
+
 	_, ictx, _ := setupTF2(t)
 
 	subLoaded := ictx.Bus().Subscribe(&BackpackLoadedEvent{})
 	subAcquired := ictx.Bus().Subscribe(&ItemAcquiredEvent{})
 
-	t.Run("Initial Load via Bus", func(t *testing.T) {
+	t.Run("initial_load_via_bus", func(t *testing.T) {
+		t.Parallel()
+
 		msg := &pb.CMsgSOCacheSubscribed{
 			Objects: []*pb.CMsgSOCacheSubscribed_SubscribedType{
 				{
@@ -203,7 +207,9 @@ func TestTF2_SOCacheEvents(t *testing.T) {
 		}
 	})
 
-	t.Run("Item Acquired via Bus", func(t *testing.T) {
+	t.Run("item_acquired_via_bus", func(t *testing.T) {
+		t.Parallel()
+
 		msg := &pb.CMsgSOSingleObject{
 			TypeId:     proto.Int32(SOTypeEconItem),
 			ObjectData: createItemPayload(300, ItemScrap),
@@ -228,22 +234,23 @@ func TestTF2_SOCacheEvents(t *testing.T) {
 	})
 }
 
-func TestTF2_Lifecycle(t *testing.T) {
+func TestTF2_Lifecycle_ConnectionHandshakes_EmitsExpectedEvents(t *testing.T) {
+	t.Parallel()
+
 	tf, ictx, mCoord := setupTF2(t)
 	subConn := ictx.Bus().Subscribe(&ConnectedEvent{})
 	subDisc := ictx.Bus().Subscribe(&DisconnectedEvent{})
 
-	t.Run("StartAuthed and Hello", func(t *testing.T) {
-		err := tf.StartAuthed(context.Background(), nil)
+	t.Run("start_authed_and_hello", func(t *testing.T) {
+		err := tf.StartAuthed(t.Context(), nil)
 		require.NoError(t, err)
 
-		// Should have sent Hello (it's in a goroutine, so wait a bit)
 		assert.Eventually(t, func() bool {
 			return mCoord.GetLastSendMsgType() == uint32(pb.EGCBaseClientMsg_k_EMsgGCClientHello)
 		}, 1*time.Second, 10*time.Millisecond)
 	})
 
-	t.Run("Handle Welcome", func(t *testing.T) {
+	t.Run("handle_welcome", func(t *testing.T) {
 		msg := &pb.CMsgClientWelcome{Version: proto.Uint32(1)}
 		payload, _ := proto.Marshal(msg)
 
@@ -263,7 +270,7 @@ func TestTF2_Lifecycle(t *testing.T) {
 		}
 	})
 
-	t.Run("Handle Goodbye", func(t *testing.T) {
+	t.Run("handle_goodbye", func(t *testing.T) {
 		ictx.Bus().Publish(&gc.MessageEvent{
 			Packet: &protocol.GCPacket{
 				AppID:   AppID,
@@ -279,25 +286,26 @@ func TestTF2_Lifecycle(t *testing.T) {
 		}
 	})
 
-	t.Run("Close", func(t *testing.T) {
+	t.Run("close", func(t *testing.T) {
 		err := tf.Close()
 		require.NoError(t, err)
 		assert.Equal(t, int32(Disconnected), tf.state.Load())
 	})
 }
 
-func TestTF2_AcknowledgeAll(t *testing.T) {
+func TestTF2_AcknowledgeAll_UnacknowledgedItems_TriggersGCBatchMoves(t *testing.T) {
+	t.Parallel()
+
 	tf, _, mCoord := setupTF2(t)
 
-	// Seed 2 unacknowledged items (Position 0 or Inventory bit 30 set)
 	msg := &pb.CMsgSOCacheSubscribed{
 		Objects: []*pb.CMsgSOCacheSubscribed_SubscribedType{
 			{
 				TypeId: proto.Int32(SOTypeEconItem),
 				ObjectData: [][]byte{
-					createItemPayloadFull(1, ItemScrap, 1<<30), // New bit set
-					createItemPayloadFull(2, ItemScrap, 0),     // Pos 0
-					createItemPayloadFull(3, ItemScrap, 5),     // Normal
+					createItemPayloadFull(1, ItemScrap, 1<<30),
+					createItemPayloadFull(2, ItemScrap, 0),
+					createItemPayloadFull(3, ItemScrap, 5),
 				},
 			},
 		},
@@ -305,47 +313,50 @@ func TestTF2_AcknowledgeAll(t *testing.T) {
 	payload, _ := proto.Marshal(msg)
 	tf.cache.handleSubscribed(&protocol.GCPacket{Payload: payload})
 
-	err := tf.AcknowledgeAll(context.Background())
+	err := tf.AcknowledgeAll(t.Context())
 	require.NoError(t, err)
 
-	// Should have sent 1 MoveItems call (batch)
-	assert.Equal(t, uint32(pb.EGCItemMsg_k_EMsgGCSetItemPositions), mCoord.lastSendMsgType)
+	assert.Equal(t, uint32(pb.EGCItemMsg_k_EMsgGCSetItemPositions), mCoord.GetLastSendMsgType())
 }
 
-func TestTF2_AdvancedActions(t *testing.T) {
-	tf, _, mCoord := setupTF2(t)
-	ctx := context.Background()
+func TestTF2_AdvancedActions_ComplexCustomizations_DispatchesGCPackets(t *testing.T) {
+	t.Parallel()
 
-	t.Run("SetUnusualEffectOffset", func(t *testing.T) {
+	tf, _, mCoord := setupTF2(t)
+	ctx := t.Context()
+
+	t.Run("set_unusual_effect_offset", func(t *testing.T) {
 		err := tf.SetUnusualEffectOffset(ctx, 123, 1.5)
 		require.NoError(t, err)
-		assert.Equal(t, uint32(pb.EGCItemMsg_k_EMsgGCSetItemEffectVerticalOffset), mCoord.lastSendMsgType)
+		assert.Equal(t, uint32(pb.EGCItemMsg_k_EMsgGCSetItemEffectVerticalOffset), mCoord.GetLastSendMsgType())
 	})
 
-	t.Run("TransferStrangeCount", func(t *testing.T) {
+	t.Run("transfer_strange_count", func(t *testing.T) {
 		err := tf.TransferStrangeCount(ctx, 1, 2, 3)
 		require.NoError(t, err)
-		assert.Equal(t, uint32(pb.EGCItemMsg_k_EMsgGCApplyStrangeCountTransfer), mCoord.lastSendMsgType)
+		assert.Equal(t, uint32(pb.EGCItemMsg_k_EMsgGCApplyStrangeCountTransfer), mCoord.GetLastSendMsgType())
 	})
 
-	t.Run("RemoveKillstreak", func(t *testing.T) {
+	t.Run("remove_killstreak", func(t *testing.T) {
 		err := tf.RemoveKillstreak(ctx, 456)
 		require.NoError(t, err)
-		assert.Equal(t, uint32(pb.EGCItemMsg_k_EMsgGCRemoveKillStreak), mCoord.lastSendMsgType)
+		assert.Equal(t, uint32(pb.EGCItemMsg_k_EMsgGCRemoveKillStreak), mCoord.GetLastSendMsgType())
 	})
 
-	t.Run("ReportPlayer", func(t *testing.T) {
+	t.Run("report_player", func(t *testing.T) {
 		reason := pb.CMsgGC_ReportPlayer_kReason_CHEATING
 		err := tf.ReportPlayer(ctx, 777, &reason)
 		require.NoError(t, err)
-		assert.Equal(t, uint32(pb.ETFGCMsg_k_EMsgGC_ReportPlayer), mCoord.lastSendMsgType)
+		assert.Equal(t, uint32(pb.ETFGCMsg_k_EMsgGC_ReportPlayer), mCoord.GetLastSendMsgType())
 	})
 }
 
-func TestTF2_SOCache_Metadata(t *testing.T) {
+func TestTF2_SOCache_Metadata_RawPayloadUpdates_SavesValidMetadata(t *testing.T) {
+	t.Parallel()
+
 	tf, _, _ := setupTF2(t)
 
-	t.Run("Account Metadata Update", func(t *testing.T) {
+	t.Run("account_metadata_update", func(t *testing.T) {
 		accMsg := &pb.CSOEconGameAccountClient{
 			AdditionalBackpackSlots: proto.Uint32(100),
 			TrialAccount:            proto.Bool(false),
@@ -357,14 +368,14 @@ func TestTF2_SOCache_Metadata(t *testing.T) {
 		tf.cache.processObject(SOTypeEconGameAccountClient, data, false, nil)
 
 		assert.True(t, tf.cache.IsPremium())
-		assert.Equal(t, 400, tf.cache.GetMaxSlots()) // 300 base + 100 additional
+		assert.Equal(t, 400, tf.cache.GetMaxSlots())
 		assert.True(t, tf.cache.HasCompetitiveAccess())
 		assert.Equal(t, uint32(123456), tf.cache.GetTradeBanExpiration())
 	})
 
-	t.Run("MMR Update", func(t *testing.T) {
+	t.Run("mmr_update", func(t *testing.T) {
 		ratingMsg := &pb.CSOTFRatingData{
-			RatingType:    proto.Int32(2), // 6v6
+			RatingType:    proto.Int32(2),
 			RatingPrimary: proto.Uint32(1500),
 		}
 		data, _ := proto.Marshal(ratingMsg)
@@ -385,7 +396,9 @@ func createItemPayloadFull(id uint64, defIndex, inventory uint32) []byte {
 	return b
 }
 
-func TestTF2_Crafting(t *testing.T) {
+func TestTF2_Crafting_BlueprintRecipe_ExecutesSynchronousCraft(t *testing.T) {
+	t.Parallel()
+
 	tf, _, mCoord := setupTF2(t)
 	tf.state.Store(int32(Connected))
 
@@ -395,9 +408,8 @@ func TestTF2_Crafting(t *testing.T) {
 		}
 
 		go func() {
-			time.Sleep(10 * time.Millisecond)
 			tf.Bus.Publish(&CraftResponseEvent{
-				BlueprintID:  uint16(65535), // -1 in uint16
+				BlueprintID:  uint16(65535),
 				CreatedItems: []uint64{777},
 			})
 		}()
@@ -405,10 +417,12 @@ func TestTF2_Crafting(t *testing.T) {
 		return nil
 	}
 
-	t.Run("Successful Craft (Synchronous)", func(t *testing.T) {
+	t.Run("successful_craft_synchronous", func(t *testing.T) {
+		t.Parallel()
+
 		items := []uint64{100, 200, 300}
 
-		result, err := tf.Craft(context.Background(), items, -1)
+		result, err := tf.Craft(t.Context(), items, -1)
 		if err != nil {
 			t.Fatalf("Craft failed: %v", err)
 		}
@@ -434,16 +448,18 @@ func TestTF2_Crafting(t *testing.T) {
 	})
 }
 
-func TestTF2_CraftResponse(t *testing.T) {
+func TestTF2_CraftResponse_ValidPayload_PublishesCraftResponseEvent(t *testing.T) {
+	t.Parallel()
+
 	tf, ictx, _ := setupTF2(t)
 	sub := ictx.Bus().Subscribe(&CraftResponseEvent{})
 
-	t.Run("Handle Successful Response", func(t *testing.T) {
+	t.Run("handle_successful_response", func(t *testing.T) {
 		resp := new(bytes.Buffer)
-		_ = binary.Write(resp, binary.LittleEndian, int16(3))    // Blueprint SmeltWeapons
-		_ = binary.Write(resp, binary.LittleEndian, uint32(0))   // Unknown
-		_ = binary.Write(resp, binary.LittleEndian, uint16(1))   // Count
-		_ = binary.Write(resp, binary.LittleEndian, uint64(555)) // New Item
+		_ = binary.Write(resp, binary.LittleEndian, int16(3))
+		_ = binary.Write(resp, binary.LittleEndian, uint32(0))
+		_ = binary.Write(resp, binary.LittleEndian, uint16(1))
+		_ = binary.Write(resp, binary.LittleEndian, uint64(555))
 
 		tf.handleCraftResponse(&protocol.GCPacket{Payload: resp.Bytes()})
 
@@ -457,9 +473,9 @@ func TestTF2_CraftResponse(t *testing.T) {
 		}
 	})
 
-	t.Run("Empty Response", func(t *testing.T) {
+	t.Run("empty_response", func(t *testing.T) {
 		tf.handleCraftResponse(&protocol.GCPacket{Payload: []byte{}})
-		// Should not panic and not publish event
+
 		select {
 		case <-sub.C():
 			t.Error("Did not expect event for empty payload")
@@ -468,18 +484,24 @@ func TestTF2_CraftResponse(t *testing.T) {
 	})
 }
 
-func TestTF2_ParseCraftResponse_EdgeCases(t *testing.T) {
-	t.Run("Short Payload", func(t *testing.T) {
+func TestTF2_ParseCraftResponse_EdgeCases_ReturnsSafely(t *testing.T) {
+	t.Parallel()
+
+	t.Run("short_payload", func(t *testing.T) {
+		t.Parallel()
+
 		res := parseCraftResponse([]byte{1, 2, 3})
 		assert.Nil(t, res)
 	})
 
-	t.Run("Incomplete Item List", func(t *testing.T) {
+	t.Run("incomplete_item_list", func(t *testing.T) {
+		t.Parallel()
+
 		resp := new(bytes.Buffer)
 		_ = binary.Write(resp, binary.LittleEndian, int16(3))
 		_ = binary.Write(resp, binary.LittleEndian, uint32(0))
-		_ = binary.Write(resp, binary.LittleEndian, uint16(5))   // Claims 5 items
-		_ = binary.Write(resp, binary.LittleEndian, uint64(111)) // Only provides 1
+		_ = binary.Write(resp, binary.LittleEndian, uint16(5))
+		_ = binary.Write(resp, binary.LittleEndian, uint64(111))
 
 		res := parseCraftResponse(resp.Bytes())
 		assert.Equal(t, 1, len(res))
@@ -487,7 +509,9 @@ func TestTF2_ParseCraftResponse_EdgeCases(t *testing.T) {
 	})
 }
 
-func TestTF2_HandleSchemaUpdate(t *testing.T) {
+func TestTF2_HandleSchemaUpdate_SchemaPkt_EmitsSchemaUpdateEvent(t *testing.T) {
+	t.Parallel()
+
 	tf, ictx, _ := setupTF2(t)
 	sub := ictx.Bus().Subscribe(&schema.UpdateRequestedEvent{})
 

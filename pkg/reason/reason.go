@@ -34,5 +34,4 @@ const (
 	ReviewPricerDown           reason.TradeReason = "⬜_PRICER_DOWN"
 	ReviewUnpricedItem         reason.TradeReason = "⬜_UNPRICED_ITEM"
 	ReviewInvalidKeyPrice      reason.TradeReason = "⬜_INVALID_KEY_PRICE"
-	DeclineJunkDonation        reason.TradeReason = "JUNK_DONATION"
 )

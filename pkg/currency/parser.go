@@ -14,8 +14,11 @@ import (
 
 var currencyRegex = regexp.MustCompile(`([0-9]*\.?[0-9]+)\s*([a-zA-Z]*)`)
 
-// Parse converts a string to a Currency object.
-// Supports the following formats: "1.33 ref", "2 keys, 1.33", "50 scrap", "10k"
+// Parse converts a formatted text string into a [Currency] instance.
+// Supported string patterns include "1.33 ref", "2 keys, 1.33", "50 scrap", or "10k".
+// Suffixes are case-insensitive and support abbreviations: "key"/"k" for keys,
+// "ref"/"r" for refined, "rec" for reclaimed, and "scr"/"s" for scrap.
+// Returns an error if the input string contains no recognizable numeric currency values.
 func Parse(input string) (*Currency, error) {
 	input = strings.ToLower(input)
 	input = strings.ReplaceAll(input, ",", "")
@@ -45,7 +48,6 @@ func Parse(input string) (*Currency, error) {
 			res.Metal = AddRefined(res.Metal, val)
 
 		case strings.HasPrefix(suffix, "rec"):
-			// Use math.Round to avoid truncation issues (e.g. 1.5 rec -> 4.5 scrap -> 5 scrap)
 			scrap := math.Round(val * float64(ScrapInRec))
 			metalFromRec := scrap / float64(ScrapInRef)
 			res.Metal = AddRefined(res.Metal, metalFromRec)
@@ -67,7 +69,9 @@ func Parse(input string) (*Currency, error) {
 	return res, nil
 }
 
-// ParseToScrap is a convenient wrapper if we need to immediately get the value in scrap.
+// ParseToScrap converts a formatted text string and returns its total value in [Scrap] units.
+// It uses the provided key exchange rate in refined units to resolve key values.
+// Returns an error if parsing fails or if keys are parsed but the exchange rate is zero or negative.
 func ParseToScrap(input string, keyPriceRef float64) (Scrap, error) {
 	curr, err := Parse(input)
 	if err != nil {

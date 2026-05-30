@@ -13,45 +13,65 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 )
 
-// DefIndex of metals in TF2
-const (
-	DefIndexScrap     uint32 = 5000 // Scrap Metal
-	DefIndexReclaimed uint32 = 5001 // Reclaimed Metal
-	DefIndexRefined   uint32 = 5002 // Refined Metal
-)
+// DefIndexScrap represents the item definition index for Scrap Metal (5000).
+const DefIndexScrap uint32 = 5000
 
-// IDs of basic crafting recipes in TF2 (Blueprints)
-const (
-	RecipeSmeltWeapons       int16 = 3   // 2 weapons of the same class -> 1 Scrap
-	RecipeCombineScrap       int16 = 4   // 3 Scrap -> 1 Reclaimed
-	RecipeCombineReclaimed   int16 = 5   // 3 Reclaimed -> 1 Refined
-	RecipeSmeltReclaimed     int16 = 22  // 1 Reclaimed -> 3 Scrap
-	RecipeSmeltRefined       int16 = 23  // 1 Refined -> 3 Reclaimed
-	RecipeRebuildHeadgear    int16 = 8   // 2 hats -> 1 random hat
-	RecipeFabricateToken     int16 = 6   // 3 weapons -> 1 class token
-	RecipeFabricateSlotToken int16 = 7   // 3 weapons -> 1 slot token
-	RecipeCustomDynamic      int16 = 200 // Used for Killstreak Fabricators / Chemistry Sets
-)
+// DefIndexReclaimed represents the item definition index for Reclaimed Metal (5001).
+const DefIndexReclaimed uint32 = 5001
 
-// InventoryProvider provides access to bot items and currency state.
+// DefIndexRefined represents the item definition index for Refined Metal (5002).
+const DefIndexRefined uint32 = 5002
+
+// RecipeSmeltWeapons is the blueprint ID to craft 2 weapons of the same class into 1 Scrap.
+const RecipeSmeltWeapons int16 = 3
+
+// RecipeCombineScrap is the blueprint ID to combine 3 Scrap into 1 Reclaimed.
+const RecipeCombineScrap int16 = 4
+
+// RecipeCombineReclaimed is the blueprint ID to combine 3 Reclaimed into 1 Refined.
+const RecipeCombineReclaimed int16 = 5
+
+// RecipeSmeltReclaimed is the blueprint ID to smelt 1 Reclaimed into 3 Scrap.
+const RecipeSmeltReclaimed int16 = 22
+
+// RecipeSmeltRefined is the blueprint ID to smelt 1 Refined into 3 Reclaimed.
+const RecipeSmeltRefined int16 = 23
+
+// RecipeRebuildHeadgear is the blueprint ID to craft 2 hats into 1 random hat.
+const RecipeRebuildHeadgear int16 = 8
+
+// RecipeFabricateToken is the blueprint ID to craft 3 weapons into 1 class token.
+const RecipeFabricateToken int16 = 6
+
+// RecipeFabricateSlotToken is the blueprint ID to craft 3 weapons into 1 slot token.
+const RecipeFabricateSlotToken int16 = 7
+
+// RecipeCustomDynamic is the blueprint ID used for Killstreak Fabricators and Chemistry Sets.
+const RecipeCustomDynamic int16 = 200
+
+// InventoryProvider defines the inventory queries required for craft decision making.
 type InventoryProvider interface {
+	// FindCraftableItems returns available item IDs matching the defindex up to the specified count.
 	FindCraftableItems(defIndex uint32, count int) []uint64
+	// FindWeaponsByClassForSmelting returns duplicate weapons eligible for smelting.
 	FindWeaponsByClassForSmelting(class string) []*tf2.Item
+	// GetMetalCount returns the total count of metal items matching the specified DefIndex.
 	GetMetalCount(defIndex uint32) int
 }
 
-// GCProvider sends craft commands to Team Fortress 2 Game Coordinator.
+// GCProvider defines the interface to interact with the Game Coordinator craft command.
 type GCProvider interface {
+	// Craft sends a craft instruction to the Game Coordinator and returns the created item IDs.
 	Craft(ctx context.Context, items []uint64, recipe int16) ([]uint64, error)
 }
 
-// Manager handles the crafting of items in TF2.
+// Manager orchestrates standard Team Fortress 2 crafting recipe requests.
 type Manager struct {
 	inv InventoryProvider
 	gc  GCProvider
 }
 
-// NewManager creates a new crafting manager.
+// NewManager constructs a new [Manager] instance.
 func NewManager(inv InventoryProvider, gc GCProvider) *Manager {
 	return &Manager{
 		inv: inv,
@@ -59,8 +79,9 @@ func NewManager(inv InventoryProvider, gc GCProvider) *Manager {
 	}
 }
 
-// CombineMetal automatically converts 3 units of low-grade metal into 1 high-grade metal.
-// For example: 3 Scrap -> 1 Reclaimed. Returns the ID of the created metal.
+// CombineMetal converts 3 units of low-grade metal into 1 high-grade metal.
+// Supported defindexes: [DefIndexScrap] (converts to Reclaimed) and [DefIndexReclaimed] (converts to Refined).
+// Returns the newly created metal ID, or an error if there is insufficient metal or if the recipe is invalid.
 func (cm *Manager) CombineMetal(ctx context.Context, metalDefIndex uint32) ([]uint64, error) {
 	items := cm.inv.FindCraftableItems(metalDefIndex, 3)
 	if len(items) < 3 {
@@ -81,8 +102,9 @@ func (cm *Manager) CombineMetal(ctx context.Context, metalDefIndex uint32) ([]ui
 	return cm.gc.Craft(ctx, items, recipe)
 }
 
-// SmeltMetal "smelts" 1 high-grade metal into 3 low-grade metals.
-// For example: 1 Refined -> 3 Reclaimed. Returns the IDs of the created metals.
+// SmeltMetal splits 1 unit of high-grade metal into 3 units of low-grade metal.
+// Supported defindexes: [DefIndexReclaimed] (smelts to Scrap) and [DefIndexRefined] (smelts to Reclaimed).
+// Returns the newly created metal IDs, or an error if the source metal is missing or if the recipe is invalid.
 func (cm *Manager) SmeltMetal(ctx context.Context, metalDefIndex uint32) ([]uint64, error) {
 	items := cm.inv.FindCraftableItems(metalDefIndex, 1)
 	if len(items) == 0 {
@@ -104,11 +126,14 @@ func (cm *Manager) SmeltMetal(ctx context.Context, metalDefIndex uint32) ([]uint
 }
 
 // SmeltWeapons crafts two weapons of the same class into one Scrap Metal.
+// Returns the newly created scrap metal ID, or an error if the craft request fails.
 func (cm *Manager) SmeltWeapons(ctx context.Context, weaponID1, weaponID2 uint64) ([]uint64, error) {
 	return cm.gc.Craft(ctx, []uint64{weaponID1, weaponID2}, RecipeSmeltWeapons)
 }
 
-// CondenseMetal automatically scans your inventory and "compresses" all available metal.
+// CondenseMetal compresses all available scrap and reclaimed metal into higher-grade counterparts.
+// It repeatedly combines units in batches of 3.
+// Returns the total number of successful craft operations executed, or an error if an intermediate craft fails.
 func (cm *Manager) CondenseMetal(ctx context.Context) (int, error) {
 	crafts := 0
 
@@ -135,7 +160,10 @@ func (cm *Manager) CondenseMetal(ctx context.Context) (int, error) {
 	return crafts, nil
 }
 
-// MakeChange will smelt higher-grade metal until the target is reached.
+// MakeChange smelts higher-grade metal into lower-grade units until the target metal count is reached.
+// If [DefIndexReclaimed] is requested, it smelts Refined metal.
+// If [DefIndexScrap] is requested, it recursively smelts Reclaimed metal (and Refined if needed).
+// Returns an error if there is no high-grade metal left to smelt.
 func (cm *Manager) MakeChange(ctx context.Context, targetDefIndex uint32, targetCount int) error {
 	for cm.inv.GetMetalCount(targetDefIndex) < targetCount {
 		switch targetDefIndex {
@@ -169,7 +197,8 @@ func (cm *Manager) MakeChange(ctx context.Context, targetDefIndex uint32, target
 	return nil
 }
 
-// SmeltClassWeapons finds two weapons of the same class and smelts them into scrap metal.
+// SmeltClassWeapons finds two unique duplicate weapons for the specified class and smelts them into scrap metal.
+// Returns the newly created scrap ID, or an error if weapons are missing or if non-tradable items are selected.
 func (cm *Manager) SmeltClassWeapons(ctx context.Context, class string) ([]uint64, error) {
 	weapons := cm.inv.FindWeaponsByClassForSmelting(class)
 

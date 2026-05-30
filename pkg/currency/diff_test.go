@@ -4,11 +4,11 @@
 
 package currency
 
-import (
-	"testing"
-)
+import "testing"
 
-func TestValueDiff(t *testing.T) {
+func TestValueDiff_Metrics_CalculatesExpectedValues(t *testing.T) {
+	t.Parallel()
+
 	var keyPrice Scrap = 540
 
 	tests := []struct {
@@ -21,7 +21,7 @@ func TestValueDiff(t *testing.T) {
 		wantMissingStr string
 	}{
 		{
-			name:           "Profitable trade",
+			name:           "profitable_trade",
 			ourScrap:       100,
 			theirScrap:     120,
 			keyPrice:       keyPrice,
@@ -30,7 +30,7 @@ func TestValueDiff(t *testing.T) {
 			wantMissingStr: "0 ref",
 		},
 		{
-			name:           "Equal trade",
+			name:           "equal_trade",
 			ourScrap:       100,
 			theirScrap:     100,
 			keyPrice:       keyPrice,
@@ -39,16 +39,16 @@ func TestValueDiff(t *testing.T) {
 			wantMissingStr: "0 ref",
 		},
 		{
-			name:           "Unprofitable - small metal diff",
-			ourScrap:       15, // 1 ref, 2 rec
-			theirScrap:     10, // 1 ref, 0 rec, 1 scrap
+			name:           "unprofitable_small_metal_diff",
+			ourScrap:       15,
+			theirScrap:     10,
 			keyPrice:       keyPrice,
 			wantProfitable: false,
 			wantMissingRef: 5.0 / 9.0,
 			wantMissingStr: "0.56 ref",
 		},
 		{
-			name:           "Unprofitable - exactly 1 key missing",
+			name:           "unprofitable_one_key_missing",
 			ourScrap:       keyPrice + 10,
 			theirScrap:     10,
 			keyPrice:       keyPrice,
@@ -56,15 +56,15 @@ func TestValueDiff(t *testing.T) {
 			wantMissingStr: "1 keys",
 		},
 		{
-			name:           "Unprofitable - keys and metal missing",
-			ourScrap:       (keyPrice * 2) + 18, // 2 keys + 2 ref
+			name:           "unprofitable_keys_and_metal_missing",
+			ourScrap:       (keyPrice * 2) + 18,
 			theirScrap:     0,
 			keyPrice:       keyPrice,
 			wantProfitable: false,
 			wantMissingStr: "2 keys, 2.00 ref",
 		},
 		{
-			name:           "Unprofitable - nearly 1 key missing",
+			name:           "unprofitable_nearly_one_key_missing",
 			ourScrap:       keyPrice - 1,
 			theirScrap:     0,
 			keyPrice:       keyPrice,
@@ -75,6 +75,8 @@ func TestValueDiff(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			diff := NewValueDiff(tt.ourScrap, tt.theirScrap, tt.keyPrice)
 
 			if diff.IsProfitable() != tt.wantProfitable {

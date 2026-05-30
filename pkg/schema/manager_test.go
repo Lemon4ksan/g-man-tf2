@@ -6,7 +6,6 @@ package schema
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,7 +24,6 @@ import (
 func setupSchema(t *testing.T, cfg Config) (*Manager, *requester.Mock) {
 	t.Helper()
 
-	// Merge with default config to ensure URLs are set
 	defaultCfg := DefaultConfig()
 	if cfg.ItemsGameMirrorURL == "" {
 		cfg.ItemsGameMirrorURL = defaultCfg.ItemsGameMirrorURL
@@ -47,7 +45,9 @@ func setupSchema(t *testing.T, cfg Config) (*Manager, *requester.Mock) {
 	return sm, mockAPI
 }
 
-func TestNewSchemaManager_ConfigDefaults(t *testing.T) {
+func TestManager_New_ConfigDefaults_ValidatesIntervals(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{UpdateInterval: 10 * time.Second}
 	sm := NewManager(cfg)
 
@@ -63,7 +63,9 @@ func TestNewSchemaManager_ConfigDefaults(t *testing.T) {
 	}
 }
 
-func TestSchemaManager_LiteModePruning(t *testing.T) {
+func TestManager_PruneItemsGame_LiteMode_PrunesVDFKeys(t *testing.T) {
+	t.Parallel()
+
 	sm, _ := setupSchema(t, Config{LiteMode: true})
 
 	raw := &Raw{
@@ -89,7 +91,9 @@ func TestSchemaManager_LiteModePruning(t *testing.T) {
 	}
 }
 
-func TestSchemaManager_Refresh_Success(t *testing.T) {
+func TestManager_Refresh_StandardFlow_SuccessfullyPopulatesSchema(t *testing.T) {
+	t.Parallel()
+
 	sm, mockAPI := setupSchema(t, Config{LiteMode: false})
 
 	mockAPI.SetJSONResponse("IEconItems_440", "GetSchemaOverview", map[string]any{
@@ -130,7 +134,7 @@ func TestSchemaManager_Refresh_Success(t *testing.T) {
 	}
 	sub := sm.Bus.Subscribe(&UpdatedEvent{})
 
-	err := sm.Refresh(context.Background())
+	err := sm.Refresh(t.Context())
 	if err != nil {
 		t.Fatalf("unexpected error during Refresh: %v", err)
 	}
@@ -156,10 +160,11 @@ func TestSchemaManager_Refresh_Success(t *testing.T) {
 	}
 }
 
-func TestSchemaManager_Refresh_PriceDB_Success(t *testing.T) {
+func TestManager_Refresh_PriceDBFlow_SuccessfullyPopulatesSchema(t *testing.T) {
+	t.Parallel()
+
 	sm, mockAPI := setupSchema(t, Config{})
 
-	// Mock PriceDB response
 	priceDBResp := map[string]any{
 		"version": "4.5.3",
 		"time":    1778817514050.0,
@@ -202,7 +207,7 @@ func TestSchemaManager_Refresh_PriceDB_Success(t *testing.T) {
 		return nil, fmt.Errorf("unexpected REST path: %s", path)
 	}
 
-	err := sm.Refresh(context.Background())
+	err := sm.Refresh(t.Context())
 	if err != nil {
 		t.Fatalf("unexpected error during Refresh: %v", err)
 	}
@@ -229,25 +234,27 @@ func TestSchemaManager_Refresh_PriceDB_Success(t *testing.T) {
 	}
 }
 
-func TestSchemaManager_Refresh_Failures(t *testing.T) {
+func TestManager_Refresh_APIErrors_ReturnsError(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		mockSetup func(m *requester.Mock)
 	}{
 		{
-			name: "Overview WebAPI Error",
+			name: "overview_webapi_error",
 			mockSetup: func(m *requester.Mock) {
 				m.ResponseErrs["IEconItems_440/GetSchemaOverview"] = errors.New("steam api down")
 			},
 		},
 		{
-			name: "Items WebAPI Error",
+			name: "items_webapi_error",
 			mockSetup: func(m *requester.Mock) {
 				m.ResponseErrs["IEconItems_440/GetSchemaItems"] = errors.New("steam api timeout")
 			},
 		},
 		{
-			name: "Github Resource Down",
+			name: "github_resource_down",
 			mockSetup: func(m *requester.Mock) {
 				m.OnDo = func(req *tr.Request) (*tr.Response, error) {
 					if strings.HasPrefix(req.Target().String(), "https://raw.githubusercontent.com") {
@@ -262,6 +269,8 @@ func TestSchemaManager_Refresh_Failures(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			sm, mockAPI := setupSchema(t, Config{})
 
 			mockAPI.SetJSONResponse("IEconItems_440", "GetSchemaOverview", map[string]any{"result": map[string]any{}})
@@ -273,7 +282,7 @@ func TestSchemaManager_Refresh_Failures(t *testing.T) {
 
 			tt.mockSetup(mockAPI)
 
-			err := sm.Refresh(context.Background())
+			err := sm.Refresh(t.Context())
 			if err == nil {
 				t.Error("expected error during Refresh, got nil")
 			}
@@ -281,10 +290,11 @@ func TestSchemaManager_Refresh_Failures(t *testing.T) {
 	}
 }
 
-func TestSchemaManager_HandleUpdateRequested(t *testing.T) {
+func TestManager_HandleUpdateRequested_EventDispatched_RefreshesAsynchronously(t *testing.T) {
+	t.Parallel()
+
 	sm, mockAPI := setupSchema(t, Config{})
 
-	// Setup mock responses for Refresh
 	mockAPI.SetJSONResponse("IEconItems_440", "GetSchemaOverview", map[string]any{
 		"result": map[string]any{"qualities": map[string]any{}},
 	})
@@ -313,10 +323,9 @@ func TestSchemaManager_HandleUpdateRequested(t *testing.T) {
 		ItemsGameURL: "http://example.com/items_game.txt",
 	})
 
-	// handleUpdateRequested runs in a goroutine, so we wait for UpdatedEvent
 	select {
 	case <-sub.C():
-		// Success
+		// OK
 	case ev := <-subFail.C():
 		t.Fatalf("Schema update failed: %v", ev.(*UpdateFailedEvent).Error)
 	case <-time.After(5 * time.Second):
@@ -324,7 +333,9 @@ func TestSchemaManager_HandleUpdateRequested(t *testing.T) {
 	}
 }
 
-func TestSchemaManager_Refresh_SingleFlight(t *testing.T) {
+func TestManager_Refresh_ConcurrentCalls_DeDuplicatesAndBlocks(t *testing.T) {
+	t.Parallel()
+
 	sm, mockAPI := setupSchema(t, Config{})
 
 	mockAPI.SetJSONResponse("IEconItems_440", "GetSchemaOverview", map[string]any{
@@ -337,6 +348,8 @@ func TestSchemaManager_Refresh_SingleFlight(t *testing.T) {
 	var (
 		callCount int64
 		mu        sync.Mutex
+		aStarted  = make(chan struct{})
+		once      sync.Once
 	)
 
 	mockAPI.OnRest = func(method, path string, body any) (*http.Response, error) {
@@ -350,7 +363,13 @@ func TestSchemaManager_Refresh_SingleFlight(t *testing.T) {
 			mu.Lock()
 			callCount++
 			mu.Unlock()
-			time.Sleep(50 * time.Millisecond) // Simulate slow fetch
+
+			// Signal that Goroutine A has started and reached the slow fetch mock
+			once.Do(func() {
+				close(aStarted)
+			})
+
+			time.Sleep(50 * time.Millisecond)
 
 			return &http.Response{
 				StatusCode: 200,
@@ -372,15 +391,19 @@ func TestSchemaManager_Refresh_SingleFlight(t *testing.T) {
 	go func() {
 		defer wg.Done()
 
-		_ = sm.Refresh(context.Background())
+		_ = sm.Refresh(t.Context())
 	}()
 
 	go func() {
 		defer wg.Done()
 
-		time.Sleep(10 * time.Millisecond) // Ensure A starts first
+		// Wait for Goroutine A to fully initiate and enter the slow PriceDB mock
+		select {
+		case <-aStarted:
+		case <-time.After(1 * time.Second): // Fail-safe
+		}
 
-		_ = sm.Refresh(context.Background())
+		_ = sm.Refresh(t.Context())
 	}()
 
 	wg.Wait()

@@ -67,7 +67,7 @@ const (
 	WearBattleScarred = 5
 )
 
-// StandardPaints maps hex color values to their display names.
+// StandardPaints maps hex color values to their standard display names.
 // These are the standard paints available in Team Fortress 2.
 var StandardPaints = map[uint32]string{
 	0x7D4071: "A Deep Commitment to Purple",
@@ -93,7 +93,6 @@ var StandardPaints = map[uint32]string{
 	0x424F3B: "Zepheniah's Greed",
 	0x2F4F4F: "A Color Similar to Slate",
 
-	// Team paints (Primary/Secondary variations)
 	0x654740: "An Air of Debonair",
 	0x28394D: "An Air of Debonair",
 	0x3B1F23: "Balaclavas Are Forever",
@@ -111,7 +110,7 @@ var StandardPaints = map[uint32]string{
 }
 
 // GetPaintName returns the name of the paint associated with the given hex color.
-// If the color is not found, it returns a formatted hex string.
+// Returns an empty string if the paint color is not found.
 func GetPaintName(color uint32) string {
 	if name, ok := StandardPaints[color]; ok {
 		return name
@@ -278,16 +277,14 @@ var retiredKeys = map[int]RetiredKeyInfo{
 	5792: {5792, "Nice Winter Crate Key 2014"},
 }
 
-// SpellDefinitions maps spell names to their SKU definitions.
+// SpellDefinitions maps spell names to their [sku.Spell] SKU definitions.
 var SpellDefinitions = map[string]sku.Spell{
-	// --- Paint Effects (Attribute 1004) ---
 	"Halloween: Die Job (paint)":                 {Attribute: 1004, Value: 0},
 	"Halloween: Chromatic Corruption (paint)":    {Attribute: 1004, Value: 1},
 	"Halloween: Putrescent Pigmentation (paint)": {Attribute: 1004, Value: 2},
 	"Halloween: Spectral Spectrum (paint)":       {Attribute: 1004, Value: 3},
 	"Halloween: Sinister Staining (paint)":       {Attribute: 1004, Value: 4},
 
-	// --- Footprints (Attribute 1005) ---
 	"Halloween: Team Spirit Footprints":    {Attribute: 1005, Value: 1},
 	"Halloween: Headless Horseshoes":       {Attribute: 1005, Value: 2},
 	"Halloween: Gangreen Footprints":       {Attribute: 1005, Value: 8421376},
@@ -296,20 +293,19 @@ var SpellDefinitions = map[string]sku.Spell{
 	"Halloween: Rotten Orange Footprints":  {Attribute: 1005, Value: 13595446},
 	"Halloween: Bruised Purple Footprints": {Attribute: 1005, Value: 8208497},
 
-	// --- Vocal Effects (Attribute 1006) ---
 	"Halloween: Voices from Below": {Attribute: 1006, Value: 1},
 
-	// --- Weapon Effects (Attributes 1007, 1008, 1009) ---
 	"Halloween: Pumpkin Bombs":        {Attribute: 1007, Value: 1},
-	"Halloween: Gourd Grenades":       {Attribute: 1007, Value: 1}, // Alias
+	"Halloween: Gourd Grenades":       {Attribute: 1007, Value: 1},
 	"Halloween: Halloween Fire":       {Attribute: 1008, Value: 1},
-	"Halloween: Spectral Flame":       {Attribute: 1008, Value: 1}, // Alias
+	"Halloween: Spectral Flame":       {Attribute: 1008, Value: 1},
 	"Halloween: Exorcism":             {Attribute: 1009, Value: 1},
-	"Halloween: Squash Rockets":       {Attribute: 1007, Value: 1}, // Alias
-	"Halloween: Sentry Quad-Pumpkins": {Attribute: 1007, Value: 1}, // Alias
+	"Halloween: Squash Rockets":       {Attribute: 1007, Value: 1},
+	"Halloween: Sentry Quad-Pumpkins": {Attribute: 1007, Value: 1},
 }
 
-// IdentifySpell tries to find a spell by its name, stripping common prefixes.
+// IdentifySpell searches for a spell matching the provided name.
+// Strips common prefixes and returns false if the spell is not recognized.
 func IdentifySpell(name string) (sku.Spell, bool) {
 	lowerName := strings.ToLower(name)
 
@@ -354,21 +350,18 @@ func IdentifySpell(name string) (sku.Spell, bool) {
 
 var retiredKeysNames []string
 
-// GlobalNormalizationMap maps retired/legacy defindexes to their canonical counterparts.
+// GlobalNormalizationMap maps retired or legacy defindexes to canonical ones.
 var GlobalNormalizationMap = map[int]int{
-	// Keys
 	5049: 5021, 5067: 5021, 5072: 5021, 5073: 5021, 5079: 5021, 5081: 5021,
 	5628: 5021, 5631: 5021, 5632: 5021, 5711: 5021, 5713: 5021, 5714: 5021,
 	5715: 5021, 5716: 5021, 5717: 5021, 5762: 5021,
-	// Lugermorph
-	294: 160,
-	// Strangifiers
+	294:  160,
 	6523: 6522, 6526: 6522, 6530: 6522, 6531: 6522, 6532: 6522, 6534: 6522,
-	// Killstreak Kits
 	6520: 6527, 6521: 6527, 11051: 6527, 11052: 6527,
 }
 
-// NormalizeDefindex returns the "canonical" defindex for an item.
+// NormalizeDefindex converts a retired or legacy defindex to its canonical ID.
+// Returns the original defindex if no normalization mapping exists.
 func NormalizeDefindex(defindex int) int {
 	if norm, ok := GlobalNormalizationMap[defindex]; ok {
 		return norm
@@ -377,7 +370,7 @@ func NormalizeDefindex(defindex int) int {
 	return defindex
 }
 
-// IsAustraliumDefindex returns true if the defindex can be an Australium weapon.
+// IsAustraliumDefindex checks if the defindex is eligible for an Australium variant.
 func IsAustraliumDefindex(defindex int) bool {
 	switch defindex {
 	case 13, 45, 18, 228, 21, 38, 19, 20, 132, 172, 15, 424, 141, 197, 29, 36, 14, 16, 61:
@@ -387,7 +380,7 @@ func IsAustraliumDefindex(defindex int) bool {
 	return false
 }
 
-// IsNativeFestive returns true if the defindex belongs to a "native" Festive item (from old crates).
+// IsNativeFestive checks if the defindex belongs to an older native Festive item.
 func IsNativeFestive(defindex int) bool {
 	switch defindex {
 	case 654, 658, 659, 660, 661, 662, 663, 664, 665, 669, 1081, 1082, 1085:

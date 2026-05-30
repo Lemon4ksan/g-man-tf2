@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package crafting provides automatic crafting behavior for the Automator.
 package crafting
 
 import (
@@ -14,7 +13,7 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/log"
 )
 
-// BehaviorName is the name of the pure liquidator behavior.
+// BehaviorName is the unique identifier for the pure liquidator behavior.
 const BehaviorName = "pure_liquidator"
 
 // WithPureLiquidator returns an option that registers the pure liquidator behavior with the orchestrator.
@@ -24,8 +23,8 @@ func WithPureLiquidator(mgr *Manager, inv InventoryProvider) behavior.Option {
 	}
 }
 
-// Automator is a high-level orchestrator that monitors the state of your
-// backpack and automatically maintains metal reserves and weapon recrafting.
+// Automator is a high-level background orchestrator that maintains metal reserves and handles duplicate weapon recrafting.
+// It periodically checks metal counts and weapon duplicates to ensure slot optimization.
 type Automator struct {
 	manager *Manager
 	inv     InventoryProvider
@@ -39,17 +38,17 @@ type Automator struct {
 	checkInterval time.Duration
 }
 
-// Option defines a functional configuration for the Automator.
+// Option defines functional configuration setters for the [Automator].
 type Option = bus.Option[*Automator]
 
-// WithLogger sets a custom logger for the module.
+// WithLogger configures a custom [log.Logger] for the [Automator].
 func WithLogger(l log.Logger) Option {
 	return func(a *Automator) {
 		a.logger = l
 	}
 }
 
-// NewAutomator creates a new orchestrator for monitoring metal reserve.
+// NewAutomator constructs a new [Automator] instance with default threshold values.
 func NewAutomator(mgr *Manager, inv InventoryProvider, opts ...Option) *Automator {
 	a := &Automator{
 		manager:       mgr,
@@ -69,19 +68,19 @@ func NewAutomator(mgr *Manager, inv InventoryProvider, opts ...Option) *Automato
 	return a
 }
 
-// Name returns the unique name of the behavior.
+// Name returns the unique behavior identifier for the [Automator].
 func (a *Automator) Name() string {
 	return "pure_liquidator"
 }
 
-// Run starts the background task for monitoring and maintaining metal.
+// Run starts the background check loop, checking and cleaning the inventory at scheduled intervals.
+// Returns an error if the context is cancelled.
 func (a *Automator) Run(ctx context.Context) error {
 	a.logger.Info("Pure Liquidator behavior started", log.Duration("interval", a.checkInterval))
 
 	ticker := time.NewTicker(a.checkInterval)
 	defer ticker.Stop()
 
-	// Initial run
 	if err := a.Tick(ctx); err != nil {
 		a.logger.Error("Initial tick failed", log.Err(err))
 	}
@@ -106,7 +105,9 @@ func (a *Automator) Run(ctx context.Context) error {
 	}
 }
 
-// Tick performs one check and one action (if needed).
+// Tick performs a single evaluation check of the current metal reserves.
+// It smelts high-grade metal or combines low-grade metal if thresholds are exceeded.
+// Returns an error if the Game Coordinator craft command fails.
 func (a *Automator) Tick(ctx context.Context) error {
 	scrapCount := a.inv.GetMetalCount(DefIndexScrap)
 	refCount := a.inv.GetMetalCount(DefIndexRefined)
@@ -143,7 +144,9 @@ func (a *Automator) Tick(ctx context.Context) error {
 	return nil
 }
 
-// CleanInventory finds duplicate weapons and crafts them into metal.
+// CleanInventory scans the backpack for duplicate class weapons and smelts them into scrap metal.
+// It runs a condensing cycle after smelting is complete to compress newly generated scrap.
+// Returns an error if weapon smelting or metal condensing fails.
 func (a *Automator) CleanInventory(ctx context.Context) error {
 	classes := []string{"Scout", "Soldier", "Pyro", "Demoman", "Heavy", "Engineer", "Medic", "Sniper", "Spy"}
 

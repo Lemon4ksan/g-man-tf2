@@ -51,135 +51,232 @@ func (f EconItemFlag) HasFlag(flag EconItemFlag) bool {
 	return (f & flag) != 0
 }
 
-// Attribute IDs from items_game.txt
+// Attributes list configuration from items_game.txt.
 const (
-	AttrCustomName         uint32 = 111
-	AttrCustomDesc         uint32 = 112
-	AttrMedalNumber        uint32 = 133
-	AttrUnusualEffect      uint32 = 134
-	AttrPaintPrimary       uint32 = 142
-	AttrCannotTrade        uint32 = 153
-	AttrCannotCraft        uint32 = 186
-	AttrCrateSeries        uint32 = 187
-	AttrAlwaysTradable     uint32 = 195
-	AttrTradableAfter      uint32 = 211
-	AttrKillEater          uint32 = 214 // Strange counter presence
-	AttrCraftNumber        uint32 = 229
-	AttrPaintSecondary     uint32 = 261
-	AttrStrangePart1       uint32 = 380
-	AttrStrangePart2       uint32 = 382
-	AttrStrangePart3       uint32 = 384
+	// AttrCustomName represents a Name Tag customization.
+	AttrCustomName uint32 = 111
+	// AttrCustomDesc represents a Description Tag customization.
+	AttrCustomDesc uint32 = 112
+	// AttrMedalNumber represents a registration number on tournament medals.
+	AttrMedalNumber uint32 = 133
+	// AttrUnusualEffect represents the Unusual particle effect identifier.
+	AttrUnusualEffect uint32 = 134
+	// AttrPaintPrimary represents the primary team paint color decimal value.
+	AttrPaintPrimary uint32 = 142
+	// AttrCannotTrade represents the non-tradable restriction.
+	AttrCannotTrade uint32 = 153
+	// AttrCannotCraft represents the non-craftable restriction.
+	AttrCannotCraft uint32 = 186
+	// AttrCrateSeries represents the supply crate series number attribute.
+	AttrCrateSeries uint32 = 187
+	// AttrAlwaysTradable represents the attribute overriding standard tradable constraints.
+	AttrAlwaysTradable uint32 = 195
+	// AttrTradableAfter represents the unix timestamp limitation for trades.
+	AttrTradableAfter uint32 = 211
+	// AttrKillEater represents a Strange part counter tracking presence.
+	AttrKillEater uint32 = 214
+	// AttrCraftNumber represents the craft index numbering attribute.
+	AttrCraftNumber uint32 = 229
+	// AttrPaintSecondary represents the secondary team paint color decimal value.
+	AttrPaintSecondary uint32 = 261
+	// AttrStrangePart1 represents the first applied Strange Part slot.
+	AttrStrangePart1 uint32 = 380
+	// AttrStrangePart2 represents the second applied Strange Part slot.
+	AttrStrangePart2 uint32 = 382
+	// AttrStrangePart3 represents the third applied Strange Part slot.
+	AttrStrangePart3 uint32 = 384
+	// AttrCannotCraftVariant represents the crafting-restriction attribute variation.
 	AttrCannotCraftVariant uint32 = 449
+	// AttrEOTLEarlySupporter represents the End of the Line supporter tag.
 	AttrEOTLEarlySupporter uint32 = 703
-	AttrWear               uint32 = 725
-	AttrPaintkit           uint32 = 834
-	AttrSpell1             uint32 = 1004
-	AttrSpell2             uint32 = 1005
-	AttrSpell3             uint32 = 1006
-	AttrSpell4             uint32 = 1007
-	AttrSpell5             uint32 = 1008
-	AttrSpell6             uint32 = 1009
-	AttrTarget             uint32 = 2012 // Target DefIndex for Kits/Strangifiers
-	AttrKillstreaker       uint32 = 2013 // Professional Killstreak Eye Effect
-	AttrSheen              uint32 = 2014 // Specialized/Professional Killstreak Sheen
-	AttrKillstreakTier     uint32 = 2025 // 1: Basic, 2: Specialized, 3: Professional
-	AttrAustralium         uint32 = 2027
-	AttrSeries             uint32 = 2031 // Secondary series (Duck Journal)
+	// AttrWear represents the skin pattern wear float value.
+	AttrWear uint32 = 725
+	// AttrPaintkit represents the skin pattern index identifier.
+	AttrPaintkit uint32 = 834
+	// AttrSpell1 represents the first applied Halloween spell effect slot.
+	AttrSpell1 uint32 = 1004
+	// AttrSpell2 represents the second applied Halloween spell effect slot.
+	AttrSpell2 uint32 = 1005
+	// AttrSpell3 represents the third applied Halloween spell effect slot.
+	AttrSpell3 uint32 = 1006
+	// AttrSpell4 represents the fourth applied Halloween spell effect slot.
+	AttrSpell4 uint32 = 1007
+	// AttrSpell5 represents the fifth applied Halloween spell effect slot.
+	AttrSpell5 uint32 = 1008
+	// AttrSpell6 represents the sixth applied Halloween spell effect slot.
+	AttrSpell6 uint32 = 1009
+	// AttrTarget represents the target item defindex for tools.
+	AttrTarget uint32 = 2012
+	// AttrKillstreaker represents the professional killstreak eye effect index.
+	AttrKillstreaker uint32 = 2013
+	// AttrSheen represents the specialized killstreak weapon sheen effect index.
+	AttrSheen uint32 = 2014
+	// AttrKillstreakTier represents the active killstreak tier level.
+	AttrKillstreakTier uint32 = 2025
+	// AttrAustralium represents the Australium weapon quality attribute flag.
+	AttrAustralium uint32 = 2027
+	// AttrSeries represents the secondary series counter (e.g. Duck Journal).
+	AttrSeries uint32 = 2031
+	// AttrTauntUnusualEffect represents the Unusual particle effect for taunts.
 	AttrTauntUnusualEffect uint32 = 2041
-	AttrQuestLoanerIDLow   uint32 = 2051
-	AttrQuestLoanerIDHigh  uint32 = 2052
-	AttrFestivized         uint32 = 2053
+	// AttrQuestLoanerIDLow represents the low 32-bit of the linked contract ID.
+	AttrQuestLoanerIDLow uint32 = 2051
+	// AttrQuestLoanerIDHigh represents the high 32-bit of the linked contract ID.
+	AttrQuestLoanerIDHigh uint32 = 2052
+	// AttrFestivized represents the festivizer modification attribute flag.
+	AttrFestivized uint32 = 2053
 )
 
-// Killstreak tier
+// Killstreak tiers configuration.
 const (
+	// KillstreakTierNone indicates no active killstreak.
 	KillstreakTierNone uint32 = iota
+	// KillstreakTierBasic indicates standard killstreak kit.
 	KillstreakTierBasic
+	// KillstreakTierSpecialized indicates specialized killstreak kit with weapon sheen.
 	KillstreakTierSpecialized
+	// KillstreakTierProfessional indicates professional killstreak kit with weapon sheen and eye effects.
 	KillstreakTierProfessional
 )
 
-// Item Origins
+// Item Origins configuration.
 const (
-	OriginDrop        uint32 = 0
+	// OriginDrop represents a random item drop.
+	OriginDrop uint32 = 0
+	// OriginAchievement represents an achievement unlock award.
 	OriginAchievement uint32 = 1
-	OriginPurchase    uint32 = 2
-	OriginStorePromo  uint32 = 5
-	OriginSupport     uint32 = 7
-	OriginHalloween   uint32 = 12
-	OriginForeign     uint32 = 14
-	OriginPreview     uint32 = 17
-	OriginWorkshop    uint32 = 18
-	OriginLoaner      uint32 = 24
+	// OriginPurchase represents an item purchased from store.
+	OriginPurchase uint32 = 2
+	// OriginStorePromo represents store promotion item.
+	OriginStorePromo uint32 = 5
+	// OriginSupport represents item granted by Steam Support.
+	OriginSupport uint32 = 7
+	// OriginHalloween represents a Halloween cauldron or drop reward.
+	OriginHalloween uint32 = 12
+	// OriginForeign represents an unverified source.
+	OriginForeign uint32 = 14
+	// OriginPreview represents a temporary store preview item.
+	OriginPreview uint32 = 17
+	// OriginWorkshop represents a Steam Workshop contribution award.
+	OriginWorkshop uint32 = 18
+	// OriginLoaner represents a temporary contract loaner item.
+	OriginLoaner uint32 = 24
 )
 
-// Quality constants for TF2 items
+// Quality configuration values.
 const (
-	QualityNormal     uint32 = 0
-	QualityGenuine    uint32 = 1
-	QualityVintage    uint32 = 3
-	QualityUnusual    uint32 = 5
-	QualityUnique     uint32 = 6
-	QualityCommunity  uint32 = 7
-	QualityValve      uint32 = 8
-	QualitySelfMade   uint32 = 9
+	// QualityNormal represents Stock quality items.
+	QualityNormal uint32 = 0
+	// QualityGenuine represents Genuine quality promo items.
+	QualityGenuine uint32 = 1
+	// QualityVintage represents Vintage quality items.
+	QualityVintage uint32 = 3
+	// QualityUnusual represents Unusual quality cosmetic items.
+	QualityUnusual uint32 = 5
+	// QualityUnique represents Unique quality standard items.
+	QualityUnique uint32 = 6
+	// QualityCommunity represents Community quality contribution items.
+	QualityCommunity uint32 = 7
+	// QualityValve represents Valve developer quality items.
+	QualityValve uint32 = 8
+	// QualitySelfMade represents Self-Made creator quality items.
+	QualitySelfMade uint32 = 9
+	// QualityCustomized represents Customized quality items.
 	QualityCustomized uint32 = 10
-	QualityStrange    uint32 = 11
-	QualityCompleted  uint32 = 12
-	QualityHaunted    uint32 = 13
+	// QualityStrange represents Strange quality counting items.
+	QualityStrange uint32 = 11
+	// QualityCompleted represents Completed quality items.
+	QualityCompleted uint32 = 12
+	// QualityHaunted represents Haunted quality Halloween items.
+	QualityHaunted uint32 = 13
+	// QualityCollectors represents Collector's quality compiled items.
 	QualityCollectors uint32 = 14
-	QualityDecorated  uint32 = 15
+	// QualityDecorated represents Decorated quality skins.
+	QualityDecorated uint32 = 15
 )
 
 // Item represents a parsed and normalized TF2 item with all its economic and technical metadata.
 type Item struct {
-	// Base Properties
-	ID         uint64       // Unique Asset ID (changes when traded/marketed)
-	OriginalID uint64       // The ID assigned when the item was first created
-	AccountID  uint32       // Steam Account ID of the current owner
-	DefIndex   uint32       // Item definition index from items_game.txt (e.g., 5021 for Key)
-	Level      uint32       // Item level (0-100), mostly cosmetic
-	Quality    uint32       // Quality ID (e.g., 6: Unique, 11: Strange, 5: Unusual)
-	Inventory  uint32       // Raw inventory bitmask containing backpack position
-	Quantity   uint32       // Stack size (usually 1)
-	Origin     uint32       // Origin ID (e.g., 0: Drop, 2: Purchase, 24: Loaner)
-	Flags      EconItemFlag // Bitmask for restrictions (Cannot Trade, etc.)
-	Style      uint32       // Selected style index for items with multiple variants
-	InUse      bool         // Whether the item is currently equipped or being used
+	// ID represents the unique asset identifier.
+	ID uint64
+	// OriginalID represents the permanent origin identifier.
+	OriginalID uint64
+	// AccountID represents the Steam Account ID of the current owner.
+	AccountID uint32
+	// DefIndex represents the item definition index from the schema.
+	DefIndex uint32
+	// Level represents the cosmetic item level.
+	Level uint32
+	// Quality represents the item quality ID.
+	Quality uint32
+	// Inventory represents the raw inventory bitmask containing positioning.
+	Inventory uint32
+	// Quantity represents the stack size of the item.
+	Quantity uint32
+	// Origin represents the item drop or purchase source ID.
+	Origin uint32
+	// Flags represents the restriction bitmask flags.
+	Flags EconItemFlag
+	// Style represents the selected cosmetic style index.
+	Style uint32
+	// InUse indicates whether the item is currently equipped.
+	InUse bool
 
-	// Customization
-	CustomName string // Text from a Name Tag
-	CustomDesc string // Text from a Description Tag
-	SKU        string // Canonical SKU string (e.g., "5021;6") for pricing
+	// CustomName represents the custom text applied by a name tag.
+	CustomName string
+	// CustomDesc represents the custom text applied by a description tag.
+	CustomDesc string
+	// SKU represents the canonical SKU string of the item.
+	SKU string
 
-	// Trade/Craft Status
-	IsTradable   bool // Can be traded via Steam
-	IsMarketable bool // Can be listed on the Steam Community Market
-	IsCraftable  bool // Can be used in crafting recipes
+	// IsTradable indicates whether the item is eligible for trades.
+	IsTradable bool
+	// IsMarketable indicates whether the item is eligible for community market listings.
+	IsMarketable bool
+	// IsCraftable indicates whether the item is eligible for crafting recipes.
+	IsCraftable bool
 
-	// Specialized Attributes (Standard)
-	Effect         uint32  // Unusual effect ID (e.g., 13: Sunbeams)
-	KillstreakTier uint32  // Killstreak tier (1: Basic, 2: Specialized, 3: Professional)
-	Australium     bool    // True if the item is an Australium variant
-	Festivized     bool    // True if a Festivizer has been applied
-	Wear           float32 // Skin wear value (0.0 to 1.0, where 0 is Factory New)
-	Paintkit       uint32  // Skin pattern ID (War Paint index)
-	CrateSeries    uint32  // Series number for supply crates (Attribute 187)
-	Paint          uint32  // Applied paint color ID
+	// Effect represents the Unusual particle effect ID.
+	Effect uint32
+	// KillstreakTier represents the Killstreak active level.
+	KillstreakTier uint32
+	// Australium indicates whether the item is an Australium variant.
+	Australium bool
+	// Festivized indicates whether the item has been modified with a festivizer.
+	Festivized bool
+	// Wear represents the skin pattern wear decimal value.
+	Wear float32
+	// Paintkit represents the skin pattern ID index.
+	Paintkit uint32
+	// CrateSeries represents the crate series number.
+	CrateSeries uint32
+	// Paint represents the applied paint color ID decimal.
+	Paint uint32
 
-	// Advanced & Rare Attributes
-	Sheen          uint32      // Killstreak sheen effect (e.g., Team Shine)
-	Killstreaker   uint32      // Professional Killstreak eye effect (e.g., Cerebral Discharge)
-	CraftNumber    uint32      // Limited edition craft number (e.g., #1)
-	Series         uint32      // Secondary series ID (used for Duck Journals/EOTL levels)
-	MedalNumber    uint32      // Number assigned to tournament medals
-	Target         uint32      // DefIndex of the target item (for Strangifiers/KS Kits)
-	IsElevated     bool        // True if the item has a Strange counter but isn't Strange quality
-	EarlySupporter bool        // True if the item has the "Early Supporter of EOTL" tag (Attr 703)
-	QuestID        uint64      // 64-bit ID of the quest/contract linked to a loaner item
-	IsBuggedLoaner bool        // True if item has Origin 24 but is actually tradable (rare glitch)
-	Spells         []sku.Spell // List of applied Halloween spells (IDs 1004-1009)
-	Parts          []uint32    // List of Strange Part IDs (counters applied to the item)
+	// Sheen represents the specialized killstreak sheen effect ID.
+	Sheen uint32
+	// Killstreaker represents the professional killstreak eye effect ID.
+	Killstreaker uint32
+	// CraftNumber represents the limited edition craft number.
+	CraftNumber uint32
+	// Series represents the secondary Duck Journal or level index.
+	Series uint32
+	// MedalNumber represents the tournament medal registration number.
+	MedalNumber uint32
+	// Target represents the target DefIndex for strangifiers and killstreak kits.
+	Target uint32
+	// IsElevated indicates whether the item has strange counters despite non-strange quality.
+	IsElevated bool
+	// EarlySupporter indicates whether the item has the early EOTL supporter attribute.
+	EarlySupporter bool
+	// QuestID represents the 64-bit quest or contract link identifier.
+	QuestID uint64
+	// IsBuggedLoaner indicates whether the item has a loaner origin but is actually tradable.
+	IsBuggedLoaner bool
+	// Spells contains the list of applied Halloween spell configurations.
+	Spells []sku.Spell
+	// Parts contains the list of applied Strange Part counter IDs.
+	Parts []uint32
 }
 
 // Position returns the item's slot in the backpack.
@@ -203,7 +300,7 @@ func (i *Item) IsWeapon(s *schema.Schema) bool {
 func (i Item) ToEconItem() *trading.Item {
 	return &trading.Item{
 		AppID:          AppID,
-		ContextID:      2, // For TF2 it's always 2
+		ContextID:      2,
 		AssetID:        i.ID,
 		Amount:         int64(i.Quantity),
 		Name:           i.CustomName,
@@ -223,7 +320,6 @@ func (i Item) ToSKUObject() *sku.Item {
 		quality2 = 11
 	}
 
-	// For Unusual + Strange cosmetics, quality is Unusual (5) and quality2 is Strange (11)
 	if i.Effect != 0 && i.Quality == 11 && i.Paintkit == 0 {
 		quality = 5
 		quality2 = 11
@@ -240,7 +336,7 @@ func (i Item) ToSKUObject() *sku.Item {
 		Effect:      int(i.Effect),
 		Festivized:  i.Festivized,
 		Paintkit:    int(i.Paintkit),
-		Wear:        int(i.Wear * 100), // Convert to percentage for SKU
+		Wear:        int(i.Wear * 100),
 		Craftnumber: int(i.CraftNumber),
 		Crateseries: int(i.CrateSeries),
 		Target:      int(i.Target),
@@ -267,22 +363,18 @@ func (i *Item) GetSKU(s *schema.Schema) string {
 }
 
 // Fix applies schema-based fixes and normalizations to the item.
-// This is equivalent to TF2Autobot's fixItem logic.
 func (i *Item) Fix(s *schema.Schema) {
 	sch := i.GetSchema(s)
 	if sch == nil {
 		return
 	}
 
-	// 1. Standardize DefIndexes for specialized items
-	// Killstreak Kits
 	if (i.DefIndex >= 5726 && i.DefIndex <= 5733) ||
 		(i.DefIndex >= 5743 && i.DefIndex <= 5751) ||
 		(i.DefIndex >= 5793 && i.DefIndex <= 5801) {
 		i.DefIndex = 6527
 	}
 
-	// Strangifiers
 	strangifiers := []uint32{
 		5661, 5721, 5722, 5723, 5724, 5725, 5753, 5754, 5755, 5756, 5757, 5758, 5759, 5783, 5784, 5804,
 	}
@@ -290,14 +382,11 @@ func (i *Item) Fix(s *schema.Schema) {
 		i.DefIndex = 6522
 	}
 
-	// Chemistry Sets
 	if i.DefIndex >= 20001 && i.DefIndex <= 20009 {
 		i.DefIndex = 20000
 	}
 
-	// 2. Fallback to schema for Crate Series
 	if sch.ItemClass == "supply_crate" && i.CrateSeries == 0 {
-		// Try to find series in schema attributes
 		for _, attr := range sch.Attributes {
 			if attr.Name == "set supply crate series" {
 				i.CrateSeries = uint32(attr.Value)
@@ -305,49 +394,44 @@ func (i *Item) Fix(s *schema.Schema) {
 			}
 		}
 	}
-
-	// 3. Normalization for SKU (Unusual Strange Cosmetics)
-	// This logic is mostly for SKU generation, so we keep it in ToSKUObject.
 }
 
-// SO Type IDs specific to Team Fortress 2.
+// Shared Object Type IDs.
 const (
-	SOTypeEconItem              int32 = 1
+	// SOTypeEconItem represents the inventory item object payload type ID (1).
+	SOTypeEconItem int32 = 1
+	// SOTypeEconGameAccountClient represents the client account settings payload type ID (7).
 	SOTypeEconGameAccountClient int32 = 7
-	SOTypeTFRatingData          int32 = 2007
+	// SOTypeTFRatingData represents matchmaking rating rating payload type ID (2007).
+	SOTypeTFRatingData int32 = 2007
 )
 
-// Option defines a functional configuration for the SOCache.
+// Option defines configuration setter functions for [SOCache] instances.
 type Option = bus.Option[*SOCache]
 
-// WithLogger sets a custom logger for the module.
+// WithLogger configures a custom [log.Logger] for logging [SOCache] events.
 func WithLogger(l log.Logger) Option {
 	return func(s *SOCache) {
 		s.logger = l.With(log.Component("so_cache"))
 	}
 }
 
-// WithBus sets a custom event bus for emitting events.
+// WithBus configures an alternate [bus.Bus] for dispatching inventory events.
 func WithBus(b *bus.Bus) Option {
 	return func(s *SOCache) {
 		s.bus = b
 	}
 }
 
-// WithSchema allows filling out the item SKU's during processing.
+// WithSchema registers a static [schema.Schema] to resolve SKU values on parsing.
 func WithSchema(schema *schema.Schema) Option {
 	return func(s *SOCache) {
 		s.schema = schema
 	}
 }
 
-// SOCache (Shared Object Cache) is the single source of truth for the TF2 inventory.
-// It maintains a real-time mirror of the Game Coordinator's item state and provides
-// thread-safe access to items and their properties.
-//
-// The cache is automatically updated via GCPackets (SOCacheSubscribed, SOUpdate, SORemove).
-// It also provides high-performance methods for generating SKUs directly from internal
-// item objects, bypassing expensive string parsing.
+// SOCache manages the Team Fortress 2 inventory replica state.
+// It synchronizes and processes shared object updates sent by the Game Coordinator.
 type SOCache struct {
 	mu sync.RWMutex
 
@@ -359,13 +443,11 @@ type SOCache struct {
 	slots     uint32
 	isPremium bool
 
-	// Account Metadata
 	tradeBanExpiration uint32
 	compAccess         bool
 	phoneVerified      bool
-	ratings            map[int32]uint32 // rating_type -> rating_primary (MMR)
+	ratings            map[int32]uint32
 
-	// Synchronization tracking
 	version atomic.Uint64
 	ownerID atomic.Uint64
 
@@ -480,8 +562,6 @@ func (c *SOCache) FindCraftableItems(defIndex uint32, count int) []uint64 {
 	var ids []uint64
 
 	for id, item := range c.items {
-		// CRITICALLY IMPORTANT: We only accept tradable items!
-		// Otherwise, the crafted metal will become non-tradable.
 		if item.DefIndex == defIndex && item.IsTradable {
 			ids = append(ids, id)
 			if count > 0 && len(ids) == count {
@@ -545,7 +625,6 @@ func (c *SOCache) GetAssetIDsBySKU(targetSKU string, limit int) []uint64 {
 	return result
 }
 
-// handleSubscribed processes the initial full synchronization of the cache.
 func (c *SOCache) handleSubscribed(pkt *protocol.GCPacket) {
 	msg := &pb.CMsgSOCacheSubscribed{}
 	if err := proto.Unmarshal(pkt.Payload, msg); err != nil {
@@ -579,7 +658,6 @@ func (c *SOCache) handleSubscribed(pkt *protocol.GCPacket) {
 	})
 }
 
-// handleSOUpdate routes incremental events (Create, Update, Destroy, Multiple).
 func (c *SOCache) handleSOUpdate(pkt *protocol.GCPacket) {
 	msgType := pb.ESOMsg(pkt.MsgType &^ protocol.ProtoMask)
 
@@ -628,8 +706,6 @@ func (c *SOCache) handleSOUpdate(pkt *protocol.GCPacket) {
 	}
 }
 
-// handleSOCacheCheck processes k_ESOMsg_CacheSubscriptionCheck (27).
-// GC asks if we are still in sync.
 func (c *SOCache) handleSOCacheCheck(ctx context.Context, pkt *protocol.GCPacket) {
 	msg := &pb.CMsgSOCacheSubscriptionCheck{}
 	if err := proto.Unmarshal(pkt.Payload, msg); err != nil {
@@ -655,8 +731,6 @@ func (c *SOCache) handleSOCacheCheck(ctx context.Context, pkt *protocol.GCPacket
 	}
 }
 
-// handleUpToDate processes k_ESOMsg_CacheSubscribedUpToDate (29).
-// Sent by GC if we requested a Refresh but we already had the latest data.
 func (c *SOCache) handleUpToDate(pkt *protocol.GCPacket) {
 	msg := &pb.CMsgSOCacheSubscribedUpToDate{}
 	if err := proto.Unmarshal(pkt.Payload, msg); err == nil {
@@ -665,7 +739,6 @@ func (c *SOCache) handleUpToDate(pkt *protocol.GCPacket) {
 	}
 }
 
-// requestRefresh sends k_ESOMsg_CacheSubscriptionRefresh (28) to the GC.
 func (c *SOCache) requestRefresh(ctx context.Context, owner uint64, logger log.Logger) {
 	req := &pb.CMsgSOCacheSubscriptionRefresh{
 		Owner: proto.Uint64(owner),
@@ -677,11 +750,9 @@ func (c *SOCache) requestRefresh(ctx context.Context, owner uint64, logger log.L
 	}
 }
 
-// processObject parses the raw bytes and updates the internal maps.
-// Caller MUST hold the mutex.
 func (c *SOCache) processObject(typeID int32, data []byte, isBulk bool, events *[]bus.Event) {
 	switch typeID {
-	case SOTypeEconItem: // Type 1: TF2 Item
+	case SOTypeEconItem:
 		econItem := &pb.CSOEconItem{}
 		if err := proto.Unmarshal(data, econItem); err != nil {
 			c.logger.Error("Failed to unmarshal CSOEconItem", log.Err(err))
@@ -693,11 +764,9 @@ func (c *SOCache) processObject(typeID int32, data []byte, isBulk bool, events *
 			item.SKU = item.GetSKU(c.schema)
 		}
 
-		// Check if it's an update or a new item
 		_, exists := c.items[item.ID]
 		c.items[item.ID] = item
 
-		// Fire events only if we are not in the middle of initial bulk loading
 		if !isBulk && events != nil {
 			if exists {
 				*events = append(*events, &ItemUpdatedEvent{Item: item})
@@ -708,10 +777,9 @@ func (c *SOCache) processObject(typeID int32, data []byte, isBulk bool, events *
 			}
 		}
 
-	case SOTypeEconGameAccountClient: // Type 7: Account Settings
+	case SOTypeEconGameAccountClient:
 		acc := &pb.CSOEconGameAccountClient{}
 		if err := proto.Unmarshal(data, acc); err == nil {
-			// TF2 gives you 50 slots by default. Premium gives +250 (300 total).
 			baseSlots := uint32(50)
 
 			if acc.GetTrialAccount() {
@@ -745,8 +813,6 @@ func (c *SOCache) processObject(typeID int32, data []byte, isBulk bool, events *
 	}
 }
 
-// processDestroy handles the removal of items from the cache.
-// Caller MUST hold the mutex.
 func (c *SOCache) processDestroy(typeID int32, data []byte, events *[]bus.Event) {
 	if typeID != SOTypeEconItem {
 		return
@@ -768,34 +834,27 @@ func (c *SOCache) processDestroy(typeID int32, data []byte, events *[]bus.Event)
 	c.logger.Debug("Item removed from GC", log.Uint64("id", itemID))
 }
 
-// protoToItem converts the raw Protobuf object into our internal struct.
 func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 	item := &Item{
-		ID:         p.GetId(),
-		OriginalID: p.GetOriginalId(),
-		DefIndex:   p.GetDefIndex(),
-		Level:      p.GetLevel(),
-		Quality:    p.GetQuality(),
-		Inventory:  p.GetInventory(),
-		Quantity:   p.GetQuantity(),
-		Origin:     p.GetOrigin(),
-		Flags:      EconItemFlag(p.GetFlags()),
-		Style:      p.GetStyle(),
-		InUse:      p.GetInUse(),
-		AccountID:  p.GetAccountId(),
-
-		CustomName: p.GetCustomName(),
-		CustomDesc: p.GetCustomDesc(),
-
-		// Flags based on GC bitmask
+		ID:           p.GetId(),
+		OriginalID:   p.GetOriginalId(),
+		DefIndex:     p.GetDefIndex(),
+		Level:        p.GetLevel(),
+		Quality:      p.GetQuality(),
+		Inventory:    p.GetInventory(),
+		Quantity:     p.GetQuantity(),
+		Origin:       p.GetOrigin(),
+		Flags:        EconItemFlag(p.GetFlags()),
+		Style:        p.GetStyle(),
+		InUse:        p.GetInUse(),
+		AccountID:    p.GetAccountId(),
+		CustomName:   p.GetCustomName(),
+		CustomDesc:   p.GetCustomDesc(),
 		IsTradable:   !EconItemFlag(p.GetFlags()).HasFlag(EconItemFlagCannotTrade),
 		IsMarketable: !EconItemFlag(p.GetFlags()).HasFlag(EconItemFlagNonEconomy),
-
-		// By default, assume craftable unless a specific attribute/flag is set
-		IsCraftable: true,
+		IsCraftable:  true,
 	}
 
-	// Helper to get float value from attribute bytes
 	getFloat := func(b []byte) float32 {
 		if len(b) < 4 {
 			return 0
@@ -804,7 +863,6 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 		return math.Float32frombits(binary.LittleEndian.Uint32(b))
 	}
 
-	// Helper to get uint32 value from attribute bytes
 	getUint := func(b []byte) uint32 {
 		if len(b) < 4 {
 			return 0
@@ -813,7 +871,6 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 		return binary.LittleEndian.Uint32(b)
 	}
 
-	// Extract attributes
 	for _, attr := range p.GetAttribute() {
 		def := attr.GetDefIndex()
 		val := attr.GetValueBytes()
@@ -884,7 +941,6 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 		}
 	}
 
-	// Origin-based restrictions
 	if slices.Contains(
 		[]uint32{
 			OriginAchievement,
@@ -897,7 +953,6 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 		},
 		item.Origin,
 	) {
-		// Special case: Bugged Loaners (Origin 24) that are actually tradable
 		if item.Origin == OriginLoaner && item.IsTradable {
 			item.IsBuggedLoaner = true
 		} else {
@@ -906,7 +961,6 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 		}
 	}
 
-	// Crafting restrictions
 	if slices.Contains(
 		[]uint32{
 			OriginStorePromo,
@@ -922,13 +976,11 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 		item.IsCraftable = false
 	}
 
-	// Quality-based restrictions
 	if slices.Contains([]uint32{QualitySelfMade, QualityValve, QualityCommunity}, item.Quality) {
 		item.IsTradable = false
 		item.IsCraftable = false
 	}
 
-	// Always Tradable attribute (195) overrides most restrictions
 	for _, attr := range p.GetAttribute() {
 		if attr.GetDefIndex() == AttrAlwaysTradable {
 			item.IsTradable = true
@@ -936,14 +988,12 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 		}
 	}
 
-	// Special case: Purchased items (Origin 2)
 	if item.Origin == OriginPurchase {
 		if !item.Flags.HasFlag(EconItemFlagPurchasedAfterStoreCraftabilityChanges2012) {
 			item.IsCraftable = false
 		}
 	}
 
-	// Preview items are never tradable/craftable
 	if item.Flags.HasFlag(EconItemFlagPreview) {
 		item.IsTradable = false
 		item.IsCraftable = false

@@ -5,7 +5,6 @@
 package tf2
 
 import (
-	"context"
 	"testing"
 
 	"github.com/lemon4ksan/g-man/pkg/steam/protocol"
@@ -17,11 +16,14 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 )
 
-func TestSOCache_Lifecycle(t *testing.T) {
-	tf, _, _ := setupTF2(t)
-	cache := tf.Cache()
+func TestSOCache_Lifecycle_GCEvents_UpdatesInternalState(t *testing.T) {
+	t.Parallel()
 
-	t.Run("Create and GetItem", func(t *testing.T) {
+	t.Run("create_and_get_item", func(t *testing.T) {
+		t.Parallel()
+		tf, _, _ := setupTF2(t)
+		cache := tf.Cache()
+
 		itemBytes := createItemPayload(100, ItemScrap)
 
 		msg := &pb.CMsgSOSingleObject{
@@ -39,16 +41,28 @@ func TestSOCache_Lifecycle(t *testing.T) {
 		assert.Equal(t, uint32(ItemScrap), item.DefIndex)
 	})
 
-	t.Run("Update", func(t *testing.T) {
+	t.Run("update", func(t *testing.T) {
+		t.Parallel()
+		tf, _, _ := setupTF2(t)
+		cache := tf.Cache()
+
+		// Initial creation
+		msgCreate := &pb.CMsgSOSingleObject{
+			TypeId:     proto.Int32(SOTypeEconItem),
+			ObjectData: createItemPayload(100, ItemScrap),
+		}
+		payloadCreate, _ := proto.Marshal(msgCreate)
+		cache.handleSOUpdate(&protocol.GCPacket{MsgType: uint32(pb.ESOMsg_k_ESOMsg_Create), Payload: payloadCreate})
+
 		// Update item 100 to defindex Key
 		itemBytes := createItemPayload(100, ItemKey)
 
-		msg := &pb.CMsgSOSingleObject{
+		msgUpdate := &pb.CMsgSOSingleObject{
 			TypeId:     proto.Int32(SOTypeEconItem),
 			ObjectData: itemBytes,
 		}
-		payload, _ := proto.Marshal(msg)
-		pkt := &protocol.GCPacket{MsgType: uint32(pb.ESOMsg_k_ESOMsg_Update), Payload: payload}
+		payloadUpdate, _ := proto.Marshal(msgUpdate)
+		pkt := &protocol.GCPacket{MsgType: uint32(pb.ESOMsg_k_ESOMsg_Update), Payload: payloadUpdate}
 
 		cache.handleSOUpdate(pkt)
 
@@ -57,16 +71,20 @@ func TestSOCache_Lifecycle(t *testing.T) {
 		assert.Equal(t, uint32(ItemKey), item.DefIndex)
 	})
 
-	t.Run("UpdateMultiple", func(t *testing.T) {
+	t.Run("update_multiple", func(t *testing.T) {
+		t.Parallel()
+		tf, _, _ := setupTF2(t)
+		cache := tf.Cache()
+
 		msg := &pb.CMsgSOMultipleObjects{
 			Objects: []*pb.CMsgSOMultipleObjects_SingleObject{
 				{
 					TypeId:     proto.Int32(SOTypeEconItem),
-					ObjectData: createItemPayload(100, ItemScrap), // change back to scrap
+					ObjectData: createItemPayload(100, ItemScrap),
 				},
 				{
 					TypeId:     proto.Int32(SOTypeEconItem),
-					ObjectData: createItemPayload(200, ItemKey), // add new item
+					ObjectData: createItemPayload(200, ItemKey),
 				},
 			},
 		}
@@ -79,13 +97,32 @@ func TestSOCache_Lifecycle(t *testing.T) {
 		assert.Equal(t, 1, cache.GetMetalCount(ItemScrap))
 	})
 
-	t.Run("Destroy", func(t *testing.T) {
-		msg := &pb.CMsgSOSingleObject{
+	t.Run("destroy", func(t *testing.T) {
+		t.Parallel()
+		tf, _, _ := setupTF2(t)
+		cache := tf.Cache()
+
+		// Initial creation
+		msgCreate1 := &pb.CMsgSOSingleObject{
 			TypeId:     proto.Int32(SOTypeEconItem),
 			ObjectData: createItemPayload(100, ItemScrap),
 		}
-		payload, _ := proto.Marshal(msg)
-		pkt := &protocol.GCPacket{MsgType: uint32(pb.ESOMsg_k_ESOMsg_Destroy), Payload: payload}
+		payloadCreate1, _ := proto.Marshal(msgCreate1)
+		cache.handleSOUpdate(&protocol.GCPacket{MsgType: uint32(pb.ESOMsg_k_ESOMsg_Create), Payload: payloadCreate1})
+
+		msgCreate2 := &pb.CMsgSOSingleObject{
+			TypeId:     proto.Int32(SOTypeEconItem),
+			ObjectData: createItemPayload(200, ItemKey),
+		}
+		payloadCreate2, _ := proto.Marshal(msgCreate2)
+		cache.handleSOUpdate(&protocol.GCPacket{MsgType: uint32(pb.ESOMsg_k_ESOMsg_Create), Payload: payloadCreate2})
+
+		msgDestroy := &pb.CMsgSOSingleObject{
+			TypeId:     proto.Int32(SOTypeEconItem),
+			ObjectData: createItemPayload(100, ItemScrap),
+		}
+		payloadDestroy, _ := proto.Marshal(msgDestroy)
+		pkt := &protocol.GCPacket{MsgType: uint32(pb.ESOMsg_k_ESOMsg_Destroy), Payload: payloadDestroy}
 
 		cache.handleSOUpdate(pkt)
 
@@ -94,19 +131,22 @@ func TestSOCache_Lifecycle(t *testing.T) {
 		assert.Equal(t, 1, len(cache.GetItems())) // item 200 should still exist
 	})
 
-	t.Run("CacheCheck and UpToDate", func(t *testing.T) {
-		// Just to cover the handlers
-		cache.handleSOCacheCheck(context.Background(), &protocol.GCPacket{})
+	t.Run("cache_check_and_up_to_date", func(t *testing.T) {
+		t.Parallel()
+		tf, _, _ := setupTF2(t)
+		cache := tf.Cache()
+
+		cache.handleSOCacheCheck(t.Context(), &protocol.GCPacket{})
 		cache.handleUpToDate(&protocol.GCPacket{})
-		// We just want to make sure it doesn't panic and is covered.
 	})
 }
 
-func TestSOCache_Getters(t *testing.T) {
+func TestSOCache_Getters_ValidState_ReturnsCorrectValues(t *testing.T) {
+	t.Parallel()
+
 	tf, _, _ := setupTF2(t)
 	cache := tf.Cache()
 
-	// Seed cache
 	msg := &pb.CMsgSOCacheSubscribed{
 		Objects: []*pb.CMsgSOCacheSubscribed_SubscribedType{
 			{
@@ -122,12 +162,15 @@ func TestSOCache_Getters(t *testing.T) {
 	payload, _ := proto.Marshal(msg)
 	cache.handleSubscribed(&protocol.GCPacket{Payload: payload})
 
-	t.Run("GetMetalCount", func(t *testing.T) {
+	t.Run("get_metal_count", func(t *testing.T) {
+		t.Parallel()
 		assert.Equal(t, 2, cache.GetMetalCount(ItemScrap))
 		assert.Equal(t, 0, cache.GetMetalCount(5001)) // Reclaimed
 	})
 
-	t.Run("FindCraftableItems", func(t *testing.T) {
+	t.Run("find_craftable_items", func(t *testing.T) {
+		t.Parallel()
+
 		items := cache.FindCraftableItems(ItemScrap, 2)
 		assert.Equal(t, 2, len(items))
 
@@ -135,19 +178,20 @@ func TestSOCache_Getters(t *testing.T) {
 		assert.Equal(t, 2, len(items)) // only 2 available
 	})
 
-	t.Run("FindWeaponsByClass", func(t *testing.T) {
-		// Mock schema in reality, but without it it will return 0.
-		// So we just cover the function call.
+	t.Run("find_weapons_by_class", func(t *testing.T) {
+		t.Parallel()
+
 		weapons := cache.FindWeaponsByClass("Scout")
 		assert.Equal(t, 0, len(weapons))
 	})
 }
 
-func TestSOCache_ExtraGetters(t *testing.T) {
+func TestSOCache_ExtraGetters_ValidState_ReturnsCorrectValues(t *testing.T) {
+	t.Parallel()
+
 	tf, _, _ := setupTF2(t)
 	cache := tf.Cache()
 
-	// Seed cache
 	msg := &pb.CMsgSOCacheSubscribed{
 		Objects: []*pb.CMsgSOCacheSubscribed_SubscribedType{
 			{
@@ -161,7 +205,9 @@ func TestSOCache_ExtraGetters(t *testing.T) {
 	}
 	cache.handleSubscribed(createPacket(pb.ESOMsg_k_ESOMsg_CacheSubscribed, msg))
 
-	t.Run("GetMetal", func(t *testing.T) {
+	t.Run("get_metal", func(t *testing.T) {
+		t.Parallel()
+
 		metal := cache.GetMetal(ItemScrap, 10)
 		assert.Equal(t, 1, len(metal))
 
@@ -170,20 +216,22 @@ func TestSOCache_ExtraGetters(t *testing.T) {
 		}
 	})
 
-	t.Run("GetMaxSlots", func(t *testing.T) {
-		assert.Equal(t, 0, cache.GetMaxSlots()) // Default from empty subscribed msg
+	t.Run("get_max_slots", func(t *testing.T) {
+		t.Parallel()
+		assert.Equal(t, 0, cache.GetMaxSlots())
 	})
 
-	t.Run("GetAssetIDsBySKU", func(t *testing.T) {
-		// This depends on Schema mapping which we mock as empty,
-		// so it won't find anything, but we cover the code.
+	t.Run("get_asset_ids_by_sku", func(t *testing.T) {
+		t.Parallel()
+
 		ids := cache.GetAssetIDsBySKU("5000;6", 10)
 		assert.Equal(t, 0, len(ids))
 	})
 
-	t.Run("IsWeapon", func(t *testing.T) {
+	t.Run("is_weapon", func(t *testing.T) {
+		t.Parallel()
+
 		item, _ := cache.GetItem(1)
-		// Since schema is empty, it will be false, but won't panic
 		assert.False(t, item.IsWeapon(&schema.Schema{}))
 	})
 }
