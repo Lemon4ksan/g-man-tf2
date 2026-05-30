@@ -131,9 +131,26 @@ type ListingsResponse struct {
 // InventoryResponse wraps inventory refresh metadata.
 type InventoryResponse struct {
 	Response
-	ItemCount    int  `json:"item_count,omitempty"`
-	RefreshCount int  `json:"refresh_count,omitempty"`
-	FromCache    bool `json:"from_cache,omitempty"`
+	ItemCount    int   `json:"item_count,omitempty"`
+	RefreshCount int   `json:"refresh_count,omitempty"`
+	FromCache    bool  `json:"from_cache,omitempty"`
+	Items        []any `json:"items,omitempty"`
+}
+
+// User represents user information from crit.tf
+type User struct {
+	SteamID     string `json:"steam_id"`
+	DisplayName string `json:"display_name"`
+	AvatarURL   string `json:"avatar_url"`
+	TradeURL    string `json:"trade_url"`
+	CreatedAt   string `json:"created_at"`
+	RateLimit   int    `json:"rate_limit"`
+}
+
+// UserResponse wraps a user object response.
+type UserResponse struct {
+	Response
+	User *User `json:"user,omitempty"`
 }
 
 // GroupResponse wraps a store group object.

@@ -44,9 +44,9 @@ func (m *mockCritClient) StreamEvents(ctx context.Context, streamURL, token stri
 	return m.events, nil
 }
 
-func (m *mockCritClient) RefreshInventory(ctx context.Context) (*crit.InventoryResponse, error) {
+func (m *mockCritClient) SendDeadMansRequest(ctx context.Context) (bool, error) {
 	m.refreshCalled <- true
-	return &crit.InventoryResponse{}, nil
+	return true, nil
 }
 
 type mockPriceProvider struct {

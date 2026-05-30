@@ -235,6 +235,9 @@ func (c *Client) FetchAuthToken(ctx context.Context) (string, error) {
 		return "", errors.New("crit: api error: unknown reason")
 	}
 
+	// Update client with Short-Lived Token header for all subsequent API requests
+	c.rest = c.rest.WithHeader("X-Short-Lived-Token", data.Token)
+
 	return data.Token, nil
 }
 
@@ -326,4 +329,52 @@ func (c *Client) StreamEvents(ctx context.Context, streamURL, token string) (<-c
 	}()
 
 	return out, nil
+}
+
+// SendDeadMansRequest sends a heartbeat signal to Crit.tf backend to indicate the bot is alive.
+func (c *Client) SendDeadMansRequest(ctx context.Context) (bool, error) {
+	payload := map[string]bool{"alive": true}
+
+	resp, err := c.rest.Request(ctx, http.MethodPost, "/bot-api/alive", payload, nil)
+	if err != nil {
+		return false, fmt.Errorf("crit: dead man request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	return resp.StatusCode == http.StatusOK, nil
+}
+
+// GetInventory retrieves the cached inventory of the bot from Crit.tf backend.
+func (c *Client) GetInventory(ctx context.Context) ([]any, error) {
+	resp, err := rest.GetJSON[InventoryResponse](ctx, c.rest, "/inventory", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Items, nil
+}
+
+// UpdateTradeURL updates the bot's trade URL on Crit.tf.
+func (c *Client) UpdateTradeURL(ctx context.Context, tradeURL string) (bool, error) {
+	payload := map[string]string{"trade_url": tradeURL}
+	putMod := func(req *http.Request) {
+		req.Method = http.MethodPut
+	}
+
+	resp, err := rest.PostJSON[any, Response](ctx, c.rest, "/user/trade-url", payload, nil, putMod)
+	if err != nil {
+		return false, err
+	}
+
+	return resp.Success, nil
+}
+
+// GetUserInfo retrieves the authenticated user information from Crit.tf.
+func (c *Client) GetUserInfo(ctx context.Context) (*User, error) {
+	resp, err := rest.GetJSON[UserResponse](ctx, c.rest, "/user", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.User, nil
 }

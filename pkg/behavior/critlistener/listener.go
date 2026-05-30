@@ -35,7 +35,7 @@ const BehaviorName = "crit_event_listener"
 type CritClientProvider interface {
 	FetchAuthToken(ctx context.Context) (string, error)
 	StreamEvents(ctx context.Context, streamURL, token string) (<-chan crit.SSEEvent, error)
-	RefreshInventory(ctx context.Context) (*crit.InventoryResponse, error)
+	SendDeadMansRequest(ctx context.Context) (bool, error)
 }
 
 // PriceProvider defines pricedb methods.
@@ -202,11 +202,16 @@ func (s *CritEventListener) processEvents(
 			case "heartbeat":
 				s.logger.Debug("Received heartbeat event")
 
-				_, err := s.client.RefreshInventory(ctx)
-				if err != nil {
+				ok, err := s.client.SendDeadMansRequest(ctx)
+				if err != nil || !ok {
 					s.logger.Error("Dead Man's Request failed, restarting connection", log.Err(err))
 					cancelStream()
-					return fmt.Errorf("dead man's request failed: %w", err)
+
+					if err != nil {
+						return fmt.Errorf("dead man's request failed: %w", err)
+					}
+
+					return errors.New("dead man's request returned false")
 				}
 
 				s.logger.Debug("Dead Man's Request successful, connection is okay")
