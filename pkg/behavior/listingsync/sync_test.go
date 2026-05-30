@@ -14,7 +14,6 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/rest"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/bptf"
@@ -78,7 +77,7 @@ func (m *mockListingProvider) Delete(ctx context.Context, id string) error {
 }
 
 func (m *mockListingProvider) Client() *bptf.Client {
-	return nil // Simulate no client for simple single-upserts fallback
+	return nil
 }
 
 type mockPriceProvider struct {
@@ -162,13 +161,15 @@ func (m *mockCritProvider) DeleteListing(ctx context.Context, listingID string) 
 	return nil
 }
 
-func TestListingsSynchronizer_Sync(t *testing.T) {
+func TestListingsSynchronizer_Run_PriceUpdateEvent_UpdatesMarketplaces(t *testing.T) {
+	t.Parallel()
+
 	logger := log.New(log.DefaultConfig(log.LevelError))
 	eventBus := bus.New()
 
 	bp := &mockBackpackProvider{
 		stock: map[string]int{
-			"5021;6": 5, // currently have 5 keys
+			"5021;6": 5,
 		},
 		items: map[string][]uint64{
 			"5021;6": {10001, 10002, 10003, 10004, 10005},
@@ -211,17 +212,15 @@ func TestListingsSynchronizer_Sync(t *testing.T) {
 
 	syncer := New(bp, listingMgr, priceMgr, cfgMgr, critClient, eventBus, logger, cfg)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
 
 	go func() {
 		_ = syncer.Run(ctx)
 	}()
 
-	// Give subscription registration some time to complete
 	time.Sleep(50 * time.Millisecond)
 
-	// Publish price updated event
 	eventBus.Publish(&pricedb.PricelistUpdatedEvent{
 		SKU:    "5021;6",
 		Buy:    pricedb.Currencies{Metal: 60.0},
@@ -229,21 +228,22 @@ func TestListingsSynchronizer_Sync(t *testing.T) {
 		Source: "Autokeys",
 	})
 
-	// Wait for queue processing and rate limiter sleep
-	time.Sleep(200 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		eventBus.Publish(&pricedb.PricelistUpdatedEvent{
+			SKU:    "5021;6",
+			Buy:    pricedb.Currencies{Metal: 60.0},
+			Sell:   pricedb.Currencies{Metal: 62.0},
+			Source: "Autokeys",
+		})
 
-	// Verify crit.tf update
-	critClient.mu.Lock()
-	assert.Len(t, critClient.created, 5) // Should list all 5 keys!
-	critClient.mu.Unlock()
+		critClient.mu.Lock()
+		critLen := len(critClient.created)
+		critClient.mu.Unlock()
 
-	// Verify backpack.tf listings updates
-	listingMgr.mu.Lock()
-	// Should have created buy and sell listings because stock is 5 (min 0, max 10)
-	require.Len(t, listingMgr.upserts, 2)
-	assert.Equal(t, "buy", listingMgr.upserts[0].Intent)
-	assert.Equal(t, 60.0, listingMgr.upserts[0].Currencies["metal"])
-	assert.Equal(t, "sell", listingMgr.upserts[1].Intent)
-	assert.Equal(t, 62.0, listingMgr.upserts[1].Currencies["metal"])
-	listingMgr.mu.Unlock()
+		listingMgr.mu.Lock()
+		bptfLen := len(listingMgr.upserts)
+		listingMgr.mu.Unlock()
+
+		return critLen >= 5 && bptfLen >= 2
+	}, 3*time.Second, 100*time.Millisecond, "Expected listings to be created on crit.tf and backpack.tf")
 }

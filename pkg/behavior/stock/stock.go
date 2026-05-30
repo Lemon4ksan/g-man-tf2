@@ -31,60 +31,101 @@ const PricelistChangedSourceStock pricedb.PricelistChangedSource = "StockControl
 
 // Config holds configuration parameters for the Stock Strategist behavior.
 type Config struct {
-	AuditInterval      time.Duration `json:"audit_interval"`
-	StagnantThreshold  time.Duration `json:"stagnant_threshold"`
-	DiscountPercent    float64       `json:"discount_percent"`
-	MaxAllowedDiscount float64       `json:"max_allowed_discount"`
-	MinScrapMetal      int           `json:"min_scrap_metal"`
-	MinReclaimedMetal  int           `json:"min_reclaimed_metal"`
+	// AuditInterval defines the duration between scheduled stock audits.
+	AuditInterval time.Duration `json:"audit_interval"`
+	// ConfigCheckInterval defines the duration between config update checks.
+	ConfigCheckInterval time.Duration `json:"config_check_interval"`
+	// StagnantThreshold defines the duration an item must remain unsold before it is considered stagnant.
+	StagnantThreshold time.Duration `json:"stagnant_threshold"`
+	// DiscountPercent defines the percentage deducted from an item's sell price when it is stagnant.
+	DiscountPercent float64 `json:"discount_percent"`
+	// MaxAllowedDiscount defines the maximum total discount percentage allowed for stagnant items.
+	MaxAllowedDiscount float64 `json:"max_allowed_discount"`
+	// MinScrapMetal defines the minimum scrap metal reserve threshold.
+	MinScrapMetal int `json:"min_scrap_metal"`
+	// MinReclaimedMetal defines the minimum reclaimed metal reserve threshold.
+	MinReclaimedMetal int `json:"min_reclaimed_metal"`
 }
 
-// DefaultConfig returns production-ready strategy defaults.
+// DefaultConfig returns a [Config] containing production-ready strategist defaults.
 func DefaultConfig() Config {
 	return Config{
-		AuditInterval:      1 * time.Hour,
-		StagnantThreshold:  14 * 24 * time.Hour, // 14 days
-		DiscountPercent:    0.05,                // 5%
-		MaxAllowedDiscount: 0.20,                // 20%
-		MinScrapMetal:      9,
-		MinReclaimedMetal:  3,
+		AuditInterval:       1 * time.Hour,
+		ConfigCheckInterval: 5 * time.Second,
+		StagnantThreshold:   14 * 24 * time.Hour,
+		DiscountPercent:     0.05,
+		MaxAllowedDiscount:  0.20,
+		MinScrapMetal:       9,
+		MinReclaimedMetal:   3,
 	}
 }
 
-// BackpackProvider defines inventory details for Stock Strategist.
+// BackpackProvider defines the subset of inventory methods required to audit local stock.
 type BackpackProvider interface {
+	// GetStock returns the current stock count for a specific SKU.
 	GetStock(sku string) int
+	// GetItemsBySKU returns all local item IDs matching the specified SKU.
 	GetItemsBySKU(targetSKU string) []uint64
+	// GetPureStock retrieves the current keys and metal stock.
 	GetPureStock() currency.PureStock
 }
 
-// PriceProvider defines pricedb methods.
+// PriceProvider defines the subset of pricedb methods required for pricing calculations.
 type PriceProvider interface {
+	// GetPrice retrieves the cached price of a given SKU.
 	GetPrice(sku string) (*pricedb.Price, bool)
+	// SetPrice updates the price and source for a given SKU.
 	SetPrice(sku string, buy, sell pricedb.Currencies, source pricedb.PricelistChangedSource)
+	// Watch adds a SKU to the background update list.
 	Watch(sku string)
+	// Unwatch removes a SKU from the background update list.
 	Unwatch(sku string)
+	// GetWatchedSKUs returns a slice of all currently watched SKUs.
 	GetWatchedSKUs() []string
 }
 
-// ConfigProvider defines trading config manager.
+// ConfigProvider defines the interface to fetch the current trading configurations.
 type ConfigProvider interface {
+	// GetConfig returns the active trade settings.
 	GetConfig() trading.Config
 }
 
-// CostBasisProvider defines cost basis store.
+// CostBasisProvider defines the cost basis store interface for price tracking.
 type CostBasisProvider interface {
+	// GetOldestEntry retrieves the oldest CostBasisEntry for a SKU without removing it.
 	GetOldestEntry(sku string) (storage.CostBasisEntry, bool)
 }
 
-// CraftingProvider defines metal crafting coordinator.
+// CraftingProvider defines the metal crafting coordinator interface.
 type CraftingProvider interface {
+	// CondenseMetal automatically "compresses" all available metal in the inventory.
 	CondenseMetal(ctx context.Context) (int, error)
+	// MakeChange smelts higher-grade metal until the target is reached.
 	MakeChange(ctx context.Context, targetDefIndex uint32, targetCount int) error
+	// SmeltClassWeapons finds duplicate class weapons and smelts them into scrap metal.
 	SmeltClassWeapons(ctx context.Context, class string) ([]uint64, error)
 }
 
-// Control returns a behavior.Option to register StockStrategist with the orchestrator.
+// Strategist orchestrates pricing watchlists, dynamic discounts, and crafting cycles.
+// Use [Control] or [New] to register it with the orchestrator.
+type Strategist struct {
+	config Config
+	logger log.Logger
+	bus    *bus.Bus
+
+	bp        BackpackProvider
+	priceMgr  PriceProvider
+	cfgMgr    ConfigProvider
+	costBasis CostBasisProvider
+	crafting  CraftingProvider
+
+	mu              sync.Mutex
+	activeDiscounts map[string]float64
+	lastConfigSKUs  map[string]bool
+	gcConnected     bool
+}
+
+// Control returns a [behavior.Option] that registers the [Strategist] with the orchestrator.
 func Control(
 	bp BackpackProvider,
 	priceMgr PriceProvider,
@@ -98,25 +139,7 @@ func Control(
 	}
 }
 
-// Strategist orchestrates pricing watchlists, dynamic discounts, and crafting cycles.
-type Strategist struct {
-	config Config
-	logger log.Logger
-	bus    *bus.Bus
-
-	bp        BackpackProvider
-	priceMgr  PriceProvider
-	cfgMgr    ConfigProvider
-	costBasis CostBasisProvider
-	crafting  CraftingProvider
-
-	mu              sync.Mutex
-	activeDiscounts map[string]float64 // sku -> applied discounted sell price (metal)
-	lastConfigSKUs  map[string]bool
-	gcConnected     bool
-}
-
-// New constructs a new StockStrategist behavior.
+// New constructs a new [Strategist] behavior.
 func New(
 	bp BackpackProvider,
 	priceMgr PriceProvider,
@@ -129,6 +152,10 @@ func New(
 ) *Strategist {
 	if cfg.AuditInterval == 0 {
 		cfg.AuditInterval = DefaultConfig().AuditInterval
+	}
+
+	if cfg.ConfigCheckInterval == 0 {
+		cfg.ConfigCheckInterval = DefaultConfig().ConfigCheckInterval
 	}
 
 	if cfg.StagnantThreshold == 0 {
@@ -165,12 +192,13 @@ func New(
 	}
 }
 
-// Name returns the unique behavior name.
+// Name returns the unique name of the [Strategist] behavior.
 func (s *Strategist) Name() string {
 	return BehaviorName
 }
 
-// Run starts the strategist cycles and subscriptions.
+// Run starts the strategist audit cycles and subscriptions.
+// Returns an error if the context is cancelled.
 func (s *Strategist) Run(ctx context.Context) error {
 	s.logger.Info("StockStrategist started")
 
@@ -181,7 +209,7 @@ func (s *Strategist) Run(ctx context.Context) error {
 	)
 	defer sub.Unsubscribe()
 
-	configCheckTicker := time.NewTicker(5 * time.Second)
+	configCheckTicker := time.NewTicker(s.config.ConfigCheckInterval)
 	defer configCheckTicker.Stop()
 
 	auditTicker := time.NewTicker(s.config.AuditInterval)
@@ -291,10 +319,8 @@ func (s *Strategist) checkForConfigUpdates() {
 
 		skus = append(skus, currency.SKUKey)
 
-		// Immediately notify ListingsSynchronizer of updates
 		s.bus.Publish(&listingsync.AuditRequestedEvent{SKUs: skus})
 
-		// Reload cached keys
 		s.mu.Lock()
 
 		s.lastConfigSKUs = make(map[string]bool)
@@ -350,8 +376,6 @@ func (s *Strategist) discountStagnantItems() {
 
 		basePrice, alreadyDiscounted := s.activeDiscounts[sku]
 
-		// If an external update happened, the source is no longer "StockControl".
-		// That means a new base price was loaded, so we treat it as the new base price.
 		isExternalUpdate := price.Source != string(PricelistChangedSourceStock)
 		if isExternalUpdate && alreadyDiscounted {
 			s.activeDiscounts[sku] = price.Sell.Metal
@@ -366,7 +390,6 @@ func (s *Strategist) discountStagnantItems() {
 				)
 				delete(s.activeDiscounts, sku)
 
-				// Restore the original base price
 				newSellCurrencies := pricedb.Currencies{Keys: price.Sell.Keys, Metal: basePrice}
 				s.priceMgr.SetPrice(sku, price.Buy, newSellCurrencies, PricelistChangedSourceStock)
 			}
@@ -383,7 +406,6 @@ func (s *Strategist) discountStagnantItems() {
 
 		discountedMetal := trueBasePrice * (1.0 - s.config.DiscountPercent)
 
-		// FIFO PPU Cost Protection Floor
 		selfCostRef := entry.BuyMetal
 		if entry.BuyKeys > 0 && keyPrice > 0 {
 			selfCostRef += entry.BuyKeys * keyPrice
@@ -392,7 +414,6 @@ func (s *Strategist) discountStagnantItems() {
 		minProfitRef := float64(cfg.PPUMinProfitScrap) / 9.0
 		minAllowedSellPriceMetal := selfCostRef + minProfitRef
 
-		// Apply max allowed discount boundaries
 		maxDiscountedMetal := trueBasePrice * (1.0 - s.config.MaxAllowedDiscount)
 		if minAllowedSellPriceMetal < maxDiscountedMetal {
 			minAllowedSellPriceMetal = maxDiscountedMetal
@@ -402,7 +423,6 @@ func (s *Strategist) discountStagnantItems() {
 			discountedMetal = minAllowedSellPriceMetal
 		}
 
-		// Update or apply discount if the current sell price in pricedb is different
 		if discountedMetal < price.Sell.Metal || !alreadyDiscounted {
 			s.logger.Info("FIFO item is stagnant, applying dynamic discount",
 				log.String("sku", sku),
@@ -443,11 +463,9 @@ func (s *Strategist) coordinateCrafting(ctx context.Context) {
 		log.Int("refined", int(refCount)),
 	)
 
-	// Smelt duplicates if below thresholds
 	if int(scrapCount) < s.config.MinScrapMetal || int(recCount) < s.config.MinReclaimedMetal {
 		s.logger.Info("Metal stock below critical minimums. Coordinating smelting...")
 
-		// A. Smelt class weapons duplicates
 		classes := []string{"Scout", "Soldier", "Pyro", "Demoman", "Heavy", "Engineer", "Medic", "Sniper", "Spy"}
 		for _, class := range classes {
 			if _, err := s.crafting.SmeltClassWeapons(ctx, class); err == nil {
@@ -463,7 +481,6 @@ func (s *Strategist) coordinateCrafting(ctx context.Context) {
 			}
 		}
 
-		// B. Smelt Reclaimed or Refined if still below threshold
 		if int(scrapCount) < s.config.MinScrapMetal {
 			s.logger.Info("Splitting Reclaimed metal into Scrap...")
 
@@ -481,7 +498,6 @@ func (s *Strategist) coordinateCrafting(ctx context.Context) {
 		}
 	}
 
-	// Condense low-grade metal if excess exists
 	if scrapCount > 18 || recCount > 9 {
 		s.logger.Info("Excess low-grade metal detected, condensing inventory slots...")
 

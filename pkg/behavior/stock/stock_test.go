@@ -195,18 +195,20 @@ func (m *mockCraftingProvider) SmeltClassWeapons(ctx context.Context, class stri
 	return []uint64{1}, nil
 }
 
-func TestStockStrategist_WatchlistSync(t *testing.T) {
+func TestStockStrategist_SyncWatchlist_ValidConfig_UpdatesPriceDB(t *testing.T) {
+	t.Parallel()
+
 	logger := log.New(log.DefaultConfig(log.LevelError))
 	eventBus := bus.New()
 
 	bp := &mockBackpackProvider{}
 	priceMgr := &mockPriceProvider{
-		watched: []string{currency.SKUKey, "5002;6"}, // Key and Refined are currently watched
+		watched: []string{currency.SKUKey, "5002;6"},
 	}
 	cfgMgr := &mockConfigProvider{
 		cfg: trading.Config{
 			Items: map[string]trading.ItemConfig{
-				"5021;6": {SKU: "5021;6"}, // config has only keys SKU
+				"5021;6": {SKU: "5021;6"},
 			},
 		},
 	}
@@ -218,14 +220,15 @@ func TestStockStrategist_WatchlistSync(t *testing.T) {
 
 	strategist.syncWatchlist()
 
-	// Keys should stay, Refined should be unwatched, Key item SKU ("5021;6") should be watched
 	watched := priceMgr.GetWatchedSKUs()
 	assert.Contains(t, watched, currency.SKUKey)
 	assert.Contains(t, watched, "5021;6")
 	assert.NotContains(t, watched, "5002;6")
 }
 
-func TestStockStrategist_StagnantFIFODiscount(t *testing.T) {
+func TestStockStrategist_Audit_StagnantFIFO_AppliesDiscount(t *testing.T) {
+	t.Parallel()
+
 	logger := log.New(log.DefaultConfig(log.LevelError))
 	eventBus := bus.New()
 
@@ -241,20 +244,19 @@ func TestStockStrategist_StagnantFIFODiscount(t *testing.T) {
 	}
 	cfgMgr := &mockConfigProvider{
 		cfg: trading.Config{
-			PPUMinProfitScrap: 1, // 1 Scrap profit boundary
+			PPUMinProfitScrap: 1,
 			Items: map[string]trading.ItemConfig{
 				"5021;6": {SKU: "5021;6"},
 			},
 		},
 	}
 
-	// 15 days ago purchase record
 	purchaseTime := time.Now().Add(-15 * 24 * time.Hour)
 	cost := &mockCostBasisProvider{
 		entries: map[string]storage.CostBasisEntry{
 			"5021;6": {
 				SKU:       "5021;6",
-				BuyMetal:  45.0, // Bought at 45 refined
+				BuyMetal:  45.0,
 				Timestamp: purchaseTime,
 			},
 		},
@@ -263,21 +265,21 @@ func TestStockStrategist_StagnantFIFODiscount(t *testing.T) {
 
 	cfg := Config{
 		StagnantThreshold: 14 * 24 * time.Hour,
-		DiscountPercent:   0.05, // 5% discount
+		DiscountPercent:   0.05,
 	}
 
 	strategist := New(bp, priceMgr, cfgMgr, cost, craft, eventBus, logger, cfg)
 
-	strategist.runAudit(context.Background())
+	strategist.runAudit(t.Context())
 
-	// 60 ref * 0.95 = 57 ref (new discounted sell price)
-	// 57 ref covers cost (45 ref) + profit, so it should be applied!
 	priceMgr.mu.Lock()
 	assert.Equal(t, 57.0, priceMgr.sets["5021;6"].Metal)
 	priceMgr.mu.Unlock()
 }
 
-func TestStockStrategist_PPUFloorClamp(t *testing.T) {
+func TestStockStrategist_Audit_PPUProtection_ClampsDiscount(t *testing.T) {
+	t.Parallel()
+
 	logger := log.New(log.DefaultConfig(log.LevelError))
 	eventBus := bus.New()
 
@@ -293,20 +295,19 @@ func TestStockStrategist_PPUFloorClamp(t *testing.T) {
 	}
 	cfgMgr := &mockConfigProvider{
 		cfg: trading.Config{
-			PPUMinProfitScrap: 9, // 9 Scrap profit floor (= 1.0 refined)
+			PPUMinProfitScrap: 9,
 			Items: map[string]trading.ItemConfig{
 				"5021;6": {SKU: "5021;6"},
 			},
 		},
 	}
 
-	// 15 days ago purchase record
 	purchaseTime := time.Now().Add(-15 * 24 * time.Hour)
 	cost := &mockCostBasisProvider{
 		entries: map[string]storage.CostBasisEntry{
 			"5021;6": {
 				SKU:       "5021;6",
-				BuyMetal:  58.0, // Bought at 58 refined (extremely high cost)
+				BuyMetal:  58.0,
 				Timestamp: purchaseTime,
 			},
 		},
@@ -315,28 +316,28 @@ func TestStockStrategist_PPUFloorClamp(t *testing.T) {
 
 	cfg := Config{
 		StagnantThreshold: 14 * 24 * time.Hour,
-		DiscountPercent:   0.05, // 5% discount would be 57 ref (below cost 58 ref!)
+		DiscountPercent:   0.05,
 	}
 
 	strategist := New(bp, priceMgr, cfgMgr, cost, craft, eventBus, logger, cfg)
 
-	strategist.runAudit(context.Background())
+	strategist.runAudit(t.Context())
 
-	// PPU protection: cost (58) + minProfit (1) = 59 refined.
-	// So 5% discount (57 ref) should be clamped to 59 refined!
 	priceMgr.mu.Lock()
 	assert.Equal(t, 59.0, priceMgr.sets["5021;6"].Metal)
 	priceMgr.mu.Unlock()
 }
 
-func TestStockStrategist_CraftingTrigger(t *testing.T) {
+func TestStockStrategist_Audit_LowMetalReserves_TriggersCrafting(t *testing.T) {
+	t.Parallel()
+
 	logger := log.New(log.DefaultConfig(log.LevelError))
 	eventBus := bus.New()
 
 	bp := &mockBackpackProvider{
 		pureStock: currency.PureStock{
-			Scrap:     2, // 2 scrap < 9 minimum scrap limits -> triggers weapon smelting!
-			Reclaimed: 1, // 1 reclaimed < 3 minimum reclaimed limits -> triggers Refined splitting!
+			Scrap:     2,
+			Reclaimed: 1,
 			Refined:   10,
 		},
 	}
@@ -344,7 +345,7 @@ func TestStockStrategist_CraftingTrigger(t *testing.T) {
 	cfgMgr := &mockConfigProvider{}
 	cost := &mockCostBasisProvider{}
 	craft := &mockCraftingProvider{
-		smeltErr: assert.AnError, // Force weapon smelting to fail to test metal splitting fallbacks!
+		smeltErr: assert.AnError,
 	}
 
 	cfg := Config{
@@ -355,11 +356,10 @@ func TestStockStrategist_CraftingTrigger(t *testing.T) {
 	strategist := New(bp, priceMgr, cfgMgr, cost, craft, eventBus, logger, cfg)
 	strategist.gcConnected = true
 
-	strategist.coordinateCrafting(context.Background())
+	strategist.coordinateCrafting(t.Context())
 
-	// Crafting provider should have coordinates smelting across classes and splitting metals
 	craft.mu.Lock()
-	assert.NotEmpty(t, craft.smeltedClass) // Smelt weapons triggered
+	assert.NotEmpty(t, craft.smeltedClass)
 	require.Len(t, craft.splitCalls, 2)
 	assert.Equal(t, uint32(5000), craft.splitCalls[0].defIndex)
 	assert.Equal(t, 9, craft.splitCalls[0].count)
@@ -368,7 +368,9 @@ func TestStockStrategist_CraftingTrigger(t *testing.T) {
 	craft.mu.Unlock()
 }
 
-func TestStockStrategist_LiveConfigUpdates(t *testing.T) {
+func TestStockStrategist_Run_ConfigChanges_SyncsWatchlistAndEmitsAudit(t *testing.T) {
+	t.Parallel()
+
 	logger := log.New(log.DefaultConfig(log.LevelError))
 	eventBus := bus.New()
 
@@ -379,53 +381,49 @@ func TestStockStrategist_LiveConfigUpdates(t *testing.T) {
 	cfgMgr := &mockConfigProvider{
 		cfg: trading.Config{
 			Items: map[string]trading.ItemConfig{
-				"5021;6": {SKU: "5021;6"}, // keys in config
+				"5021;6": {SKU: "5021;6"},
 			},
 		},
 	}
 	cost := &mockCostBasisProvider{}
 	craft := &mockCraftingProvider{}
 
-	cfg := Config{}
+	cfg := Config{
+		ConfigCheckInterval: 10 * time.Millisecond,
+	}
 	strategist := New(bp, priceMgr, cfgMgr, cost, craft, eventBus, logger, cfg)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
 
 	go func() {
 		_ = strategist.Run(ctx)
 	}()
 
-	// Give startup time to complete
+	sub := eventBus.Subscribe(&listingsync.AuditRequestedEvent{})
+	t.Cleanup(sub.Unsubscribe)
+
 	time.Sleep(50 * time.Millisecond)
 
-	// Subscribe to ListingsAuditRequestedEvent
-	sub := eventBus.Subscribe(&listingsync.AuditRequestedEvent{})
-	defer sub.Unsubscribe()
-
-	// Simulate config change (add new SKU "5002;6")
 	cfgMgr.setItem("5002;6", trading.ItemConfig{SKU: "5002;6"})
 
-	// Wait for configuration monitoring ticker (polls every 5s, let's wait a bit)
-	time.Sleep(6 * time.Second)
-
-	// Pricedb Watch should now include the new SKU
-	priceMgr.mu.Lock()
-	assert.Contains(t, priceMgr.watched, "5002;6")
-	priceMgr.mu.Unlock()
-
-	// AuditRequestedEvent should have been emitted
 	select {
 	case ev := <-sub.C():
 		auditEv, ok := ev.(*listingsync.AuditRequestedEvent)
 		require.True(t, ok)
 		assert.Contains(t, auditEv.SKUs, "5002;6")
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(500 * time.Millisecond):
 		t.Fatal("timed out waiting for AuditRequestedEvent")
 	}
+
+	priceMgr.mu.Lock()
+	assert.Contains(t, priceMgr.watched, "5002;6")
+	priceMgr.mu.Unlock()
 }
 
-func TestStockStrategist_StagnantRestoration(t *testing.T) {
+func TestStockStrategist_Audit_FreshFIFO_RestoresBasePrice(t *testing.T) {
+	t.Parallel()
+
 	logger := log.New(log.DefaultConfig(log.LevelError))
 	eventBus := bus.New()
 
@@ -449,7 +447,6 @@ func TestStockStrategist_StagnantRestoration(t *testing.T) {
 		},
 	}
 
-	// Stagnant first: 15 days ago purchase record
 	purchaseTime := time.Now().Add(-15 * 24 * time.Hour)
 	cost := &mockCostBasisProvider{
 		entries: map[string]storage.CostBasisEntry{
@@ -469,28 +466,24 @@ func TestStockStrategist_StagnantRestoration(t *testing.T) {
 
 	strategist := New(bp, priceMgr, cfgMgr, cost, craft, eventBus, logger, cfg)
 
-	// Run audit - stagnant, should apply 5% discount (60 * 0.95 = 57 ref)
-	strategist.runAudit(context.Background())
+	strategist.runAudit(t.Context())
 
 	priceMgr.mu.Lock()
 	assert.Equal(t, 57.0, priceMgr.sets["5021;6"].Metal)
 	priceMgr.mu.Unlock()
 
-	// Update costbasis record to be FRESH (0 days ago)
 	cost.entries["5021;6"] = storage.CostBasisEntry{
 		SKU:       "5021;6",
 		BuyMetal:  45.0,
 		Timestamp: time.Now(),
 	}
 
-	// Update pricedb to reflect the discounted price to simulate what really happens in pricedb
 	priceMgr.mu.Lock()
 	priceMgr.prices["5021;6"].Sell.Metal = 57.0
 	priceMgr.prices["5021;6"].Source = "StockControl"
 	priceMgr.mu.Unlock()
 
-	// Run audit again - no longer stagnant, should restore original base price (60.0)
-	strategist.runAudit(context.Background())
+	strategist.runAudit(t.Context())
 
 	priceMgr.mu.Lock()
 	assert.Equal(t, 60.0, priceMgr.sets["5021;6"].Metal)

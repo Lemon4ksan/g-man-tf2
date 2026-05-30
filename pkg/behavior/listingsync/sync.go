@@ -25,23 +25,27 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/trading"
 )
 
-// BehaviorName is the unique name of this behavior.
+// BehaviorName is the unique name of the listings synchronizer behavior.
 const BehaviorName = "listings_synchronizer"
 
 // AuditRequestedEvent is sent to trigger an immediate, forced reconciliation of the specified SKUs.
 type AuditRequestedEvent struct {
 	bus.BaseEvent
+	// SKUs represents the list of item SKUs that require immediate reconciliation.
 	SKUs []string
 }
 
-// Config defines the configuration for ListingsSynchronizer.
+// Config defines the rate limits and window delays for marketplace updates.
 type Config struct {
-	BptfRateLimit time.Duration `json:"bptf_rate_limit"` // e.g. 2s
-	CritRateLimit time.Duration `json:"crit_rate_limit"` // e.g. 1s
-	BatchDelay    time.Duration `json:"batch_delay"`     // e.g. 500ms
+	// BptfRateLimit defines the minimum time delay between backpack.tf requests.
+	BptfRateLimit time.Duration `json:"bptf_rate_limit"`
+	// CritRateLimit defines the minimum time delay between crit.tf requests.
+	CritRateLimit time.Duration `json:"crit_rate_limit"`
+	// BatchDelay defines the collection window time used to accumulate sequential updates.
+	BatchDelay time.Duration `json:"batch_delay"`
 }
 
-// DefaultConfig returns default limits.
+// DefaultConfig returns a [Config] containing production-ready default delays.
 func DefaultConfig() Config {
 	return Config{
 		BptfRateLimit: 2 * time.Second,
@@ -50,39 +54,52 @@ func DefaultConfig() Config {
 	}
 }
 
-// BackpackProvider defines the subset of Backpack methods needed by ListingsSynchronizer.
+// BackpackProvider defines the subset of inventory methods required to track physical holdings.
 type BackpackProvider interface {
+	// GetStock returns the current stock count of the specified SKU.
 	GetStock(sku string) int
+	// GetItemsBySKU returns all local item IDs matching the specified SKU.
 	GetItemsBySKU(targetSKU string) []uint64
 }
 
-// ListingProvider defines the subset of ListingManager methods needed by ListingsSynchronizer.
+// ListingProvider defines the subset of backpack.tf listing manager methods.
 type ListingProvider interface {
+	// FindListingBySKU searches for an active listing matching the SKU and intent.
 	FindListingBySKU(sku, intent string) *bptf.ListingResponse
+	// Upsert creates or updates a listing on backpack.tf.
 	Upsert(ctx context.Context, listing bptf.ListingResolvable) (*bptf.ListingResponse, error)
+	// Delete removes an active listing from backpack.tf.
 	Delete(ctx context.Context, id string) error
+	// Client returns the underlying backpack.tf client instance.
 	Client() *bptf.Client
 }
 
-// PriceProvider defines pricedb methods.
+// PriceProvider defines the subset of pricedb methods needed for valuation.
 type PriceProvider interface {
+	// GetPrice retrieves the cached price of a given SKU.
 	GetPrice(sku string) (*pricedb.Price, bool)
 }
 
-// ConfigProvider defines trading config manager.
+// ConfigProvider defines the interface to fetch the current trading configurations.
 type ConfigProvider interface {
+	// GetConfig returns the active trade settings.
 	GetConfig() trading.Config
 }
 
-// CritProvider defines crit.tf client.
+// CritProvider defines the interface to synchronize active storefront listings on crit.tf.
 type CritProvider interface {
+	// FetchMyListings retrieves all active listings for the authenticated user.
 	FetchMyListings(ctx context.Context) ([]crit.Listing, error)
+	// CreateListing creates a new sell listing on crit.tf.
 	CreateListing(ctx context.Context, assetID string, currencies pricedb.Currencies) (*crit.Listing, error)
+	// UpdateListing updates an existing listing by its database ID.
 	UpdateListing(ctx context.Context, listingID string, currencies pricedb.Currencies) (*crit.Listing, error)
+	// DeleteListing deletes an active listing by its database ID.
 	DeleteListing(ctx context.Context, listingID string) error
 }
 
 // ListingsSynchronizer coordinates in-game stock, pricedb changes, and external marketplace listings.
+// Use [Sync] or [New] to register it with the orchestrator.
 type ListingsSynchronizer struct {
 	config Config
 	logger log.Logger
@@ -101,7 +118,7 @@ type ListingsSynchronizer struct {
 	critPending map[string]bool
 }
 
-// Sync returns a behavior.Option to install ListingsSynchronizer.
+// Sync returns a [behavior.Option] that registers the [ListingsSynchronizer] with the orchestrator.
 func Sync(
 	bp BackpackProvider,
 	listings ListingProvider,
@@ -115,7 +132,7 @@ func Sync(
 	}
 }
 
-// New constructs a new ListingsSynchronizer.
+// New constructs a new [ListingsSynchronizer] instance.
 func New(
 	bp BackpackProvider,
 	listings ListingProvider,
@@ -154,12 +171,13 @@ func New(
 	}
 }
 
-// Name returns the unique behavior name.
+// Name returns the unique name of the [ListingsSynchronizer] behavior.
 func (s *ListingsSynchronizer) Name() string {
 	return BehaviorName
 }
 
-// Run starts the worker threads and event subscriptions.
+// Run starts the listener event loops and schedules background marketplace updates.
+// Returns an error if the context is cancelled.
 func (s *ListingsSynchronizer) Run(ctx context.Context) error {
 	s.logger.Info("ListingsSynchronizer started")
 
@@ -173,10 +191,8 @@ func (s *ListingsSynchronizer) Run(ctx context.Context) error {
 	)
 	defer sub.Unsubscribe()
 
-	// Launch backpack.tf worker
 	go s.bptfWorker(ctx)
 
-	// Launch crit.tf worker
 	if s.crit != nil {
 		go s.critWorker(ctx)
 	}
@@ -245,7 +261,6 @@ func (s *ListingsSynchronizer) enqueue(sku string) {
 	}
 }
 
-// bptfWorker gathers items and synchronizes listings with backpack.tf
 func (s *ListingsSynchronizer) bptfWorker(ctx context.Context) {
 	limiter := rate.NewLimiter(rate.Every(s.config.BptfRateLimit), 1)
 
@@ -254,12 +269,10 @@ func (s *ListingsSynchronizer) bptfWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case sku := <-s.bptfQueue:
-			// Clear pending flag
 			s.mu.Lock()
 			delete(s.bptfPending, sku)
 			s.mu.Unlock()
 
-			// Gather sequential tasks in window to enable batching
 			skus := []string{sku}
 
 			time.Sleep(s.config.BatchDelay)
@@ -279,7 +292,6 @@ func (s *ListingsSynchronizer) bptfWorker(ctx context.Context) {
 				}
 			}
 
-			// Synchronize the batch
 			if err := limiter.Wait(ctx); err != nil {
 				return
 			}
@@ -290,7 +302,6 @@ func (s *ListingsSynchronizer) bptfWorker(ctx context.Context) {
 	}
 }
 
-// critWorker gathers items and synchronizes listings with crit.tf
 func (s *ListingsSynchronizer) critWorker(ctx context.Context) {
 	limiter := rate.NewLimiter(rate.Every(s.config.CritRateLimit), 1)
 
@@ -303,7 +314,6 @@ func (s *ListingsSynchronizer) critWorker(ctx context.Context) {
 			delete(s.critPending, sku)
 			s.mu.Unlock()
 
-			// Gather sequential tasks
 			skus := []string{sku}
 
 			time.Sleep(s.config.BatchDelay)
@@ -336,14 +346,12 @@ func (s *ListingsSynchronizer) critWorker(ctx context.Context) {
 func (s *ListingsSynchronizer) syncCritBatch(ctx context.Context, skus []string) {
 	cfg := s.cfgMgr.GetConfig()
 
-	// Fetch current active listings from crit.tf
 	activeListings, err := s.crit.FetchMyListings(ctx)
 	if err != nil {
 		s.logger.Error("Failed to fetch active listings from crit.tf", log.Err(err))
 		return
 	}
 
-	// Index active listings by SKU and AssetID
 	listingsBySKU := make(map[string][]crit.Listing)
 
 	listingsByAssetID := make(map[string]crit.Listing)
@@ -354,7 +362,18 @@ func (s *ListingsSynchronizer) syncCritBatch(ctx context.Context, skus []string)
 
 	for _, skuStr := range skus {
 		price, ok := s.priceMgr.GetPrice(skuStr)
-		if !ok || price.Sell.Metal <= 0 {
+		if !ok {
+			s.logger.Debug("syncCritBatch: price not found", log.String("sku", skuStr))
+			continue
+		}
+
+		if price.Sell.Metal <= 0 {
+			s.logger.Debug(
+				"syncCritBatch: price <= 0",
+				log.String("sku", skuStr),
+				log.Float64("price", price.Sell.Metal),
+			)
+
 			continue
 		}
 
@@ -368,25 +387,36 @@ func (s *ListingsSynchronizer) syncCritBatch(ctx context.Context, skus []string)
 			enableSell = itemCfg.EnableSell
 		}
 
+		s.logger.Debug(
+			"syncCritBatch: stock check",
+			log.String("sku", skuStr),
+			log.Int("items_count", len(physicalIDs)),
+			log.Int("min_stock", minStock),
+			log.Bool("enable_sell", enableSell),
+		)
+
 		var targetIDs []uint64
 		if enableSell && len(physicalIDs) > minStock {
 			targetIDs = physicalIDs[minStock:]
 		}
+
+		s.logger.Debug("syncCritBatch: targetIDs sliced", log.Int("target_count", len(targetIDs)))
 
 		targetAssetIDs := make(map[string]bool)
 		for _, id := range targetIDs {
 			idStr := strconv.FormatUint(id, 10)
 			targetAssetIDs[idStr] = true
 
-			// If no listing exists on crit.tf for this physical asset ID, create it!
-			if _, exists := listingsByAssetID[idStr]; !exists {
+			_, exists := listingsByAssetID[idStr]
+			s.logger.Debug("syncCritBatch: loop asset", log.String("asset_id", idStr), log.Bool("exists", exists))
+
+			if !exists {
 				s.logger.Debug("Creating listing on crit.tf", log.String("sku", skuStr), log.String("asset_id", idStr))
 
 				if _, err := s.crit.CreateListing(ctx, idStr, price.Sell); err != nil {
 					s.logger.Error("Failed to create crit.tf listing", log.String("asset_id", idStr), log.Err(err))
 				}
 			} else {
-				// Listing exists, check if price needs update
 				existing := listingsByAssetID[idStr]
 				if existing.PriceKeys != price.Sell.Keys || float64(existing.PriceMetal) != price.Sell.Metal {
 					s.logger.Debug(
@@ -407,7 +437,6 @@ func (s *ListingsSynchronizer) syncCritBatch(ctx context.Context, skus []string)
 			}
 		}
 
-		// Delete any active listings on crit.tf for this SKU that are no longer targeted
 		for _, l := range listingsBySKU[skuStr] {
 			if !targetAssetIDs[l.AssetID] {
 				listingID := fmt.Sprintf("%d", l.ID)
@@ -445,7 +474,6 @@ func (s *ListingsSynchronizer) syncBptfBatch(ctx context.Context, skus []string)
 
 		stock := s.bp.GetStock(skuStr)
 
-		// Determine limits
 		maxStock := cfg.DefaultMaxStock
 		minStock := 0
 		enableBuy := true
@@ -458,7 +486,6 @@ func (s *ListingsSynchronizer) syncBptfBatch(ctx context.Context, skus []string)
 			enableSell = itemCfg.EnableSell
 		}
 
-		// Ensure Buy listing if stock allows
 		existingBuy := s.listings.FindListingBySKU(skuStr, "buy")
 		if enableBuy && stock < maxStock {
 			resolvables = append(resolvables, bptf.ListingResolvable{
@@ -473,7 +500,6 @@ func (s *ListingsSynchronizer) syncBptfBatch(ctx context.Context, skus []string)
 			deleteIDs = append(deleteIDs, existingBuy.ID)
 		}
 
-		// Ensure Sell listing if stock allows
 		existingSell := s.listings.FindListingBySKU(skuStr, "sell")
 		if enableSell && stock > minStock {
 			resolvables = append(resolvables, bptf.ListingResolvable{
@@ -489,7 +515,6 @@ func (s *ListingsSynchronizer) syncBptfBatch(ctx context.Context, skus []string)
 		}
 	}
 
-	// Delete obsolete listings
 	if len(deleteIDs) > 0 {
 		for _, id := range deleteIDs {
 			if err := s.listings.Delete(ctx, id); err != nil {
@@ -498,9 +523,7 @@ func (s *ListingsSynchronizer) syncBptfBatch(ctx context.Context, skus []string)
 		}
 	}
 
-	// Create/Update active listings
 	if len(resolvables) > 0 {
-		// Use batch API if multiple listings exist
 		if len(resolvables) > 1 && s.listings.Client() != nil {
 			if _, err := s.listings.Client().BatchCreateListings(ctx, resolvables); err != nil {
 				s.logger.Error("Failed batch create listings", log.Err(err))

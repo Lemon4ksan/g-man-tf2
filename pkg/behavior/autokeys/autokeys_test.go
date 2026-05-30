@@ -21,8 +21,6 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 )
 
-// Mock components for clean testing
-
 type mockBackpackProvider struct {
 	stock     currency.PureStock
 	stockMap  map[string]int
@@ -125,10 +123,11 @@ func (m *mockAlertProvider) MessageAdmins(ctx context.Context, message string) e
 	return nil
 }
 
-func TestAutokeys_Scan_Buying(t *testing.T) {
+func TestAutokeys_Scan_BuyingMode_UpdatesKeyPrices(t *testing.T) {
+	t.Parallel()
+
 	logger := log.New(log.DefaultConfig(log.LevelError))
 
-	// Config: buy keys if metal is over 100 ref, keys limit is 50.
 	cfg := Config{
 		MinKeys:               10,
 		MaxKeys:               50,
@@ -142,7 +141,7 @@ func TestAutokeys_Scan_Buying(t *testing.T) {
 	bp := &mockBackpackProvider{
 		stock: currency.PureStock{
 			Keys:    15,
-			Refined: 150, // 150 ref > 100 max refs limit -> buying mode!
+			Refined: 150,
 		},
 		stockMap: map[string]int{
 			currency.SKUKey: 15,
@@ -160,13 +159,11 @@ func TestAutokeys_Scan_Buying(t *testing.T) {
 	}
 
 	alert := &mockAlertProvider{}
-
 	ak := New(bp, priceMgr, logger, nil, cfg, alert)
 
-	err := ak.scan(context.Background())
+	err := ak.scan(t.Context())
 	require.NoError(t, err)
 
-	// Assert price updated in DB:
 	priceMgr.mu.Lock()
 	defer priceMgr.mu.Unlock()
 
@@ -174,13 +171,14 @@ func TestAutokeys_Scan_Buying(t *testing.T) {
 	assert.Equal(t, 60.0, priceMgr.sets[currency.SKUKey+"_buy"].Metal)
 	assert.Equal(t, 62.0, priceMgr.sets[currency.SKUKey+"_sell"].Metal)
 
-	// Check status
 	assert.Equal(t, "buying", ak.GetStatus())
 	assert.True(t, ak.IsEnabled())
 	assert.True(t, ak.IsActive())
 }
 
-func TestAutokeys_Scan_Selling(t *testing.T) {
+func TestAutokeys_Scan_SellingMode_RemainsIdleOnLowDeficit(t *testing.T) {
+	t.Parallel()
+
 	logger := log.New(log.DefaultConfig(log.LevelError))
 
 	cfg := Config{
@@ -191,7 +189,6 @@ func TestAutokeys_Scan_Selling(t *testing.T) {
 		EnableBanking: false,
 	}
 
-	// ref is 30.0 ref < minRefs (50.0) -> selling mode!
 	bp := &mockBackpackProvider{
 		stock: currency.PureStock{
 			Keys:    25,
@@ -213,10 +210,9 @@ func TestAutokeys_Scan_Selling(t *testing.T) {
 	}
 
 	alert := &mockAlertProvider{}
-
 	ak := New(bp, priceMgr, logger, nil, cfg, alert)
 
-	err := ak.scan(context.Background())
+	err := ak.scan(t.Context())
 	require.NoError(t, err)
 
 	priceMgr.mu.Lock()
@@ -226,11 +222,12 @@ func TestAutokeys_Scan_Selling(t *testing.T) {
 	assert.Equal(t, 60.0, priceMgr.sets[currency.SKUKey+"_buy"].Metal)
 	assert.Equal(t, 62.0, priceMgr.sets[currency.SKUKey+"_sell"].Metal)
 
-	// Status should be idle since keysCanSell is 0 (deficit doesn't justify selling)
 	assert.Equal(t, "idle", ak.GetStatus())
 }
 
-func TestAutokeys_Scan_Banking(t *testing.T) {
+func TestAutokeys_Scan_BankingMode_EnablesKeysBanking(t *testing.T) {
+	t.Parallel()
+
 	logger := log.New(log.DefaultConfig(log.LevelError))
 
 	cfg := Config{
@@ -241,7 +238,6 @@ func TestAutokeys_Scan_Banking(t *testing.T) {
 		EnableBanking: true,
 	}
 
-	// Refined is 75 ref (exactly between min 50 and max 100) -> banking mode!
 	bp := &mockBackpackProvider{
 		stock: currency.PureStock{
 			Keys:    20,
@@ -264,7 +260,7 @@ func TestAutokeys_Scan_Banking(t *testing.T) {
 
 	ak := New(bp, priceMgr, logger, nil, cfg, nil)
 
-	err := ak.scan(context.Background())
+	err := ak.scan(t.Context())
 	require.NoError(t, err)
 
 	priceMgr.mu.Lock()
@@ -278,7 +274,9 @@ func TestAutokeys_Scan_Banking(t *testing.T) {
 	assert.True(t, ak.IsActive())
 }
 
-func TestAutokeys_Scan_Alert(t *testing.T) {
+func TestAutokeys_Scan_LowReserveAlert_TriggersDebouncedAlert(t *testing.T) {
+	t.Parallel()
+
 	logger := log.New(log.DefaultConfig(log.LevelError))
 
 	cfg := Config{
@@ -289,7 +287,6 @@ func TestAutokeys_Scan_Alert(t *testing.T) {
 		EnableBanking: false,
 	}
 
-	// Keys (5 < 10) AND Refined (10 < 50) -> Alert state!
 	bp := &mockBackpackProvider{
 		stock: currency.PureStock{
 			Keys:    5,
@@ -313,7 +310,7 @@ func TestAutokeys_Scan_Alert(t *testing.T) {
 	alert := &mockAlertProvider{}
 	ak := New(bp, priceMgr, logger, nil, cfg, alert)
 
-	err := ak.scan(context.Background())
+	err := ak.scan(t.Context())
 	require.NoError(t, err)
 
 	alert.mu.Lock()
@@ -321,18 +318,16 @@ func TestAutokeys_Scan_Alert(t *testing.T) {
 	assert.Contains(t, alert.messages[0], "[CRITICAL]")
 	alert.mu.Unlock()
 
-	// Redundant scan should not alert again (debounce)
-	err = ak.scan(context.Background())
+	err = ak.scan(t.Context())
 	require.NoError(t, err)
 
 	alert.mu.Lock()
 	assert.Len(t, alert.messages, 1)
 	alert.mu.Unlock()
 
-	// Recovery trigger
 	bp.stock.Keys = 20
 	bp.stock.Refined = 70
-	err = ak.scan(context.Background())
+	err = ak.scan(t.Context())
 	require.NoError(t, err)
 
 	alert.mu.Lock()
@@ -341,10 +336,11 @@ func TestAutokeys_Scan_Alert(t *testing.T) {
 	alert.mu.Unlock()
 }
 
-func TestAutokeys_Scan_ScrapAdjustment(t *testing.T) {
+func TestAutokeys_Scan_ScrapAdjustment_AppliesScrapOffsets(t *testing.T) {
+	t.Parallel()
+
 	logger := log.New(log.DefaultConfig(log.LevelError))
 
-	// Scrap adjustment enabled with 2 scrap (0.22 ref) step.
 	cfg := Config{
 		MinKeys:               10,
 		MaxKeys:               50,
@@ -355,7 +351,6 @@ func TestAutokeys_Scan_ScrapAdjustment(t *testing.T) {
 		ScrapAdjustmentValue:  2,
 	}
 
-	// Refined is 120 > 100 -> Buying mode
 	bp := &mockBackpackProvider{
 		stock: currency.PureStock{
 			Keys:    15,
@@ -378,14 +373,9 @@ func TestAutokeys_Scan_ScrapAdjustment(t *testing.T) {
 
 	ak := New(bp, priceMgr, logger, nil, cfg, nil)
 
-	err := ak.scan(context.Background())
+	err := ak.scan(t.Context())
 	require.NoError(t, err)
 
-	// base buy = 60.0 ref = 540 scrap
-	// base sell = 62.0 ref = 558 scrap
-	// Since we are buying, we add 2 scrap to both:
-	// adjusted buy = 542 scrap (60.22 ref)
-	// adjusted sell = 560 scrap (62.22 ref)
 	priceMgr.mu.Lock()
 	defer priceMgr.mu.Unlock()
 
@@ -393,7 +383,9 @@ func TestAutokeys_Scan_ScrapAdjustment(t *testing.T) {
 	assert.InDelta(t, 62.22, priceMgr.sets[currency.SKUKey+"_sell"].Metal, 0.01)
 }
 
-func TestAutokeys_Scan_RedundantFilters(t *testing.T) {
+func TestAutokeys_Scan_UnchangedState_SkipsRedundantUpdates(t *testing.T) {
+	t.Parallel()
+
 	logger := log.New(log.DefaultConfig(log.LevelError))
 
 	cfg := Config{
@@ -426,7 +418,7 @@ func TestAutokeys_Scan_RedundantFilters(t *testing.T) {
 
 	ak := New(bp, priceMgr, logger, nil, cfg, nil)
 
-	err := ak.scan(context.Background())
+	err := ak.scan(t.Context())
 	require.NoError(t, err)
 
 	priceMgr.mu.Lock()
@@ -434,11 +426,10 @@ func TestAutokeys_Scan_RedundantFilters(t *testing.T) {
 	priceMgr.mu.Unlock()
 	assert.Equal(t, 1, initialSets)
 
-	// Second scan with NO CHANGES in state
-	err = ak.scan(context.Background())
+	err = ak.scan(t.Context())
 	require.NoError(t, err)
 
 	priceMgr.mu.Lock()
-	assert.Equal(t, initialSets, priceMgr.setCalls) // No new sets should have occurred
+	assert.Equal(t, initialSets, priceMgr.setCalls)
 	priceMgr.mu.Unlock()
 }

@@ -28,12 +28,15 @@ const BehaviorName = "pricelist_saver"
 
 // Config holds configuration parameters for the PricelistSaver.
 type Config struct {
-	PricelistPath string        `json:"pricelist_path"`
+	// PricelistPath is the target file path where the pricelist is saved.
+	PricelistPath string `json:"pricelist_path"`
+	// SilenceWindow defines the debouncing delay used to aggregate rapid price updates.
 	SilenceWindow time.Duration `json:"silence_window"`
-	MaxDelay      time.Duration `json:"max_delay"`
+	// MaxDelay defines the maximum allowed delay before a pending write is flushed to disk.
+	MaxDelay time.Duration `json:"max_delay"`
 }
 
-// DefaultConfig returns production-ready defaults.
+// DefaultConfig returns a [Config] containing production-ready default paths and delays.
 func DefaultConfig() Config {
 	return Config{
 		PricelistPath: "cache/tf2/pricelist.json",
@@ -44,10 +47,12 @@ func DefaultConfig() Config {
 
 // PriceProvider defines the interface required to snapshot prices from pricedb.Manager.
 type PriceProvider interface {
+	// GetAllPrices returns a copy of all currently cached prices in a thread-safe way.
 	GetAllPrices() []*pricedb.Price
 }
 
-// PricelistSaver persists real-time price updates atomically with debouncing.
+// PricelistSaver persists real-time price updates atomically to disk using write debouncing.
+// Use [Save] or [New] to register it with the orchestrator.
 type PricelistSaver struct {
 	config   Config
 	logger   log.Logger
@@ -56,14 +61,14 @@ type PricelistSaver struct {
 	mu       sync.Mutex
 }
 
-// Save returns a behavior.Option to register PricelistSaver with the orchestrator.
+// Save returns a [behavior.Option] that registers the [PricelistSaver] with the orchestrator.
 func Save(priceMgr PriceProvider, cfg Config) behavior.Option {
 	return func(o *behavior.Orchestrator) {
 		o.Register(New(priceMgr, o.Bus(), o.Logger(), cfg))
 	}
 }
 
-// New creates a new PricelistSaver behavior.
+// New creates a new [PricelistSaver] behavior.
 func New(priceMgr PriceProvider, b *bus.Bus, logger log.Logger, cfg Config) *PricelistSaver {
 	if cfg.PricelistPath == "" {
 		cfg.PricelistPath = DefaultConfig().PricelistPath
@@ -85,12 +90,13 @@ func New(priceMgr PriceProvider, b *bus.Bus, logger log.Logger, cfg Config) *Pri
 	}
 }
 
-// Name returns the unique name of the behavior.
+// Name returns the unique name of the [PricelistSaver] behavior.
 func (s *PricelistSaver) Name() string {
 	return BehaviorName
 }
 
 // Run starts the background event loop, debouncing updates and flushing them to disk.
+// Returns an error if the context is cancelled.
 func (s *PricelistSaver) Run(ctx context.Context) error {
 	s.logger.Info("PricelistSaver started", log.String("path", s.config.PricelistPath))
 
@@ -117,7 +123,6 @@ func (s *PricelistSaver) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			// Perform a final flush if a timer was active
 			if timerChan != nil {
 				flush()
 			}
@@ -137,19 +142,16 @@ func (s *PricelistSaver) Run(ctx context.Context) error {
 				firstChangeAt = now
 			}
 
-			// Calculate delay based on silence window and max delay
 			delay := s.config.SilenceWindow
 			if now.Add(delay).After(firstChangeAt.Add(s.config.MaxDelay)) {
 				delay = max(firstChangeAt.Add(s.config.MaxDelay).Sub(now), 0)
 			}
 
-			// Debouncing logic using Reset to avoid heap allocations
 			if timer == nil {
 				timer = time.NewTimer(delay)
 				timerChan = timer.C
 			} else {
 				if !timer.Stop() {
-					// Clean channel if already expired
 					select {
 					case <-timer.C:
 					default:
@@ -167,6 +169,7 @@ func (s *PricelistSaver) Run(ctx context.Context) error {
 }
 
 // SavePricelist retrieves all prices and writes them atomically to disk.
+// Returns an error if reading, marshalling, or writing fails.
 func (s *PricelistSaver) SavePricelist() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -185,7 +188,6 @@ func (s *PricelistSaver) SavePricelist() error {
 
 	dataMap := make(map[string]EntryData)
 
-	// Load existing file to preserve user customizations (e.g. custom Min, Max stock limits)
 	existingBytes, err := os.ReadFile(s.config.PricelistPath)
 	if err == nil {
 		_ = json.Unmarshal(existingBytes, &dataMap)
@@ -200,18 +202,16 @@ func (s *PricelistSaver) SavePricelist() error {
 	for _, p := range prices {
 		var defindex, quality int
 
-		// Parse SKU safely and without heavy reflection
 		parts := strings.Split(p.SKU, ";")
 		if len(parts) >= 2 {
 			defindex, _ = strconv.Atoi(parts[0])
 			quality, _ = strconv.Atoi(parts[1])
 		} else if len(parts) == 1 {
-			// Pure asset ID or atypical key
 			if val, err := strconv.Atoi(parts[0]); err == nil {
 				defindex = val
 			}
 
-			quality = 6 // Default to Unique quality
+			quality = 6
 		}
 
 		autoprice := p.Source != "Manual" && p.Source != "Autokeys"

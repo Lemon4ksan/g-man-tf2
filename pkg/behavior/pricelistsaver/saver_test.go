@@ -32,7 +32,9 @@ func (m *mockPriceProvider) GetAllPrices() []*pricedb.Price {
 	return m.prices
 }
 
-func TestPricelistSaver_Debouncing(t *testing.T) {
+func TestPricelistSaver_Run_RapidEvents_DebouncesWriteToFile(t *testing.T) {
+	t.Parallel()
+
 	tempPath := filepath.Join(t.TempDir(), "pricelist_debounce.json")
 
 	logger := log.New(log.DefaultConfig(log.LevelError))
@@ -57,30 +59,27 @@ func TestPricelistSaver_Debouncing(t *testing.T) {
 
 	saver := New(provider, eventBus, logger, cfg)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
 
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		_ = saver.Run(ctx)
 	})
 
-	// Send multiple events rapidly
 	for range 5 {
 		eventBus.Publish(&pricedb.PricelistUpdatedEvent{})
-		time.Sleep(20 * time.Millisecond) // total 100ms
+		time.Sleep(20 * time.Millisecond)
 	}
 
-	// Verify file does not exist yet (debouncer is waiting for 150ms silence)
 	_, err := os.Stat(tempPath)
 	assert.True(t, os.IsNotExist(err))
 
-	// Wait for silence window to expire
-	time.Sleep(200 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		_, err := os.Stat(tempPath)
+		return err == nil
+	}, 1*time.Second, 10*time.Millisecond, "Pricelist file should be saved after debounce")
 
-	// File should exist now
-	assert.FileExists(t, tempPath)
-
-	// Read and verify content
 	bytes, err := os.ReadFile(tempPath)
 	require.NoError(t, err)
 
@@ -111,7 +110,9 @@ func TestPricelistSaver_Debouncing(t *testing.T) {
 	wg.Wait()
 }
 
-func TestPricelistSaver_MaxDelay(t *testing.T) {
+func TestPricelistSaver_Run_ContinuousEvents_FlushesDueToMaxDelay(t *testing.T) {
+	t.Parallel()
+
 	tempPath := filepath.Join(t.TempDir(), "pricelist_max_delay.json")
 
 	logger := log.New(log.DefaultConfig(log.LevelError))
@@ -128,7 +129,6 @@ func TestPricelistSaver_MaxDelay(t *testing.T) {
 		},
 	}
 
-	// Setting silence window long, but max delay short
 	cfg := Config{
 		PricelistPath: tempPath,
 		SilenceWindow: 300 * time.Millisecond,
@@ -137,20 +137,19 @@ func TestPricelistSaver_MaxDelay(t *testing.T) {
 
 	saver := New(provider, eventBus, logger, cfg)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
 
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		_ = saver.Run(ctx)
 	})
 
-	// Give the subscriber time to initialize
-	time.Sleep(50 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		eventBus.Publish(&pricedb.PricelistUpdatedEvent{})
+		return true
+	}, 100*time.Millisecond, 10*time.Millisecond)
 
-	// Send first event to start max delay timer
-	eventBus.Publish(&pricedb.PricelistUpdatedEvent{})
-
-	// Send continuous updates every 50ms (shorter than 300ms silence window, so it would starve standard debouncer, but MaxDelay is 200ms)
 	for range 6 {
 		time.Sleep(50 * time.Millisecond)
 		eventBus.Publish(&pricedb.PricelistUpdatedEvent{})
@@ -165,7 +164,9 @@ func TestPricelistSaver_MaxDelay(t *testing.T) {
 	wg.Wait()
 }
 
-func TestPricelistSaver_AtypicalSKUs(t *testing.T) {
+func TestPricelistSaver_Run_AtypicalSKUs_PersistsCorrectly(t *testing.T) {
+	t.Parallel()
+
 	tempPath := filepath.Join(t.TempDir(), "pricelist_atypical.json")
 
 	logger := log.New(log.DefaultConfig(log.LevelError))
@@ -174,13 +175,13 @@ func TestPricelistSaver_AtypicalSKUs(t *testing.T) {
 	provider := &mockPriceProvider{
 		prices: []*pricedb.Price{
 			{
-				SKU:    "10151297782", // Pure Asset ID
+				SKU:    "10151297782",
 				Source: "Manual",
 				Buy:    pricedb.Currencies{Metal: 10.0},
 				Sell:   pricedb.Currencies{Metal: 12.0},
 			},
 			{
-				SKU:    "5002;6", // Standard SKU
+				SKU:    "5002;6",
 				Source: "Autokeys",
 				Buy:    pricedb.Currencies{Metal: 1.0},
 				Sell:   pricedb.Currencies{Metal: 1.1},
@@ -196,21 +197,21 @@ func TestPricelistSaver_AtypicalSKUs(t *testing.T) {
 
 	saver := New(provider, eventBus, logger, cfg)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
 
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		_ = saver.Run(ctx)
 	})
 
-	// Give the subscriber time to initialize
-	time.Sleep(50 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		eventBus.Publish(&pricedb.PricelistUpdatedEvent{})
 
-	// Trigger flush
-	eventBus.Publish(&pricedb.PricelistUpdatedEvent{})
-	time.Sleep(150 * time.Millisecond)
+		_, err := os.Stat(tempPath)
 
-	assert.FileExists(t, tempPath)
+		return err == nil
+	}, 2*time.Second, 50*time.Millisecond, "Pricelist file should exist")
 
 	bytes, err := os.ReadFile(tempPath)
 	require.NoError(t, err)
@@ -228,17 +229,15 @@ func TestPricelistSaver_AtypicalSKUs(t *testing.T) {
 	err = json.Unmarshal(bytes, &dataMap)
 	require.NoError(t, err)
 
-	// Verify standard SKU exists
 	entryStandard, existsStandard := dataMap["5002;6"]
 	require.True(t, existsStandard)
 	assert.Equal(t, 5002, entryStandard.Defindex)
 	assert.Equal(t, 6, entryStandard.Quality)
 
-	// Verify pure Asset ID exists and was not dropped!
 	entryAtypical, existsAtypical := dataMap["10151297782"]
 	require.True(t, existsAtypical)
 	assert.Equal(t, 10151297782, entryAtypical.Defindex)
-	assert.Equal(t, 6, entryAtypical.Quality) // Default Unique quality
+	assert.Equal(t, 6, entryAtypical.Quality)
 
 	cancel()
 	wg.Wait()

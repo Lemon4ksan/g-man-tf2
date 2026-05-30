@@ -22,98 +22,138 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 )
 
-// BehaviorName is the unique name of this behavior.
+// BehaviorName is the unique identifier for the autokeys behavior.
 const BehaviorName = "tf2_autokeys"
 
-// Autokeys operational phases
 const (
-	PhaseBuying     = "buying"
+	// PhaseBuying represents the key purchase phase where keys are bought with metal.
+	PhaseBuying = "buying"
+	// PhaseBankingBuy represents the key banking buy phase.
 	PhaseBankingBuy = "bankingBuy"
-	PhaseSelling    = "selling"
-	PhaseBanking    = "banking"
-	PhaseIdle       = "idle"
+	// PhaseSelling represents the key sale phase where keys are sold for metal.
+	PhaseSelling = "selling"
+	// PhaseBanking represents the key banking phase where both buy and sell limits are active.
+	PhaseBanking = "banking"
+	// PhaseIdle represents the inactive phase where no automatic updates are applied.
+	PhaseIdle = "idle"
 )
 
-// Intent constants for listings
 const (
-	IntentBuy  = "buy"
+	// IntentBuy represents a listing buy intent.
+	IntentBuy = "buy"
+	// IntentSell represents a listing sell intent.
 	IntentSell = "sell"
 )
 
-// PricelistChangedSourceAutokeys is the source for pricelist modifications made by Autokeys.
+// PricelistChangedSourceAutokeys is the source name applied to pricelist changes made by autokeys.
 const PricelistChangedSourceAutokeys pricedb.PricelistChangedSource = "Autokeys"
 
-// Config defines the configuration for the Autokeys behavior.
+// Config defines the configuration parameters for key trading and metal balancing.
 type Config struct {
-	MinKeys               int           `json:"min_keys"`
-	MaxKeys               int           `json:"max_keys"`
-	MinRefs               float64       `json:"min_refs"`
-	MaxRefs               float64       `json:"max_refs"`
-	EnableBanking         bool          `json:"enable_banking"`
-	EnableScrapAdjustment bool          `json:"enable_scrap_adjustment"`
-	ScrapAdjustmentValue  int           `json:"scrap_adjustment_value"` // in Scrap units
-	CheckInterval         time.Duration `json:"check_interval"`
-	WeaponsAsCurrency     bool          `json:"weapons_as_currency"`
+	// MinKeys defines the minimum key reserve count.
+	MinKeys int `json:"min_keys"`
+	// MaxKeys defines the maximum key reserve count.
+	MaxKeys int `json:"max_keys"`
+	// MinRefs defines the minimum metal reserve count in refined units.
+	MinRefs float64 `json:"min_refs"`
+	// MaxRefs defines the maximum metal reserve count in refined units.
+	MaxRefs float64 `json:"max_refs"`
+	// EnableBanking enables parallel buying and selling of keys.
+	EnableBanking bool `json:"enable_banking"`
+	// EnableScrapAdjustment enables scrap offsets for volatile prices.
+	EnableScrapAdjustment bool `json:"enable_scrap_adjustment"`
+	// ScrapAdjustmentValue defines the offset value in scrap units.
+	ScrapAdjustmentValue int `json:"scrap_adjustment_value"` // in Scrap units
+	// CheckInterval defines the delay between scans.
+	CheckInterval time.Duration `json:"check_interval"`
+	// WeaponsAsCurrency allows counting duplicate craftable weapons as metal value.
+	WeaponsAsCurrency bool `json:"weapons_as_currency"`
 
-	// Precalculated units of currency.Scrap to avoid rounding errors in Go
+	// MinRefsScrap represents precalculated minimum refined metal in scrap units.
 	MinRefsScrap currency.Scrap `json:"-"`
+	// MaxRefsScrap represents precalculated maximum refined metal in scrap units.
 	MaxRefsScrap currency.Scrap `json:"-"`
 }
 
-// OverallStatus contains the active state flags.
+// OverallStatus contains the active state flags for the state machine.
 type OverallStatus struct {
-	IsBuyingKeys          bool
-	IsBankingKeys         bool
-	AlreadyUpdatedToBank  bool
-	AlreadyUpdatedToBuy   bool
-	AlreadyUpdatedToSell  bool
+	// IsBuyingKeys is true when the state machine is actively buying keys.
+	IsBuyingKeys bool
+	// IsBankingKeys is true when the state machine is actively banking keys.
+	IsBankingKeys bool
+	// AlreadyUpdatedToBank is true if prices were synchronized for key banking.
+	AlreadyUpdatedToBank bool
+	// AlreadyUpdatedToBuy is true if prices were synchronized for key buying.
+	AlreadyUpdatedToBuy bool
+	// AlreadyUpdatedToSell is true if prices were synchronized for key selling.
+	AlreadyUpdatedToSell bool
+	// LowPureAlertTriggered is true if a low pure alert message was sent to administrators.
 	LowPureAlertTriggered bool
 }
 
-// OldAmount tracks transaction volumes of the last scan.
+// OldAmount tracks transactions and inventory states of the previous execution scan.
 type OldAmount struct {
-	KeysCanBuy       int
-	KeysCanSell      int
-	KeysCanBankMin   int
-	KeysCanBankMax   int
+	// KeysCanBuy represents the calculated number of keys that can be bought.
+	KeysCanBuy int
+	// KeysCanSell represents the calculated number of keys that can be sold.
+	KeysCanSell int
+	// KeysCanBankMin represents the minimum keys available for banking.
+	KeysCanBankMin int
+	// KeysCanBankMax represents the maximum keys available for banking.
+	KeysCanBankMax int
+	// CurrentKeysCount represents the last scanned total count of keys in the inventory.
 	CurrentKeysCount int
 }
 
-// KeyPrices caches last processed prices.
+// KeyPrices contains the last cached buy and sell prices of keys.
 type KeyPrices struct {
-	Buy  pricedb.Currencies
+	// Buy represents the buy price of keys.
+	Buy pricedb.Currencies
+	// Sell represents the sell price of keys.
 	Sell pricedb.Currencies
 }
 
-// State tracks active operational state thread-safely.
+// State tracks active operational states thread-safely.
 type State struct {
-	mu           sync.RWMutex
-	IsActive     bool
-	Status       OverallStatus
-	OldAmount    OldAmount
+	mu sync.RWMutex
+	// IsActive is true when the behavior is enabled.
+	IsActive bool
+	// Status represents the current state flags.
+	Status OverallStatus
+	// OldAmount represents the last scanned transaction amounts.
+	OldAmount OldAmount
+	// OldKeyPrices represents the last scanned key prices.
 	OldKeyPrices KeyPrices
 }
 
-// AlertProvider handles debounced messaging to administrators.
+// AlertProvider defines the interface for sending alerts to administrators.
 type AlertProvider interface {
+	// MessageAdmins sends an alert message to administrators.
 	MessageAdmins(ctx context.Context, message string) error
 }
 
-// BackpackProvider defines the subset of Backpack methods needed by Autokeys.
+// BackpackProvider defines the subset of inventory methods needed by the autokeys behavior.
 type BackpackProvider interface {
+	// GetPureStock retrieves the current keys and metal stock.
 	GetPureStock() currency.PureStock
+	// GetStock retrieves the current stock count for a specific SKU.
 	GetStock(sku string) int
+	// Cache returns the underlying item cache.
 	Cache() backpack.ItemCache
+	// Schema returns the current schema provider.
 	Schema() backpack.SchemaProvider
 }
 
-// PriceProvider defines the subset of pricedb.Manager methods needed by Autokeys.
+// PriceProvider defines the subset of price management methods needed by the autokeys behavior.
 type PriceProvider interface {
+	// GetPrice retrieves the cached price for a given SKU.
 	GetPrice(sku string) (*pricedb.Price, bool)
+	// SetPrice updates the price and source for a given SKU.
 	SetPrice(sku string, buy, sell pricedb.Currencies, source pricedb.PricelistChangedSource)
 }
 
-// Autokeys is the behavior that automatically manages key prices.
+// Autokeys manages key prices dynamically based on inventory balances.
+// Use [New] to instantiate and configure.
 type Autokeys struct {
 	bp            BackpackProvider
 	priceMgr      PriceProvider
@@ -124,7 +164,7 @@ type Autokeys struct {
 	alertProvider AlertProvider
 }
 
-// Register returns a behavior.Option to install Autokeys behavior into Orchestrator.
+// Register returns a [behavior.Option] that registers the [Autokeys] behavior with the orchestrator.
 func Register(
 	bp BackpackProvider,
 	priceMgr PriceProvider,
@@ -136,7 +176,7 @@ func Register(
 	}
 }
 
-// New constructs a new Autokeys behavior instance.
+// New constructs a new [Autokeys] behavior instance.
 func New(
 	bp BackpackProvider,
 	priceMgr PriceProvider,
@@ -165,12 +205,13 @@ func New(
 	}
 }
 
-// Name returns the unique name of the behavior.
+// Name returns the unique name of the [Autokeys] behavior.
 func (a *Autokeys) Name() string {
 	return BehaviorName
 }
 
-// Run starts the background event loop subscribing to inventory changes and fallbacks.
+// Run starts the background scanning and price modification loops.
+// Returns an error if the context is cancelled.
 func (a *Autokeys) Run(ctx context.Context) error {
 	a.logger.Info("Autokeys behavior started", log.Duration("interval", a.config.CheckInterval))
 
@@ -185,7 +226,6 @@ func (a *Autokeys) Run(ctx context.Context) error {
 	ticker := time.NewTicker(a.config.CheckInterval)
 	defer ticker.Stop()
 
-	// Initial scan at startup
 	if err := a.scan(ctx); err != nil {
 		a.logger.Error("Initial scan failed", log.Err(err))
 	}
@@ -211,21 +251,21 @@ func (a *Autokeys) Run(ctx context.Context) error {
 	}
 }
 
-// IsEnabled returns whether the behavior is enabled.
+// IsEnabled returns true if the behavior is enabled.
 func (a *Autokeys) IsEnabled() bool {
 	a.state.mu.RLock()
 	defer a.state.mu.RUnlock()
 	return a.state.IsActive
 }
 
-// IsActive returns whether the state machine is active in buying or banking.
+// IsActive returns true if the state machine is active in buying or banking keys.
 func (a *Autokeys) IsActive() bool {
 	a.state.mu.RLock()
 	defer a.state.mu.RUnlock()
 	return a.state.IsActive && (a.state.Status.IsBuyingKeys || a.state.Status.IsBankingKeys)
 }
 
-// GetStatus returns the current status.
+// GetStatus returns the current operational phase.
 func (a *Autokeys) GetStatus() string {
 	a.state.mu.RLock()
 	defer a.state.mu.RUnlock()
@@ -245,14 +285,11 @@ func (a *Autokeys) GetStatus() string {
 	return PhaseIdle
 }
 
-// scan evaluates balances and triggers updates if state changes.
 func (a *Autokeys) scan(ctx context.Context) error {
-	// Phase 1: Gather inventory pure balances
 	stock := a.bp.GetPureStock()
 	currKeys := stock.Keys
 	currRef := stock.TotalScrap()
 
-	// Weapons duplication as currency
 	if a.config.WeaponsAsCurrency {
 		s := a.bp.Schema().Get()
 		if s != nil && a.bp.Cache() != nil {
@@ -277,13 +314,11 @@ func (a *Autokeys) scan(ctx context.Context) error {
 				}
 			}
 
-			// Each craftable weapon duplicate counts as 0.5 Scrap
 			weaponsScrap := currency.Scrap(float64(duplicateWeaponsCount) * 0.5)
 			currRef += weaponsScrap
 		}
 	}
 
-	// Fetch base market key price
 	kp, ok := a.priceMgr.GetPrice(currency.SKUKey)
 	if !ok || kp.Buy.Metal <= 0 || kp.Sell.Metal <= 0 {
 		a.logger.Warn(
@@ -294,7 +329,6 @@ func (a *Autokeys) scan(ctx context.Context) error {
 		return nil
 	}
 
-	// Phase 2: Detect external price changes in pricedb.Manager
 	a.state.mu.Lock()
 
 	priceChanged := false
@@ -311,7 +345,6 @@ func (a *Autokeys) scan(ctx context.Context) error {
 		a.state.OldKeyPrices.Sell = kp.Sell
 	}
 
-	// Phase 3: Evaluate State Machine Phases
 	isBuyingKeys := currRef > a.config.MaxRefsScrap && currKeys < a.config.MaxKeys
 	isSellingKeys := currRef < a.config.MinRefsScrap && currKeys > a.config.MinKeys
 	isBankingKeys := a.config.EnableBanking &&
@@ -322,7 +355,6 @@ func (a *Autokeys) scan(ctx context.Context) error {
 		currKeys <= a.config.MinKeys
 	isAlertState := currRef < a.config.MinRefsScrap && currKeys < a.config.MinKeys
 
-	// Phase 4: Math limit Calculations in Scrap Units
 	keyBuyPriceScrap := currency.ToScrap(kp.Buy.Metal)
 	keySellPriceScrap := currency.ToScrap(kp.Sell.Metal)
 
@@ -403,7 +435,6 @@ func (a *Autokeys) scan(ctx context.Context) error {
 			setMaxKeys = a.config.MaxKeys
 		}
 
-		// Safety range expansion:
 		if setMaxKeys-setMinKeys <= 1 {
 			setMinKeys--
 			setMaxKeys++
@@ -423,7 +454,6 @@ func (a *Autokeys) scan(ctx context.Context) error {
 		setMaxKeys = setMinKeys + 1
 	}
 
-	// Phase 5: Scrap price adjustments (Offsets)
 	adjBuyScrap := keyBuyPriceScrap
 	adjSellScrap := keySellPriceScrap
 
@@ -449,13 +479,12 @@ func (a *Autokeys) scan(ctx context.Context) error {
 	adjBuyRef := currency.ToRefined(adjBuyScrap)
 	adjSellRef := currency.ToRefined(adjSellScrap)
 
-	// Phase 6: Debounced alerts for critical pure levels
 	if isAlertState {
 		if !a.state.Status.LowPureAlertTriggered {
 			a.state.Status.LowPureAlertTriggered = true
 
 			msg := fmt.Sprintf(
-				"⚠️ [CRITICAL] Autokeys: Low pure alert triggered! Keys: %d, Metal: %s",
+				"[CRITICAL] Low pure alert triggered! Keys: %d, Metal: %s",
 				currKeys,
 				currency.FormatRefined(currRef),
 			)
@@ -474,7 +503,7 @@ func (a *Autokeys) scan(ctx context.Context) error {
 			a.state.Status.LowPureAlertTriggered = false
 
 			msg := fmt.Sprintf(
-				"✅ [INFO] Autokeys: Pure levels recovered. Keys: %d, Metal: %s",
+				"Pure levels recovered. Keys: %d, Metal: %s",
 				currKeys,
 				currency.FormatRefined(currRef),
 			)
@@ -490,7 +519,6 @@ func (a *Autokeys) scan(ctx context.Context) error {
 		}
 	}
 
-	// Phase 7: Redundant transaction filtering
 	amountsSame := a.state.OldAmount.KeysCanBuy == keysCanBuy &&
 		a.state.OldAmount.KeysCanSell == keysCanSell &&
 		a.state.OldAmount.KeysCanBankMin == keysCanBankMin &&
@@ -515,7 +543,6 @@ func (a *Autokeys) scan(ctx context.Context) error {
 
 	a.state.mu.Unlock()
 
-	// Diagnostic structured logs
 	a.logger.Info("Autokeys scan completed",
 		log.Int("curr_keys", currKeys),
 		log.Float64("curr_metal_ref", currency.ToRefined(currRef)),
@@ -532,7 +559,6 @@ func (a *Autokeys) scan(ctx context.Context) error {
 		return nil
 	}
 
-	// Thread-safe update in local pricedb cache
 	buyCurrencies := pricedb.Currencies{Keys: 0, Metal: adjBuyRef}
 	sellCurrencies := pricedb.Currencies{Keys: 0, Metal: adjSellRef}
 	a.priceMgr.SetPrice(currency.SKUKey, buyCurrencies, sellCurrencies, PricelistChangedSourceAutokeys)

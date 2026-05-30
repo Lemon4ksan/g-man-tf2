@@ -28,41 +28,53 @@ import (
 	tf2trading "github.com/lemon4ksan/g-man-tf2/pkg/trading"
 )
 
-// BehaviorName is the unique name of this behavior.
+// BehaviorName is the unique name of the crit event listener behavior.
 const BehaviorName = "crit_event_listener"
 
-// CritClientProvider defines the subset of crit.Client methods we need.
+// CritClientProvider defines the subset of crit.Client methods required by the listener.
 type CritClientProvider interface {
+	// FetchAuthToken requests a temporary SSE stream authorization token.
 	FetchAuthToken(ctx context.Context) (string, error)
+	// StreamEvents establishes the SSE connection and returns an event channel.
 	StreamEvents(ctx context.Context, streamURL, token string) (<-chan crit.SSEEvent, error)
+	// SendDeadMansRequest sends a connection keepalive request to the backend.
 	SendDeadMansRequest(ctx context.Context) (bool, error)
 }
 
-// PriceProvider defines pricedb methods.
+// PriceProvider defines the subset of pricedb methods required for listing evaluations.
 type PriceProvider interface {
+	// GetPrice retrieves the cached price of a given SKU.
 	GetPrice(sku string) (*pricedb.Price, bool)
 }
 
-// BackpackProvider defines backpack methods.
+// BackpackProvider defines the subset of backpack methods required to verify and lock trade assets.
 type BackpackProvider interface {
+	// GetAssetIDs retrieves a list of available unlocked asset IDs for a specific SKU.
 	GetAssetIDs(sku string) []uint64
+	// LockItems locks the specified item IDs to prevent concurrent trades.
 	LockItems(ids []uint64)
+	// UnlockItems releases locks on the specified item IDs.
 	UnlockItems(ids []uint64)
+	// GetItem retrieves a specific item from the local inventory cache.
 	GetItem(id uint64) (*tf2.Item, bool)
+	// Schema returns the current schema provider.
 	Schema() backpack.SchemaProvider
 }
 
-// ConfigProvider defines trading config manager.
+// ConfigProvider defines the interface to fetch the current trading configurations.
 type ConfigProvider interface {
+	// GetConfig returns the active trade settings.
 	GetConfig() tf2trading.Config
 }
 
-// TradeProvider defines the trade manager.
+// TradeProvider defines the interface for creating and transmitting outgoing trade offers.
 type TradeProvider interface {
+	// SendOffer transmits a trade offer and returns the created offer ID.
 	SendOffer(ctx context.Context, p trading.OfferParams) (uint64, error)
 }
 
-// CritEventListener listens to the Crit.tf SSE stream for incoming trade requests and keepalives.
+// CritEventListener listens to the Crit.tf SSE stream for incoming trade requests and keepalive heartbeats.
+// Use [Listen] or [New] to register it with the orchestrator.
 type CritEventListener struct {
 	logger    log.Logger
 	bus       *bus.Bus
@@ -75,7 +87,7 @@ type CritEventListener struct {
 	tradeMgr TradeProvider
 }
 
-// Listen returns a behavior.Option to install CritEventListener.
+// Listen returns a [behavior.Option] that registers the [CritEventListener] with the orchestrator.
 func Listen(
 	client CritClientProvider,
 	priceMgr PriceProvider,
@@ -89,7 +101,7 @@ func Listen(
 	}
 }
 
-// New constructs a new CritEventListener.
+// New constructs a new [CritEventListener] instance.
 func New(
 	client CritClientProvider,
 	priceMgr PriceProvider,
@@ -112,12 +124,13 @@ func New(
 	}
 }
 
-// Name returns the unique behavior name.
+// Name returns the unique name of the [CritEventListener] behavior.
 func (s *CritEventListener) Name() string {
 	return BehaviorName
 }
 
-// Run starts the main loop of the SSE stream listener.
+// Run establishes the SSE stream and processes incoming events.
+// It reconnects automatically if the stream disconnects. Returns an error if the context is cancelled.
 func (s *CritEventListener) Run(ctx context.Context) error {
 	s.logger.Info("CritEventListener started")
 
@@ -128,7 +141,6 @@ func (s *CritEventListener) Run(ctx context.Context) error {
 		default:
 		}
 
-		// 1. Fetch Auth Token
 		token, err := s.client.FetchAuthToken(ctx)
 		if err != nil {
 			s.logger.Error("Failed to fetch Crit.tf auth token", log.Err(err))
@@ -144,7 +156,6 @@ func (s *CritEventListener) Run(ctx context.Context) error {
 
 		s.logger.Info("Successfully fetched Crit.tf auth token")
 
-		// 2. Establish SSE connection
 		streamURL := s.streamURL
 		if streamURL == "" {
 			streamURL = "https://events.pricedb.io/event-stream"
@@ -165,7 +176,6 @@ func (s *CritEventListener) Run(ctx context.Context) error {
 
 		s.logger.Info("Crit.tf event stream connection established")
 
-		// 3. Process events
 		streamCtx, cancelStream := context.WithCancel(ctx)
 		err = s.processEvents(streamCtx, events, cancelStream)
 		cancelStream()
@@ -242,14 +252,12 @@ func (s *CritEventListener) processEvents(
 func (s *CritEventListener) handleTradeRequest(ctx context.Context, payload *crit.TradeRequestPayload) {
 	s.logger.Info("Processing trade request", log.String("url", payload.TradeOfferURL))
 
-	// Step 5.1: Primary checks
 	cfg := s.cfgMgr.GetConfig()
 	if len(cfg.Items) == 0 {
 		s.logger.Warn("Ignoring trade request: no items configured for trading")
 		return
 	}
 
-	// Step 5.2: Parse trade URL
 	partnerID, token, err := webtrading.ParseTradeURL(payload.TradeOfferURL)
 	if err != nil {
 		s.logger.Error("Failed to parse trade URL", log.Err(err))
@@ -275,7 +283,6 @@ func (s *CritEventListener) handleTradeRequest(ctx context.Context, payload *cri
 		return
 	}
 
-	// Step 5.3: Items to Give
 	for _, item := range payload.ItemsToGive {
 		switch item.Kind {
 		case "sku":
@@ -379,7 +386,6 @@ func (s *CritEventListener) handleTradeRequest(ctx context.Context, payload *cri
 		}
 	}
 
-	// Step 5.4: Items to Receive
 	for _, item := range payload.ItemsToReceive {
 		switch item.Kind {
 		case "assetid":
@@ -421,7 +427,6 @@ func (s *CritEventListener) handleTradeRequest(ctx context.Context, payload *cri
 		}
 	}
 
-	// Step 5.5: Lock items and send the offer
 	if len(tempLocked) > 0 {
 		s.bp.LockItems(tempLocked)
 

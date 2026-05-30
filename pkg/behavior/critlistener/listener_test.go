@@ -74,7 +74,6 @@ func (m *mockBackpackProvider) LockItems(ids []uint64) {
 }
 
 func (m *mockBackpackProvider) UnlockItems(ids []uint64) {
-	// Dummy unlock
 }
 
 func (m *mockBackpackProvider) GetItem(id uint64) (*tf2.Item, bool) {
@@ -111,7 +110,9 @@ func (m *mockTradeProvider) SendOffer(ctx context.Context, p trading.OfferParams
 	return 12345, nil
 }
 
-func TestCritEventListener_Heartbeat(t *testing.T) {
+func TestCritEventListener_Run_HeartbeatEvent_SendsDeadMansRequest(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Discard
 	eventBus := bus.New()
 
@@ -140,14 +141,13 @@ func TestCritEventListener_Heartbeat(t *testing.T) {
 		logger,
 	)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
 
 	go func() {
 		_ = listener.Run(ctx)
 	}()
 
-	// Feed heartbeat event
 	eventsChan <- crit.SSEEvent{
 		Event: "heartbeat",
 		Data:  "",
@@ -161,7 +161,9 @@ func TestCritEventListener_Heartbeat(t *testing.T) {
 	}
 }
 
-func TestCritEventListener_TradeRequest(t *testing.T) {
+func TestCritEventListener_Run_TradeRequestEvent_SendsTradeOffer(t *testing.T) {
+	t.Parallel()
+
 	logger := log.Discard
 	eventBus := bus.New()
 
@@ -223,14 +225,13 @@ func TestCritEventListener_TradeRequest(t *testing.T) {
 		logger,
 	)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
 
 	go func() {
 		_ = listener.Run(ctx)
 	}()
 
-	// Build a mock trade request JSON payload
 	payload := crit.TradeRequestEventEnvelope{
 		Kind: "trade_request",
 		TradeRequest: &crit.TradeRequestPayload{
@@ -261,7 +262,7 @@ func TestCritEventListener_TradeRequest(t *testing.T) {
 
 	select {
 	case offer := <-sentOffers:
-		assert.Equal(t, id.ID(76561197960389184), offer.PartnerID) // partner ID derived from 123456
+		assert.Equal(t, id.ID(76561197960389184), offer.PartnerID)
 		assert.Equal(t, "ABCDEF", offer.Token)
 		assert.Len(t, offer.ItemsToGive, 1)
 		assert.Len(t, offer.ItemsToReceive, 1)
