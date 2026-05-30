@@ -1,0 +1,50 @@
+{
+  "global_max_stock": 3000,
+  "default_max_stock": 5,
+  "excluded_listing_descriptions": [
+    "spell",
+    "spells",
+    "spelled",
+    "exorcism",
+    "pumpkin bombs",
+    "chromatic",
+    "die job",
+    "spectral spectrum",
+    "putrescent pigmentation",
+    "sinister staining"
+  ],
+  "price_swing_limits": {
+    "max_buy_increase": 0.1,
+    "max_sell_decrease": 0.1
+  },
+  "items": {
+    "sku_12345": {
+      "sku": "sku_12345",
+      "name": "name_12345",
+      "max_stock": 100,
+      "min_stock": 10,
+      "enable_buy": true,
+      "enable_sell": true,
+      "min_buy_price": {
+        "keys": 100,
+        "metal": 100
+      },
+      "max_buy_price": {
+        "keys": 200,
+        "metal": 200
+      },
+      "min_sell_price": {
+        "keys": 50,
+        "metal": 50
+      },
+      "max_sell_price": {
+        "keys": 100,
+        "metal": 100
+      }
+    }
+  },
+  "ppu_hold_duration": "24h",
+  "ppu_grace_period": "1h",
+  "ppu_max_stock_limit": 1,
+  "ppu_min_profit_scrap": 1
+}

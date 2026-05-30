@@ -1,0 +1,65 @@
+// Copyright (c) 2026 Lemon4ksan All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package currency
+
+import "fmt"
+
+// ValueDiff represents the difference between their side and our side.
+type ValueDiff struct {
+	Our, Their, KeyPrice Scrap
+}
+
+// NewValueDiff calculates the difference in trade value.
+// values are expected to be in Scrap.
+func NewValueDiff(our, their, keyPrice Scrap) ValueDiff {
+	return ValueDiff{
+		Our:      our,
+		Their:    their,
+		KeyPrice: keyPrice,
+	}
+}
+
+// Diff returns the difference between their side and our side.
+func (v ValueDiff) Diff() Scrap {
+	return v.Their - v.Our
+}
+
+// IsProfitable returns true if they are paying equal or more than us.
+func (v ValueDiff) IsProfitable() bool {
+	return v.Their >= v.Our
+}
+
+// MissingRefined returns how much metal is missing in Refined format.
+func (v ValueDiff) MissingRefined() float64 {
+	if v.IsProfitable() {
+		return 0
+	}
+
+	diff := v.Our - v.Their
+
+	return float64(diff) / 9.0
+}
+
+// MissingString formats the missing amount (e.g., "0.55 ref" or "1 key, 2 ref").
+func (v ValueDiff) MissingString() string {
+	if v.IsProfitable() {
+		return "0 ref"
+	}
+
+	missingScrap := v.Our - v.Their
+
+	if v.KeyPrice > 0 && missingScrap >= v.KeyPrice {
+		keys := int(missingScrap / v.KeyPrice)
+		leftoverScrap := missingScrap % v.KeyPrice
+
+		if leftoverScrap == 0 {
+			return fmt.Sprintf("%d keys", keys)
+		}
+
+		return fmt.Sprintf("%d keys, %s", keys, FormatRefined(leftoverScrap))
+	}
+
+	return FormatRefined(missingScrap)
+}
