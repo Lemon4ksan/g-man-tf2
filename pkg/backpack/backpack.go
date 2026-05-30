@@ -227,12 +227,14 @@ func (m *Backpack) GetPureStock() currency.PureStock {
 			if !item.IsTradable {
 				untradableRef++
 			}
+
 		case schema.DefReclaimed:
 			totalRec++
 
 			if !item.IsTradable {
 				untradableRec++
 			}
+
 		case schema.DefScrap:
 			totalScrap++
 

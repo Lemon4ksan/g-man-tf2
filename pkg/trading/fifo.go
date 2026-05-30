@@ -7,6 +7,7 @@ package trading
 import (
 	"context"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/lemon4ksan/g-man/pkg/bus"
@@ -25,6 +26,7 @@ type FIFOSubscriber struct {
 	priceMgr *pricedb.Manager
 	bus      *bus.Bus
 	logger   log.Logger
+	wg       sync.WaitGroup
 }
 
 // NewFIFOSubscriber creates a new FIFOSubscriber instance.
@@ -47,7 +49,7 @@ func (s *FIFOSubscriber) Start(ctx context.Context) {
 	sub := s.bus.Subscribe(&web.OfferChangedEvent{})
 	s.logger.Info("FIFO subscriber started listening for trade events")
 
-	go func() {
+	s.wg.Go(func() {
 		defer sub.Unsubscribe()
 
 		for {
@@ -73,7 +75,12 @@ func (s *FIFOSubscriber) Start(ctx context.Context) {
 				}
 			}
 		}
-	}()
+	})
+}
+
+// Wait blocks until the subscriber's background goroutines have completed.
+func (s *FIFOSubscriber) Wait() {
+	s.wg.Wait()
 }
 
 // handleAcceptedOffer performs Intake and Outtake calculations on a completed trade offer.

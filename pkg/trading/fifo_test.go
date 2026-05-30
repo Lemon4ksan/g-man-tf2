@@ -51,6 +51,8 @@ func TestFIFOSubscriber_IntakeAndOuttake(t *testing.T) {
 	cbStore, err := jsonfile.NewCostBasisStore(filePath, logger)
 	require.NoError(t, err)
 
+	var sub *tf2trading.FIFOSubscriber
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	done := make(chan struct{})
@@ -62,6 +64,10 @@ func TestFIFOSubscriber_IntakeAndOuttake(t *testing.T) {
 	defer func() {
 		cancel()
 		<-done
+
+		if sub != nil {
+			sub.Wait()
+		}
 	}()
 
 	// Setup priceDB manager
@@ -87,7 +93,7 @@ func TestFIFOSubscriber_IntakeAndOuttake(t *testing.T) {
 	})
 
 	eventBus := bus.New()
-	sub := tf2trading.NewFIFOSubscriber(cbStore, priceMgr, eventBus, logger)
+	sub = tf2trading.NewFIFOSubscriber(cbStore, priceMgr, eventBus, logger)
 	sub.Start(ctx)
 
 	// Verify INTAKE (FIFO Push)
