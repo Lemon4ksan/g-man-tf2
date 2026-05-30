@@ -5,23 +5,24 @@
 package trading
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
 	"time"
 
 	"github.com/lemon4ksan/g-man/pkg/log"
+	"github.com/lemon4ksan/g-man/pkg/steam/id"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 	"github.com/lemon4ksan/g-man/pkg/trading/engine"
 	"github.com/lemon4ksan/g-man/pkg/trading/reason"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
-	"github.com/lemon4ksan/g-man-tf2/pkg/bptf"
 	"github.com/lemon4ksan/g-man-tf2/pkg/crafting"
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
-	"github.com/lemon4ksan/g-man-tf2/pkg/pricedb"
 	tf2reason "github.com/lemon4ksan/g-man-tf2/pkg/reason"
-	"github.com/lemon4ksan/g-man-tf2/pkg/rep"
+	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
+	"github.com/lemon4ksan/g-man-tf2/pkg/services/rep"
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 	"github.com/lemon4ksan/g-man-tf2/pkg/storage"
 )
@@ -91,12 +92,29 @@ func StockLimitMiddleware(bp *backpack.Backpack, cfg StockConfig, logger log.Log
 	}
 }
 
+// PriceProvider defines the interface for retrieving price database details.
+type PriceProvider interface {
+	GetPrice(sku string) (*pricedb.Price, bool)
+	Watch(sku string)
+	Fetch(ctx context.Context, skus []string) (map[string]*pricedb.Price, error)
+}
+
+// DupeChecker defines the interface for checking whether an item is duplicated.
+type DupeChecker interface {
+	CheckHistory(ctx context.Context, assetID uint64) (backpack.HistoryStatus, error)
+}
+
+// ReputationChecker defines the interface for checking trade partner reputation and ban lists.
+type ReputationChecker interface {
+	CheckBans(ctx context.Context, partnerID id.ID) (*rep.BanResult, error)
+}
+
 // PricerMiddleware enriches trade context with prices from PriceDB.
 // It acts as the primary price authority:
 // 1. Checks local cache for prices.
 // 2. If missing, requests them from the PriceDB microservice.
 // 3. Flags the trade for manual review if any item remains unpriced.
-func PricerMiddleware(mgr *pricedb.Manager, logger log.Logger) engine.Middleware {
+func PricerMiddleware(mgr PriceProvider, logger log.Logger) engine.Middleware {
 	return func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
 			skus := make(map[string]bool)
@@ -171,7 +189,7 @@ func EscrowMiddleware(checker trading.EscrowChecker, logger log.Logger) engine.M
 }
 
 // DupeCheckMiddleware checks the history of high-value items to identify duplicates.
-func DupeCheckMiddleware(checker *bptf.BackpackTFChecker, logger log.Logger) engine.Middleware {
+func DupeCheckMiddleware(checker DupeChecker, logger log.Logger) engine.Middleware {
 	return func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
 			// Only check history for items we RECEIVE
@@ -212,7 +230,7 @@ func DupeCheckMiddleware(checker *bptf.BackpackTFChecker, logger log.Logger) eng
 }
 
 // BanCheckMiddleware checks the trade partner against various ban lists.
-func BanCheckMiddleware(bans *rep.BansManager, logger log.Logger) engine.Middleware {
+func BanCheckMiddleware(bans ReputationChecker, logger log.Logger) engine.Middleware {
 	return func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
 			res, err := bans.CheckBans(ctx, ctx.Offer.OtherSteamID)

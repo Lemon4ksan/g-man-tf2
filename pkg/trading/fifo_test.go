@@ -22,8 +22,8 @@ import (
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
-	"github.com/lemon4ksan/g-man-tf2/pkg/pricedb"
 	tf2schema "github.com/lemon4ksan/g-man-tf2/pkg/schema"
+	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 	"github.com/lemon4ksan/g-man-tf2/pkg/storage"
 	"github.com/lemon4ksan/g-man-tf2/pkg/storage/jsonfile"
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"

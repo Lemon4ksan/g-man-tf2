@@ -20,7 +20,7 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/bus"
 	"github.com/lemon4ksan/g-man/pkg/log"
 
-	"github.com/lemon4ksan/g-man-tf2/pkg/pricedb"
+	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 )
 
 // BehaviorName is the unique name of the pricelist saver behavior.

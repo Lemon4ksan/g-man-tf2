@@ -12,7 +12,7 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/rest"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 
-	"github.com/lemon4ksan/g-man-tf2/pkg/bptf"
+	"github.com/lemon4ksan/g-man-tf2/pkg/services/bptf"
 )
 
 // BansManager handles checking users against various ban lists.

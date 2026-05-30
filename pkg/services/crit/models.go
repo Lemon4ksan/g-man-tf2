@@ -148,3 +148,31 @@ type InvitesResponse struct {
 	Count   int      `json:"count"`
 	Invites []Invite `json:"invites"`
 }
+
+// SSEEvent represents a single Server-Sent Event block.
+type SSEEvent struct {
+	Event string
+	Data  string
+}
+
+// TradeRequestItem represents a trade request item from SSE stream.
+type TradeRequestItem struct {
+	Kind    string `json:"kind"` // "sku" or "assetid"
+	SKU     string `json:"sku,omitempty"`
+	Amount  int    `json:"amount,omitempty"`
+	AssetID string `json:"assetid,omitempty"`
+}
+
+// TradeRequestPayload is the trade request event payload.
+type TradeRequestPayload struct {
+	TradeOfferURL  string             `json:"trade_offer_url"`
+	ItemsToGive    []TradeRequestItem `json:"items_to_give"`
+	ItemsToReceive []TradeRequestItem `json:"items_to_receive"`
+	ReservedAssets []string           `json:"reserved_assets"`
+}
+
+// TradeRequestEventEnvelope wraps the trade request payload.
+type TradeRequestEventEnvelope struct {
+	Kind         string               `json:"kind"`
+	TradeRequest *TradeRequestPayload `json:"trade_request,omitempty"`
+}

@@ -21,7 +21,7 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/steam/social/chat/commands"
 	"golang.org/x/time/rate"
 
-	"github.com/lemon4ksan/g-man-tf2/pkg/pricedb"
+	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 	"github.com/lemon4ksan/g-man-tf2/pkg/trading"
 )

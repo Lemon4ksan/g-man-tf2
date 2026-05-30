@@ -6,14 +6,18 @@
 package crit
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/lemon4ksan/g-man/pkg/rest"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 
-	"github.com/lemon4ksan/g-man-tf2/pkg/pricedb"
+	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 )
 
 // Config defines the configuration for the crit.tf API client.
@@ -199,4 +203,127 @@ func (c *Client) LeaveGroup(ctx context.Context, groupID int) error {
 	)
 
 	return err
+}
+
+// FetchAuthToken requests an SSE auth token from Crit.tf API.
+func (c *Client) FetchAuthToken(ctx context.Context) (string, error) {
+	resp, err := c.rest.Request(ctx, http.MethodGet, "/bot-api/auth-token", nil, nil)
+	if err != nil {
+		return "", fmt.Errorf("crit: auth token request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("crit: auth token request failed with status %d", resp.StatusCode)
+	}
+
+	var data struct {
+		OK     bool   `json:"ok"`
+		Token  string `json:"token"`
+		Reason string `json:"reason,omitempty"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return "", fmt.Errorf("crit: failed to decode auth token response: %w", err)
+	}
+
+	if !data.OK {
+		if data.Reason != "" {
+			return "", fmt.Errorf("crit: api error: %s", data.Reason)
+		}
+
+		return "", errors.New("crit: api error: unknown reason")
+	}
+
+	return data.Token, nil
+}
+
+// StreamEvents connects to the SSE endpoint and returns a channel of SSEEvent.
+func (c *Client) StreamEvents(ctx context.Context, streamURL, token string) (<-chan SSEEvent, error) {
+	reqURL := streamURL
+	if token != "" {
+		if strings.Contains(reqURL, "?") {
+			reqURL += "&token=" + token
+		} else {
+			reqURL += "?token=" + token
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("crit: failed to create stream request: %w", err)
+	}
+
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set("Connection", "keep-alive")
+	req.Header.Set("User-Agent", c.rest.UserAgent())
+
+	resp, err := c.rest.HTTP().
+		Do(req) //nolint:bodyclose
+	if err != nil {
+		return nil, fmt.Errorf("crit: stream request failed: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("crit: stream handshake failed with status %d", resp.StatusCode)
+	}
+
+	out := make(chan SSEEvent, 100)
+
+	go func() {
+		defer func() {
+			_ = resp.Body.Close()
+		}()
+		defer close(out)
+
+		scanner := bufio.NewScanner(resp.Body)
+
+		var currentEvent SSEEvent
+
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "" {
+				// Empty line indicates the end of an event block.
+				if currentEvent.Event != "" || currentEvent.Data != "" {
+					select {
+					case <-ctx.Done():
+						return
+					case out <- currentEvent:
+					}
+
+					currentEvent = SSEEvent{}
+				}
+
+				continue
+			}
+
+			if strings.HasPrefix(line, ":") {
+				// SSE comment, ignore
+				continue
+			}
+
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) < 2 {
+				continue
+			}
+
+			key := parts[0]
+			value := strings.TrimSpace(parts[1])
+
+			switch key {
+			case "event":
+				currentEvent.Event = value
+			case "data":
+				if currentEvent.Data != "" {
+					currentEvent.Data += "\n" + value
+				} else {
+					currentEvent.Data = value
+				}
+			}
+		}
+	}()
+
+	return out, nil
 }

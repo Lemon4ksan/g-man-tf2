@@ -18,7 +18,7 @@ import (
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
-	"github.com/lemon4ksan/g-man-tf2/pkg/pricedb"
+	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 )
 

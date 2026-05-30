@@ -29,7 +29,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/lemon4ksan/g-man-tf2/pkg/pricedb"
+	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 )
 
 // ModuleName is the name of the schema manager module.

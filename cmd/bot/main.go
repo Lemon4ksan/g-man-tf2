@@ -32,12 +32,14 @@ import (
 	webtrading "github.com/lemon4ksan/g-man/pkg/trading/web"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
+	"github.com/lemon4ksan/g-man-tf2/pkg/behavior/critlistener"
 	"github.com/lemon4ksan/g-man-tf2/pkg/behavior/stock"
-	"github.com/lemon4ksan/g-man-tf2/pkg/bptf"
 	"github.com/lemon4ksan/g-man-tf2/pkg/crafting"
-	"github.com/lemon4ksan/g-man-tf2/pkg/pricedb"
-	"github.com/lemon4ksan/g-man-tf2/pkg/rep"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
+	"github.com/lemon4ksan/g-man-tf2/pkg/services/bptf"
+	"github.com/lemon4ksan/g-man-tf2/pkg/services/crit"
+	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
+	"github.com/lemon4ksan/g-man-tf2/pkg/services/rep"
 	tf2jsonfile "github.com/lemon4ksan/g-man-tf2/pkg/storage/jsonfile"
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 	tf2trading "github.com/lemon4ksan/g-man-tf2/pkg/trading"
@@ -56,6 +58,10 @@ type Config struct {
 	BptfAPIKey    string
 	BptfUserToken string
 	MptfAPIKey    string
+
+	// Crit.tf integrations
+	CritAPIKey                 string
+	TradeRequestEventStreamURL string
 }
 
 // Bot encapsulates all core systems, storage, loggers, and coordinates the session lifecycle.
@@ -73,6 +79,7 @@ type Bot struct {
 	bptfChecker     *bptf.BackpackTFChecker
 	pdbManager      *pricedb.Manager
 	costBasis       *tf2jsonfile.CostBasisStore
+	critClient      *crit.Client
 }
 
 // NewBot creates and initializes a new bot instance using the provided configuration
@@ -90,6 +97,7 @@ func NewBot(cfg Config, store storage.Provider, logger log.Logger) (*Bot, error)
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 	bptfClient := bptf.New(httpClient, cfg.BptfAPIKey, cfg.BptfUserToken)
 	pdbClient := pricedb.NewClient(httpClient)
+	critClient := crit.NewClient(httpClient, cfg.CritAPIKey)
 
 	pdbManager := pricedb.NewManager(pdbClient, logger)
 	bansManager := rep.NewBansManager(bptfClient, cfg.MptfAPIKey)
@@ -132,6 +140,7 @@ func NewBot(cfg Config, store storage.Provider, logger log.Logger) (*Bot, error)
 		bptfChecker:     bptfChecker,
 		pdbManager:      pdbManager,
 		costBasis:       costBasis,
+		critClient:      critClient,
 	}
 
 	return bot, nil
@@ -257,6 +266,21 @@ func (b *Bot) setupOrchestrator() {
 		achievements.Simulate(tf2Mod, tf2.AchievementConfig()),
 	)
 
+	if b.cfg.CritAPIKey != "" {
+		b.orchestrator.Install(
+			critlistener.Listen(
+				b.critClient,
+				b.pdbManager,
+				bp,
+				b.tradeCfgManager,
+				webTradeManager,
+				b.cfg.TradeRequestEventStreamURL,
+			),
+		)
+	} else {
+		b.logger.Warn("Crit.tf API key is not configured, event stream listener behavior will not be started")
+	}
+
 	// 5. Setup the TF2 Trading Engine Middlewares
 	tradeEngine := engine.New()
 
@@ -329,15 +353,17 @@ func loadEnvConfig() (Config, error) {
 	}
 
 	return Config{
-		Username:       username,
-		Password:       password,
-		SharedSecret:   os.Getenv("STEAM_SHARED_SECRET"),
-		IdentitySecret: os.Getenv("STEAM_IDENTITY_SECRET"),
-		DeviceID:       os.Getenv("STEAM_DEVICE_ID"),
-		StoragePath:    storagePath,
-		BptfAPIKey:     os.Getenv("BPTF_API_KEY"),
-		BptfUserToken:  os.Getenv("BPTF_USER_TOKEN"),
-		MptfAPIKey:     os.Getenv("MPTF_API_KEY"),
+		Username:                   username,
+		Password:                   password,
+		SharedSecret:               os.Getenv("STEAM_SHARED_SECRET"),
+		IdentitySecret:             os.Getenv("STEAM_IDENTITY_SECRET"),
+		DeviceID:                   os.Getenv("STEAM_DEVICE_ID"),
+		StoragePath:                storagePath,
+		BptfAPIKey:                 os.Getenv("BPTF_API_KEY"),
+		BptfUserToken:              os.Getenv("BPTF_USER_TOKEN"),
+		MptfAPIKey:                 os.Getenv("MPTF_API_KEY"),
+		CritAPIKey:                 os.Getenv("CRIT_API_KEY"),
+		TradeRequestEventStreamURL: os.Getenv("TRADE_REQUEST_EVENT_STREAM_URL"),
 	}, nil
 }
 
