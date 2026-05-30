@@ -32,62 +32,62 @@ go get github.com/lemon4ksan/g-man-tf2@latest
 **G-MAN TF2** подключается к ядру клиента G-MAN в виде набора независимых модулей, регистрируемых через стандартные опции инициализации. Модуль слушает бинарные сетевые пакеты сокетов и публикует строго типизированные события в общую шину данных:
 
 ```mermaid
-flowchart TB
-    classDef steam fill:#1b2838,stroke:#66c0f4,stroke-width:2px,color:#fff;
-    classDef transport fill:#2a475e,stroke:#66c0f4,stroke-width:1px,color:#c7d5e0;
-    classDef core fill:#171a21,stroke:#cba6f7,stroke-width:2px,color:#cdd6f4;
-    classDef extension fill:#313244,stroke:#a6e3a1,stroke-width:2px,color:#cdd6f4;
-    classDef pipeline fill:#45475a,stroke:#f9e2af,stroke-width:1px,color:#f9e2af,stroke-dasharray: 5 5;
-    classDef action fill:#a6e3a1,stroke:#a6e3a1,stroke-width:2px,color:#11111b;
+flowchart LR
+    classDef steam fill:#111b24,stroke:#66c0f4,stroke-width:1.5px,color:#ffffff;
+    classDef core fill:#181524,stroke:#cba6f7,stroke-width:1.5px,color:#ffffff;
+    classDef extension fill:#141b17,stroke:#a6e3a1,stroke-width:1.5px,color:#ffffff;
+    classDef pipeline fill:#1c1a14,stroke:#f9e2af,stroke-width:1.5px,color:#ffffff;
+    classDef nodeStyle fill:#21262d,stroke:#30363d,stroke-width:1px,color:#ecf2f8;
 
-    subgraph SteamSystem [Steam Network]
-        SteamCloud((Steam Cloud))
+    subgraph SteamSystem [Сеть Steam]
+        SteamCloud((Облако Steam))
     end
     class SteamSystem steam;
+    class SteamCloud steam;
 
-    subgraph GManCore [G-MAN Core Client SDK]
-        direction TB
-        ConnManager[Socket CM Connection]
-        WebAPI[REST & WebAPI Client]
-        EventBus([Thread-Safe Event Bus])
-        TradeEngine[Onion Middleware Pipeline]
+    subgraph GManCore [Ядро G-MAN Client SDK]
+        ConnManager[Подключение Socket CM]
+        WebAPI[Клиент REST и WebAPI]
+        EventBus([Потокобезопасная шина событий])
+        TradeEngine[Конвейер Middleware Onion]
     end
-    class GManCore,ConnManager,WebAPI,EventBus,TradeEngine core;
+    class GManCore core;
+    class ConnManager,WebAPI,EventBus,TradeEngine nodeStyle;
 
-    subgraph TF2Extension [G-MAN TF2 Domain SDK]
-        direction TB
-        TF2Module[TF2 GC Session Module]
-        BPSyncer[SOCache & Backpack View]
-        SchemaMgr[High-Fidelity Schema Manager]
-        Pricer[PriceDB Socket.IO Syncer]
-        TF2Middlewares[TF2 Trading Middlewares]
+    subgraph TF2Extension [Доменный SDK TF2 G-MAN]
+        TF2Module[Модуль сессии TF2 GC]
+        BPSyncer[Кэш рюкзака SOCache]
+        SchemaMgr[Высокоточный менеджер схемы]
+        Pricer[Синхронизатор PriceDB Socket.IO]
     end
-    class TF2Extension,TF2Module,BPSyncer,SchemaMgr,Pricer,TF2Middlewares extension;
+    class TF2Extension extension;
+    class TF2Module,BPSyncer,SchemaMgr,Pricer nodeStyle;
 
-    subgraph MMiddlewares [TF2 Onion Pipeline]
-        direction LR
-        P1[Stock Limits] --> P2[Ban Filter] --> P3[Pricer Check] --> P4[Smelting & Counter]
+    subgraph MMiddlewares [Торговые Middleware TF2]
+        P1[Лимиты склада] --> P2[Фильтр банов] --> P3[Проверка цен] --> P4[Плавка и сдача]
     end
-    class MMiddlewares,P1,P2,P3,P4 pipeline;
+    class MMiddlewares pipeline;
+    class P1,P2,P3,P4 nodeStyle;
 
-    %% Data Flow Connections
-    SteamCloud <--> ConnManager & WebAPI
-    ConnManager & WebAPI <--> EventBus
-    
-    %% Registration
-    TF2Module -- "Register Module" --> GManCore
-    BPSyncer -- "Register Module" --> GManCore
-    SchemaMgr -- "Register Module" --> GManCore
-    
-    %% Communication
-    EventBus <--> TF2Module & BPSyncer & SchemaMgr
-    TF2Module -- "GC Packets" --> BPSyncer
-    
-    %% Trading Engine integration
-    TF2Middlewares -- "Plug Into" --> TradeEngine
-    TF2Middlewares -.-> MMiddlewares
-    
-    MMiddlewares -- "Verdict" --> SteamCloud
+    SteamCloud <--> ConnManager
+    SteamCloud <--> WebAPI
+
+    ConnManager --> EventBus
+    WebAPI --> EventBus
+    EventBus <--> TradeEngine
+
+    TF2Module -- "Регистрация" --> EventBus
+    BPSyncer -- "Регистрация" --> EventBus
+    SchemaMgr -- "Регистрация" --> EventBus
+    Pricer -- "Регистрация" --> EventBus
+
+    TF2Module -- "Пакеты GC" --> BPSyncer
+
+    TradeEngine -- "Запуск конвейера" --> P1
+    BPSyncer -.-> |Чтение склада| P1
+    Pricer -.-> |Чтение цен| P3
+
+    P4 -- "Отправка вердикта" --> SteamCloud
 ```
 
 ---
