@@ -62,6 +62,8 @@ type BackpackProvider interface {
 	GetStock(sku string) int
 	// GetItemsBySKU returns all local item IDs matching the specified SKU.
 	GetItemsBySKU(targetSKU string) []uint64
+	// GetPureStock calculates and returns the current tradable keys and metal balances.
+	GetPureStock() currency.PureStock
 }
 
 // ListingProvider defines the subset of backpack.tf listing manager methods.
@@ -473,6 +475,13 @@ func (s *ListingsSynchronizer) syncBptfBatch(ctx context.Context, skus []string)
 		deleteIDs   []string
 	)
 
+	keyPrice := 0.0
+	if kp, ok := s.priceMgr.GetPrice(currency.SKUKey); ok && kp.Sell.Metal > 0 {
+		keyPrice = kp.Sell.Metal
+	}
+
+	pureStock := s.bp.GetPureStock()
+
 	for _, skuStr := range skus {
 		price, ok := s.priceMgr.GetPrice(skuStr)
 		if !ok || price.Buy.Metal <= 0 || price.Sell.Metal <= 0 {
@@ -494,7 +503,12 @@ func (s *ListingsSynchronizer) syncBptfBatch(ctx context.Context, skus []string)
 		}
 
 		existingBuy := s.listings.FindListingBySKU(skuStr, "buy")
-		if enableBuy && stock < maxStock {
+		canAfford := true
+		if cfg.FilterCantAfford {
+			canAfford = s.canAfford(pureStock, price.Buy, keyPrice)
+		}
+
+		if enableBuy && stock < maxStock && canAfford {
 			resolvables = append(resolvables, bptf.ListingResolvable{
 				Item:   skuStr,
 				Intent: "buy",
@@ -547,6 +561,18 @@ func (s *ListingsSynchronizer) syncBptfBatch(ctx context.Context, skus []string)
 			}
 		}
 	}
+}
+
+func (s *ListingsSynchronizer) canAfford(pure currency.PureStock, buyPrice pricedb.Currencies, keyPrice float64) bool {
+	if keyPrice > 0 {
+		totalPureScrap := pure.TotalValueScrap(keyPrice)
+		buyPriceMetal := buyPrice.ToMetal(keyPrice)
+		buyPriceScrap := currency.ToScrap(buyPriceMetal)
+		return totalPureScrap >= buyPriceScrap
+	}
+
+	buyPriceMetalScrap := currency.ToScrap(buyPrice.Metal)
+	return pure.Keys >= buyPrice.Keys && pure.TotalScrap() >= buyPriceMetalScrap
 }
 
 func formatPrice(currencies pricedb.Currencies) string {

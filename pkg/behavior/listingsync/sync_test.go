@@ -25,6 +25,7 @@ import (
 type mockBackpackProvider struct {
 	stock map[string]int
 	items map[string][]uint64
+	pure  currency.PureStock
 }
 
 func (m *mockBackpackProvider) GetStock(sku string) int {
@@ -33,6 +34,10 @@ func (m *mockBackpackProvider) GetStock(sku string) int {
 
 func (m *mockBackpackProvider) GetItemsBySKU(targetSKU string) []uint64 {
 	return m.items[targetSKU]
+}
+
+func (m *mockBackpackProvider) GetPureStock() currency.PureStock {
+	return m.pure
 }
 
 type mockListingProvider struct {
@@ -343,5 +348,126 @@ func TestListingsSynchronizer_GenerateListingComment(t *testing.T) {
 		assert.Contains(t, commentSell, "Stock: 4/5")
 		assert.Contains(t, commentSell, "Crit Store: https://crit.tf/group/mock-store")
 		assert.Contains(t, commentSell, "Crit Item: https://crit.tf/group/mock-store/item/5021;6")
+	})
+}
+
+func TestListingsSynchronizer_FilterCantAfford(t *testing.T) {
+	t.Parallel()
+
+	logger := log.New(log.DefaultConfig(log.LevelError))
+
+	priceMgr := &mockPriceProvider{
+		prices: map[string]*pricedb.Price{
+			currency.SKUKey: {
+				SKU:  currency.SKUKey,
+				Buy:  pricedb.Currencies{Metal: 60.0},
+				Sell: pricedb.Currencies{Metal: 62.0},
+			},
+			"5002;6": {
+				SKU:  "5002;6",
+				Buy:  pricedb.Currencies{Metal: 1.0},
+				Sell: pricedb.Currencies{Metal: 1.0},
+			},
+			"some_item_sku": {
+				SKU:  "some_item_sku",
+				Buy:  pricedb.Currencies{Metal: 20.0},
+				Sell: pricedb.Currencies{Metal: 22.0},
+			},
+		},
+	}
+
+	cfg := Config{}
+
+	t.Run("when FilterCantAfford is enabled and bot lacks balance, does not publish and deletes existing buy listing", func(t *testing.T) {
+		bp := &mockBackpackProvider{
+			stock: map[string]int{
+				"some_item_sku": 0,
+			},
+			pure: currency.PureStock{
+				Keys:    0,
+				Refined: 5,
+			},
+		}
+
+		listingMgr := &mockListingProvider{
+			listings: []*bptf.ListingResponse{
+				{
+					ID:      "existing_buy_id",
+					Intent:  "buy",
+					Details: "some_item_sku",
+				},
+			},
+		}
+
+		cfgMgr := &mockConfigProvider{
+			cfg: trading.Config{
+				DefaultMaxStock:  5,
+				FilterCantAfford: true,
+			},
+		}
+
+		syncer := New(bp, listingMgr, priceMgr, cfgMgr, nil, bus.New(), logger, cfg)
+		syncer.syncBptfBatch(t.Context(), []string{"some_item_sku"})
+
+		assert.Empty(t, listingMgr.upserts)
+		assert.Contains(t, listingMgr.deletes, "existing_buy_id")
+	})
+
+	t.Run("when FilterCantAfford is enabled and bot has enough balance, publishes buy listing", func(t *testing.T) {
+		bp := &mockBackpackProvider{
+			stock: map[string]int{
+				"some_item_sku": 0,
+			},
+			pure: currency.PureStock{
+				Keys:    1,
+				Refined: 0,
+			},
+		}
+
+		listingMgr := &mockListingProvider{}
+
+		cfgMgr := &mockConfigProvider{
+			cfg: trading.Config{
+				DefaultMaxStock:  5,
+				FilterCantAfford: true,
+			},
+		}
+
+		syncer := New(bp, listingMgr, priceMgr, cfgMgr, nil, bus.New(), logger, cfg)
+		syncer.syncBptfBatch(t.Context(), []string{"some_item_sku"})
+
+		assert.Len(t, listingMgr.upserts, 1)
+		assert.Equal(t, "some_item_sku", listingMgr.upserts[0].Item)
+		assert.Equal(t, "buy", listingMgr.upserts[0].Intent)
+		assert.Empty(t, listingMgr.deletes)
+	})
+
+	t.Run("when FilterCantAfford is disabled and bot lacks balance, publishes buy listing anyway", func(t *testing.T) {
+		bp := &mockBackpackProvider{
+			stock: map[string]int{
+				"some_item_sku": 0,
+			},
+			pure: currency.PureStock{
+				Keys:    0,
+				Refined: 5,
+			},
+		}
+
+		listingMgr := &mockListingProvider{}
+
+		cfgMgr := &mockConfigProvider{
+			cfg: trading.Config{
+				DefaultMaxStock:  5,
+				FilterCantAfford: false,
+			},
+		}
+
+		syncer := New(bp, listingMgr, priceMgr, cfgMgr, nil, bus.New(), logger, cfg)
+		syncer.syncBptfBatch(t.Context(), []string{"some_item_sku"})
+
+		assert.Len(t, listingMgr.upserts, 1)
+		assert.Equal(t, "some_item_sku", listingMgr.upserts[0].Item)
+		assert.Equal(t, "buy", listingMgr.upserts[0].Intent)
+		assert.Empty(t, listingMgr.deletes)
 	})
 }

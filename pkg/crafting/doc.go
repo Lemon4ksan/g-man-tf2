@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 /*
-Package crafting provides automatic crafting, metal condensing, and coin-change operations for Team Fortress 2.
+Package crafting provides automatic crafting, metal condensing, and metal-change operations for Team Fortress 2.
 
 The package resolves issues related to inventory slot optimization and automatic trade change balance.
 It handles smelting duplicate weapons, combining scrap, and splitting higher-grade metal into change.
@@ -11,7 +11,7 @@ It handles smelting duplicate weapons, combining scrap, and splitting higher-gra
 Key Types:
   - [Manager] coordinates standard crafting recipes (blueprints) with the Game Coordinator.
   - [Automator] manages background maintenance of low-grade metal reserves and duplicate weapon smelting.
-  - [MetalManager] handles greedy currency selection and coin-change splitting for trade offers.
+  - [MetalManager] handles greedy currency selection and metal-change splitting for trade offers.
 
 Basic Example:
 

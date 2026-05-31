@@ -69,6 +69,8 @@ type Config struct {
 	Items map[string]ItemConfig `json:"items"`
 	// UseSeparateKeyRates forces the valuation of keys to use the sell price when giving keys, and the buy price when receiving keys.
 	UseSeparateKeyRates bool `json:"use_separate_key_rates"`
+	// FilterCantAfford, if true, automatically hides or does not publish buy listings on backpack.tf if the bot lacks sufficient pure currency to pay for them.
+	FilterCantAfford bool `json:"filter_cant_afford"`
 
 	// PPUHoldDuration defines how long a cost basis entry remains valid for price protection (e.g. "24h").
 	PPUHoldDuration string `json:"ppu_hold_duration"`
@@ -161,6 +163,7 @@ func (cm *ConfigManager) Load() error {
 			PPUMaxStockLimit:        1,
 			PPUMinProfitScrap:       1,
 			UseSeparateKeyRates:     false,
+			FilterCantAfford:        true,
 			PPUExcludeSKUs:          []string{},
 			PPURemoveMaxRestriction: false,
 			PPUMaxProtectedUnits:    -1,

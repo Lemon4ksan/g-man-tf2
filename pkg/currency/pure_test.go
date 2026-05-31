@@ -107,3 +107,44 @@ func TestPureStock_FormatStock_VariousBalances_FormatsCorrectly(t *testing.T) {
 		})
 	}
 }
+
+func TestPureStock_TotalValueScrap(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		stock        PureStock
+		keyPriceRef  float64
+		wantValScrap Scrap
+	}{
+		{
+			name:         "empty_stock",
+			stock:        PureStock{},
+			keyPriceRef:  60.0,
+			wantValScrap: 0,
+		},
+		{
+			name:         "zero_or_negative_key_price_ignores_keys",
+			stock:        PureStock{Keys: 5, Refined: 2},
+			keyPriceRef:  0.0,
+			wantValScrap: 18,
+		},
+		{
+			name:         "valid_conversion",
+			stock:        PureStock{Keys: 2, Refined: 10},
+			keyPriceRef:  60.0,
+			wantValScrap: 1170,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := tt.stock.TotalValueScrap(tt.keyPriceRef)
+			if got != tt.wantValScrap {
+				t.Errorf("TotalValueScrap() = %v, want %v", got, tt.wantValScrap)
+			}
+		})
+	}
+}

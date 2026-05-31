@@ -68,7 +68,7 @@ func (m *MetalManager) SelectMetal(ctx context.Context, needed currency.Scrap) (
 }
 
 // SelectChange collects an array of metal item IDs whose total value is exactly equal to the specified scrap value.
-// Returns [ErrNotEnoughChange] if exact coin-change combinations cannot be formed.
+// Returns [ErrNotEnoughChange] if exact metal-change combinations cannot be formed.
 func (m *MetalManager) SelectChange(amount currency.Scrap) ([]uint64, error) {
 	selected, remaining := m.greedySelect(int(amount))
 	if remaining > 0 {

@@ -23,7 +23,7 @@ const (
 	SKUScrap = "5000;6"
 )
 
-// PureStock represents the current liquid inventory of keys and metal coins.
+// PureStock represents the current liquid inventory of keys and metal.
 type PureStock struct {
 	// Keys represents the count of keys in stock.
 	Keys int
@@ -43,6 +43,18 @@ func (p PureStock) TotalScrap() Scrap {
 // TotalRefined calculates the total value of metal in refined floating-point format, excluding keys.
 func (p PureStock) TotalRefined() float64 {
 	return ToRefined(p.TotalScrap())
+}
+
+// TotalValueScrap calculates the total value of pure stock in [Scrap] units, converting keys using the provided key price in refined.
+func (p PureStock) TotalValueScrap(keyPriceRef float64) Scrap {
+	if keyPriceRef <= 0 {
+		return p.TotalScrap()
+	}
+
+	keyPriceScrap := ToScrap(keyPriceRef)
+	keysValueScrap := Scrap(p.Keys) * keyPriceScrap
+
+	return keysValueScrap + p.TotalScrap()
 }
 
 // FormatStock returns a human-readable string slice representation of the stock.
