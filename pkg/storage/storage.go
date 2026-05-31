@@ -9,21 +9,33 @@ import "time"
 
 // CostBasisEntry represents a single unit purchase cost basis log.
 type CostBasisEntry struct {
-	SKU        string    `json:"sku"`
-	BuyKeys    float64   `json:"buy_keys"`
-	BuyMetal   float64   `json:"buy_metal"` // In refined
-	Diff       int       `json:"diff"`      // Distributed overpay/underpay in Scrap
-	TradeID    string    `json:"trade_id"`
-	Timestamp  time.Time `json:"timestamp"`
-	IsEstimate bool      `json:"is_estimate"`
+	// SKU is the unique identifier for the SKU.
+	SKU string `json:"sku"`
+	// BuyKeys is the number of keys bought.
+	BuyKeys float64 `json:"buy_keys"`
+	// BuyMetal is the amount of metal bought, in refined units.
+	BuyMetal float64 `json:"buy_metal"`
+	// Diff is the distributed overpay/underpay in Scrap.
+	Diff int `json:"diff"`
+	// TradeID is the unique identifier for the trade.
+	TradeID string `json:"trade_id"`
+	// Timestamp is the time the cost basis entry was created.
+	Timestamp time.Time `json:"timestamp"`
+	// IsEstimate indicates whether the cost basis entry is an estimate.
+	IsEstimate bool `json:"is_estimate"`
 }
 
 // PPUState tracks the price protection unit details for a SKU.
 type PPUState struct {
-	SKU               string    `json:"sku"`
-	LastInStockTime   time.Time `json:"last_in_stock_time"`
-	LastSoldTime      time.Time `json:"last_sold_time"`
-	IsPartialPriced   bool      `json:"is_partial_priced"`
+	// SKU is the unique identifier for the SKU.
+	SKU string `json:"sku"`
+	// LastInStockTime is the time the SKU was last in stock.
+	LastInStockTime time.Time `json:"last_in_stock_time"`
+	// LastSoldTime is the time the SKU was last sold.
+	LastSoldTime time.Time `json:"last_sold_time"`
+	// IsPartialPriced indicates whether the SKU is partially priced.
+	IsPartialPriced bool `json:"is_partial_priced"`
+	// ProtectionStarted is the time the price protection started for the SKU.
 	ProtectionStarted time.Time `json:"protection_started"`
 }
 
@@ -49,4 +61,44 @@ type CostBasisStore interface {
 
 	// SetPPUState sets the PPU state for the given SKU.
 	SetPPUState(sku string, state PPUState)
+}
+
+// TradeProfitLog represents the financial ledger record of a completed trade.
+type TradeProfitLog struct {
+	// TradeID is the unique identifier for the trade.
+	TradeID string `json:"trade_id"`
+	// Timestamp is the time the trade was completed.
+	Timestamp time.Time `json:"timestamp"`
+	// NetKeys is the net change in key count (received - given).
+	NetKeys int `json:"net_keys"`
+	// NetMetalRef is the net change in refined metal count.
+	NetMetalRef float64 `json:"net_metal_ref"`
+	// FIFOProfitScrap is the realized FIFO profit/loss of regular items in Scrap.
+	FIFOProfitScrap int `json:"fifo_profit_scrap"`
+	// IsEstimate indicates whether FIFO estimation fallback was used.
+	IsEstimate bool `json:"is_estimate"`
+}
+
+// ProfitSummary holds aggregated keys and metal profit.
+type ProfitSummary struct {
+	// TotalTrades is the total number of trades summarized.
+	TotalTrades int `json:"total_trades"`
+	// NetKeys is the net change in key count (received - given).
+	NetKeys int `json:"net_keys"`
+	// NetMetalRef is the net change in refined metal count.
+	NetMetalRef float64 `json:"net_metal_ref"`
+	// FIFOProfitScrap is the realized FIFO profit/loss of regular items in Scrap.
+	FIFOProfitScrap int `json:"fifo_profit_scrap"`
+}
+
+// TradeProfitStore interface manages persisting and querying trade profit logs.
+type TradeProfitStore interface {
+	// Push appends a new trade profit log entry.
+	Push(entry TradeProfitLog) error
+	// GetProfitSummary calculates aggregated profit stats over a given duration.
+	GetProfitSummary(since time.Duration) (ProfitSummary, error)
+	// GetDailyProfit returns aggregated daily profit summaries for the last n days.
+	GetDailyProfit(days int) ([]ProfitSummary, error)
+	// Prune removes trade profit logs that are older than the given keep duration.
+	Prune(keepDuration time.Duration) error
 }

@@ -23,25 +23,28 @@ import (
 // FIFOSubscriber monitors accepted trade events on the bus to record cost basis and calculate transaction profits.
 // It registers with [bus.Bus] and writes records to the [storage.CostBasisStore].
 type FIFOSubscriber struct {
-	cbStore  storage.CostBasisStore
-	priceMgr *pricedb.Manager
-	bus      *bus.Bus
-	logger   log.Logger
-	wg       sync.WaitGroup
+	cbStore    storage.CostBasisStore
+	statsStore storage.TradeProfitStore // Can be nil
+	priceMgr   *pricedb.Manager
+	bus        *bus.Bus
+	logger     log.Logger
+	wg         sync.WaitGroup
 }
 
-// NewFIFOSubscriber constructs a new [FIFOSubscriber] linked to the specified store, manager, and event bus.
+// NewFIFOSubscriber constructs a new [FIFOSubscriber] linked to the specified store, statsStore, manager, and event bus.
 func NewFIFOSubscriber(
 	cbStore storage.CostBasisStore,
+	statsStore storage.TradeProfitStore,
 	priceMgr *pricedb.Manager,
 	eventBus *bus.Bus,
 	logger log.Logger,
 ) *FIFOSubscriber {
 	return &FIFOSubscriber{
-		cbStore:  cbStore,
-		priceMgr: priceMgr,
-		bus:      eventBus,
-		logger:   logger.With(log.String("module", "fifo_subscriber")),
+		cbStore:    cbStore,
+		statsStore: statsStore,
+		priceMgr:   priceMgr,
+		bus:        eventBus,
+		logger:     logger.With(log.String("module", "fifo_subscriber")),
 	}
 }
 
@@ -51,10 +54,7 @@ func (s *FIFOSubscriber) Start(ctx context.Context) {
 	sub := s.bus.Subscribe(&web.OfferChangedEvent{})
 	s.logger.Info("FIFO subscriber started listening for trade events")
 
-	s.wg.Add(1)
-
-	go func() {
-		defer s.wg.Done()
+	s.wg.Go(func() {
 		defer sub.Unsubscribe()
 
 		for {
@@ -80,7 +80,7 @@ func (s *FIFOSubscriber) Start(ctx context.Context) {
 				}
 			}
 		}
-	}()
+	})
 }
 
 // Wait blocks until the subscriber background goroutines have successfully terminated.
@@ -92,8 +92,26 @@ func (s *FIFOSubscriber) handleAcceptedOffer(offer *trading.TradeOffer) {
 	tradeIDStr := strconv.FormatUint(offer.ID, 10)
 	keyPriceScrap := s.getKeyPriceScrap()
 
-	var ourTotalScrap currency.Scrap
+	var (
+		ourTotalScrap currency.Scrap
+		netKeys       int
+		netMetalScrap currency.Scrap
+	)
+
 	for _, item := range offer.ItemsToGive {
+		if item.SKU == currency.SKUKey {
+			netKeys--
+		} else {
+			switch item.SKU {
+			case currency.SKURefined:
+				netMetalScrap -= 9
+			case currency.SKUReclaimed:
+				netMetalScrap -= 3
+			case currency.SKUScrap:
+				netMetalScrap -= 1
+			}
+		}
+
 		if val, isPure := getPureValueScrap(item.SKU, keyPriceScrap); isPure {
 			ourTotalScrap += val
 		} else {
@@ -115,6 +133,19 @@ func (s *FIFOSubscriber) handleAcceptedOffer(offer *trading.TradeOffer) {
 	)
 
 	for _, item := range offer.ItemsToReceive {
+		if item.SKU == currency.SKUKey {
+			netKeys++
+		} else {
+			switch item.SKU {
+			case currency.SKURefined:
+				netMetalScrap += 9
+			case currency.SKUReclaimed:
+				netMetalScrap += 3
+			case currency.SKUScrap:
+				netMetalScrap += 1
+			}
+		}
+
 		if val, isPure := getPureValueScrap(item.SKU, keyPriceScrap); isPure {
 			theirBaseValueScrap += val
 		} else {
@@ -163,6 +194,11 @@ func (s *FIFOSubscriber) handleAcceptedOffer(offer *trading.TradeOffer) {
 		)
 	}
 
+	var (
+		totalFIFOProfitScrap currency.Scrap
+		anyEstimateUsed      bool
+	)
+
 	for _, item := range offer.ItemsToGive {
 		if _, isPure := getPureValueScrap(item.SKU, keyPriceScrap); isPure {
 			continue
@@ -192,6 +228,11 @@ func (s *FIFOSubscriber) handleAcceptedOffer(offer *trading.TradeOffer) {
 		}
 
 		profitScrap := actualSellPriceScrap - netCostBasisScrap
+		totalFIFOProfitScrap += profitScrap
+
+		if isEstimate {
+			anyEstimateUsed = true
+		}
 
 		state, exists := s.cbStore.GetPPUState(item.SKU)
 		if !exists {
@@ -210,6 +251,27 @@ func (s *FIFOSubscriber) handleAcceptedOffer(offer *trading.TradeOffer) {
 			log.Float64("sell_price_ref", currency.ToRefined(actualSellPriceScrap)),
 			log.String("trade_id", tradeIDStr),
 		)
+	}
+
+	if s.statsStore != nil {
+		logEntry := storage.TradeProfitLog{
+			TradeID:         tradeIDStr,
+			Timestamp:       time.Now(),
+			NetKeys:         netKeys,
+			NetMetalRef:     float64(netMetalScrap) / 9.0,
+			FIFOProfitScrap: int(totalFIFOProfitScrap),
+			IsEstimate:      anyEstimateUsed,
+		}
+		if err := s.statsStore.Push(logEntry); err != nil {
+			s.logger.Error("Failed to record trade profit stats log", log.Err(err))
+		} else {
+			s.logger.Info("Recorded trade profit stats log",
+				log.String("trade_id", tradeIDStr),
+				log.Int("net_keys", netKeys),
+				log.Float64("net_metal_ref", float64(netMetalScrap)/9.0),
+				log.Int("fifo_profit_scrap", int(totalFIFOProfitScrap)),
+			)
+		}
 	}
 }
 
