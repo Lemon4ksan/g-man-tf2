@@ -261,6 +261,7 @@ func BanCheckMiddleware(bans ReputationChecker, logger log.Logger) engine.Middle
 // If overpaid, it appends change metal from local inventory using [crafting.MetalManager].
 // If underpaid, it scans partner inventory using [trading.PartnerInventoryProvider] to request missing change.
 func SmartCounterMiddleware(
+	cfgManager *ConfigManager,
 	metalMgr *crafting.MetalManager,
 	bp *backpack.Backpack,
 	invProvider trading.PartnerInventoryProvider,
@@ -276,7 +277,12 @@ func SmartCounterMiddleware(
 				return nil
 			}
 
-			diff, err := calculateValueDiff(ctx)
+			useSeparateKeyRates := false
+			if cfgManager != nil {
+				useSeparateKeyRates = cfgManager.GetConfig().UseSeparateKeyRates
+			}
+
+			diff, err := calculateValueDiff(ctx, useSeparateKeyRates)
 			if err != nil {
 				return nil //nolint:nilerr
 			}
@@ -580,7 +586,7 @@ func GetPricingSKU(skuStr string) string {
 // calculateValueDiff calculates the difference in value between what we receive and what we give.
 // Result > 0: We were overpaid (need change).
 // Result < 0: We were underpaid (we should reject or request more).
-func calculateValueDiff(ctx *engine.TradeContext) (currency.Scrap, error) {
+func calculateValueDiff(ctx *engine.TradeContext, useSeparateKeyRates bool) (currency.Scrap, error) {
 	pricesRaw, ok := ctx.Get("prices")
 	if !ok {
 		return 0, errors.New("prices not found in context")
@@ -588,17 +594,21 @@ func calculateValueDiff(ctx *engine.TradeContext) (currency.Scrap, error) {
 
 	priceMap := pricesRaw.(map[string]*pricedb.Price)
 
-	var keyPriceScrap currency.Scrap
+	var keyBuyPriceScrap, keySellPriceScrap currency.Scrap
 	if keyPrice, ok := priceMap[currency.SKUKey]; ok {
-		keyPriceScrap = currency.ToScrap(keyPrice.Buy.Metal)
+		keyBuyPriceScrap = currency.ToScrap(keyPrice.Buy.Metal)
+		keySellPriceScrap = currency.ToScrap(keyPrice.Sell.Metal)
 	}
 
-	if keyPriceScrap <= 0 {
-		ctx.Review(tf2reason.ReviewInvalidKeyPrice)
-		return 0, errors.New("invalid or missing key price in pricelist")
+	if keyBuyPriceScrap <= 0 {
+		keyBuyPriceScrap = currency.ToScrap(50.0)
 	}
 
-	ctx.Set("key_price_scrap", keyPriceScrap)
+	if keySellPriceScrap <= 0 {
+		keySellPriceScrap = currency.ToScrap(50.0)
+	}
+
+	ctx.Set("key_price_scrap", keyBuyPriceScrap)
 
 	var ourTotal, theirTotal currency.Scrap
 
@@ -611,7 +621,12 @@ func calculateValueDiff(ctx *engine.TradeContext) (currency.Scrap, error) {
 			return 0, fmt.Errorf("unpriced item in 'give' side: %s", item.SKU)
 		}
 
-		val := currency.Scrap(p.Sell.Keys)*keyPriceScrap + currency.ToScrap(p.Sell.Metal)
+		keyRate := keyBuyPriceScrap
+		if useSeparateKeyRates {
+			keyRate = keySellPriceScrap
+		}
+
+		val := currency.Scrap(p.Sell.Keys)*keyRate + currency.ToScrap(p.Sell.Metal)
 		ourTotal += val
 	}
 
@@ -624,11 +639,12 @@ func calculateValueDiff(ctx *engine.TradeContext) (currency.Scrap, error) {
 			return 0, fmt.Errorf("unpriced item in 'receive' side: %s", item.SKU)
 		}
 
-		val := currency.Scrap(p.Buy.Keys)*keyPriceScrap + currency.ToScrap(p.Buy.Metal)
+		keyRate := keyBuyPriceScrap
+		val := currency.Scrap(p.Buy.Keys)*keyRate + currency.ToScrap(p.Buy.Metal)
 		theirTotal += val
 	}
 
-	diff := currency.NewValueDiff(ourTotal, theirTotal, keyPriceScrap)
+	diff := currency.NewValueDiff(ourTotal, theirTotal, keyBuyPriceScrap)
 
 	ctx.Set("value_diff_scrap", diff.Diff())
 	ctx.Set("is_profitable", diff.IsProfitable())

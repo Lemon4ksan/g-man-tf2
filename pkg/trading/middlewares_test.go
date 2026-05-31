@@ -7,6 +7,7 @@ package trading
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"unsafe"
@@ -153,7 +154,7 @@ func TestSmartCounterMiddleware_CorrectValue_ExactMatch_AcceptsOffer(t *testing.
 	}
 	ctx.Set("prices", prices)
 
-	mw := SmartCounterMiddleware(metalMgr, bp, invProvider, log.Discard)
+	mw := SmartCounterMiddleware(nil, metalMgr, bp, invProvider, log.Discard)
 	handler := mw(func(c *engine.TradeContext) error {
 		return nil
 	})
@@ -217,7 +218,7 @@ func TestSmartCounterMiddleware_Overpaid_ChangeAvailable_BotWePayChange_Counters
 	fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{})
 	fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{11})
 
-	mw := SmartCounterMiddleware(metalMgr, bp, invProvider, log.Discard)
+	mw := SmartCounterMiddleware(nil, metalMgr, bp, invProvider, log.Discard)
 	handler := mw(func(c *engine.TradeContext) error {
 		return nil
 	})
@@ -291,7 +292,7 @@ func TestSmartCounterMiddleware_Overpaid_NotEnoughChange_SmeltSucceeds_RetriesOn
 		Return([]uint64{1, 2, 3}, nil)
 	mockCraft.On("GetMetalCount", uint32(5000)).Return(3).Once()
 
-	mw := SmartCounterMiddleware(metalMgr, bp, invProvider, log.Discard)
+	mw := SmartCounterMiddleware(nil, metalMgr, bp, invProvider, log.Discard)
 	handler := mw(func(c *engine.TradeContext) error {
 		return nil
 	})
@@ -343,7 +344,7 @@ func TestSmartCounterMiddleware_Overpaid_NotEnoughChange_SmeltFails_DeclinesOffe
 	fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{})
 	fetcher.On("GetPureStock").Return(currency.PureStock{})
 
-	mw := SmartCounterMiddleware(metalMgr, bp, invProvider, log.Discard)
+	mw := SmartCounterMiddleware(nil, metalMgr, bp, invProvider, log.Discard)
 	handler := mw(func(c *engine.TradeContext) error {
 		return nil
 	})
@@ -453,7 +454,7 @@ func TestSmartCounterMiddleware_Underpaid_PartnerHasCurrency_PartnerUnderpaid_Co
 	}
 	invProvider.On("GetPartnerInventory", mock.Anything, offer.OtherSteamID).Return(partnerItems, nil)
 
-	mw := SmartCounterMiddleware(metalMgr, bp, invProvider, log.Discard)
+	mw := SmartCounterMiddleware(nil, metalMgr, bp, invProvider, log.Discard)
 	handler := mw(func(c *engine.TradeContext) error {
 		return nil
 	})
@@ -507,7 +508,7 @@ func TestSmartCounterMiddleware_Underpaid_PartnerMissingCurrency_PartnerUnderpai
 	}
 	invProvider.On("GetPartnerInventory", mock.Anything, offer.OtherSteamID).Return(partnerItems, nil)
 
-	mw := SmartCounterMiddleware(metalMgr, bp, invProvider, log.Discard)
+	mw := SmartCounterMiddleware(nil, metalMgr, bp, invProvider, log.Discard)
 	handler := mw(func(c *engine.TradeContext) error {
 		return nil
 	})
@@ -855,4 +856,85 @@ func TestMiddlewares_FindPartnerCurrency_Backtracking(t *testing.T) {
 	res2, ok2 := FindPartnerCurrency(items2, 15, 0)
 	assert.True(t, ok2)
 	assert.Len(t, res2, 3)
+}
+
+func TestSmartCounterMiddleware_SeparateKeyRates(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "trading_config.json")
+	cfgManager, err := NewConfigManager(cfgPath)
+	assert.NoError(t, err)
+
+	fetcher := new(mockAssetFetcher)
+	metalMgr := crafting.NewMetalManager(fetcher, nil, log.Discard)
+	bp := backpack.New()
+	cache := &mockBackpackCache{}
+	setUnexportedField(bp, "cache", cache)
+
+	invProvider := new(mockPartnerInvProvider)
+
+	// Offer: bot gives 1 key-priced item, receives 1 key-priced item
+	offer := &trading.TradeOffer{
+		OtherSteamID: 76561198000000000,
+		ItemsToGive: []*trading.Item{
+			{SKU: "123;6", MarketHashName: "Some Key-priced Item"},
+		},
+		ItemsToReceive: []*trading.Item{
+			{SKU: "123;6", MarketHashName: "Some Key-priced Item"},
+		},
+	}
+
+	prices := map[string]*pricedb.Price{
+		"5021;6": { // Key Price
+			Buy:  pricedb.Currencies{Keys: 0, Metal: 60.0},
+			Sell: pricedb.Currencies{Keys: 0, Metal: 61.0},
+		},
+		"123;6": { // Key-priced Item
+			Buy:  pricedb.Currencies{Keys: 1, Metal: 0.0},
+			Sell: pricedb.Currencies{Keys: 1, Metal: 0.0},
+		},
+	}
+
+	t.Run("UseSeparateKeyRates is false - both keys valued equally", func(t *testing.T) {
+		cfg := cfgManager.GetConfig()
+		cfg.UseSeparateKeyRates = false
+		setUnexportedField(cfgManager, "cfg", cfg)
+
+		ctx := engine.NewTradeContext(t.Context(), offer)
+		ctx.Set("prices", prices)
+
+		mw := SmartCounterMiddleware(cfgManager, metalMgr, bp, invProvider, log.Discard)
+		handler := mw(func(c *engine.TradeContext) error {
+			return nil
+		})
+
+		err := handler(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, trading.ActionAccept, ctx.Verdict.Action)
+	})
+
+	t.Run("UseSeparateKeyRates is true - gives are valued at sell, receives at buy", func(t *testing.T) {
+		cfg := cfgManager.GetConfig()
+		cfg.UseSeparateKeyRates = true
+		setUnexportedField(cfgManager, "cfg", cfg)
+
+		ctx := engine.NewTradeContext(t.Context(), offer)
+		ctx.Set("prices", prices)
+
+		// Mock partner inventory fetch to return empty, so the bot cannot request change
+		invProvider.On("GetPartnerInventory", mock.Anything, offer.OtherSteamID).Return([]*trading.Item{}, nil).Once()
+
+		mw := SmartCounterMiddleware(cfgManager, metalMgr, bp, invProvider, log.Discard)
+		handler := mw(func(c *engine.TradeContext) error {
+			return nil
+		})
+
+		err := handler(ctx)
+		assert.NoError(t, err)
+		// The bot values what we give (sell price of key = 61 ref = 549 scrap) higher than what we receive (buy price of key = 60 ref = 540 scrap).
+		// Thus we are underpaid by 1 ref (9 scrap). Since the partner has no metal, we decline.
+		assert.Equal(t, trading.ActionDecline, ctx.Verdict.Action)
+		assert.Equal(t, tf2reason.DeclineUnderpaid, ctx.Verdict.Reason)
+	})
 }

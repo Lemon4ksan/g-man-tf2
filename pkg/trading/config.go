@@ -67,6 +67,8 @@ type Config struct {
 	PriceSwingLimits PriceSwingLimits `json:"price_swing_limits"`
 	// Items contains mapping from item SKUs to their respective trading configurations.
 	Items map[string]ItemConfig `json:"items"`
+	// UseSeparateKeyRates forces the valuation of keys to use the sell price when giving keys, and the buy price when receiving keys.
+	UseSeparateKeyRates bool `json:"use_separate_key_rates"`
 
 	// PPUHoldDuration defines how long a cost basis entry remains valid for price protection (e.g. "24h").
 	PPUHoldDuration string `json:"ppu_hold_duration"`
@@ -147,11 +149,12 @@ func (cm *ConfigManager) Load() error {
 			PriceSwingLimits: PriceSwingLimits{
 				MaxBuyIncrease: 0.10,
 			},
-			Items:             make(map[string]ItemConfig),
-			PPUHoldDuration:   "24h",
-			PPUGracePeriod:    "1h",
-			PPUMaxStockLimit:  1,
-			PPUMinProfitScrap: 1,
+			Items:               make(map[string]ItemConfig),
+			PPUHoldDuration:     "24h",
+			PPUGracePeriod:      "1h",
+			PPUMaxStockLimit:    1,
+			PPUMinProfitScrap:   1,
+			UseSeparateKeyRates: false,
 		}
 
 		if err := os.MkdirAll(filepath.Dir(cm.path), 0o755); err != nil {

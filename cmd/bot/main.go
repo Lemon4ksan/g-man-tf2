@@ -301,7 +301,7 @@ func (b *Bot) setupOrchestrator() {
 		tf2trading.PricerMiddleware(b.pdbManager, b.logger),
 		tf2trading.DupeCheckMiddleware(b.bptfChecker, b.logger),
 		tf2trading.StockLimitMiddleware(bp, stockCfg, b.logger),
-		tf2trading.SmartCounterMiddleware(metalManager, bp, webTradeManager, b.logger),
+		tf2trading.SmartCounterMiddleware(b.tradeCfgManager, metalManager, bp, webTradeManager, b.logger),
 	)
 
 	// 6. Connect the Engine to the Trade Manager
