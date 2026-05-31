@@ -24,6 +24,7 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/crafting"
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
 	tf2reason "github.com/lemon4ksan/g-man-tf2/pkg/reason"
+	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/rep"
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
@@ -654,7 +655,6 @@ func TestMiddlewares_Pricer(t *testing.T) {
 func TestMiddlewares_DupeCheck(t *testing.T) {
 	t.Parallel()
 
-	// 1. Success case: no Unusual items, bypasses dupe check
 	t.Run("No_Unusuals", func(t *testing.T) {
 		t.Parallel()
 
@@ -662,7 +662,7 @@ func TestMiddlewares_DupeCheck(t *testing.T) {
 		offer := &trading.TradeOffer{
 			ItemsToReceive: []*trading.Item{
 				{SKU: "5021;6", AssetID: 100},
-				{SKU: ""}, // empty SKU skipped
+				{SKU: ""},
 			},
 		}
 
@@ -676,7 +676,6 @@ func TestMiddlewares_DupeCheck(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
-	// 2. Checker error case: Unusual item check fails but continues gracefully
 	t.Run("Checker_Error", func(t *testing.T) {
 		t.Parallel()
 
@@ -702,7 +701,6 @@ func TestMiddlewares_DupeCheck(t *testing.T) {
 		assert.Equal(t, trading.ActionSkip, ctx.Verdict.Action)
 	})
 
-	// 3. Duped Unusual case: item history is recorded and duped
 	t.Run("Item_Duped", func(t *testing.T) {
 		t.Parallel()
 
@@ -732,7 +730,6 @@ func TestMiddlewares_DupeCheck(t *testing.T) {
 func TestMiddlewares_BanCheck(t *testing.T) {
 	t.Parallel()
 
-	// 1. Success case: partner not banned
 	t.Run("Not_Banned", func(t *testing.T) {
 		t.Parallel()
 
@@ -753,7 +750,6 @@ func TestMiddlewares_BanCheck(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
-	// 2. Checker error case: checks fail but continues gracefully
 	t.Run("Checker_Error", func(t *testing.T) {
 		t.Parallel()
 
@@ -774,7 +770,6 @@ func TestMiddlewares_BanCheck(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
-	// 3. SteamRep banned case: partner banned on steamrep
 	t.Run("SteamRep_Banned", func(t *testing.T) {
 		t.Parallel()
 
@@ -801,7 +796,6 @@ func TestMiddlewares_BanCheck(t *testing.T) {
 		assert.Equal(t, reason.DeclineBanned, ctx.Verdict.Reason)
 	})
 
-	// 4. Other banned case: partner banned on backpack.tf only
 	t.Run("BackpackTF_Banned", func(t *testing.T) {
 		t.Parallel()
 
@@ -840,14 +834,12 @@ func TestMiddlewares_IsUnusual(t *testing.T) {
 func TestMiddlewares_FindPartnerCurrency_Backtracking(t *testing.T) {
 	t.Parallel()
 
-	// 1. Mismatch case: cannot satisfy scrap debt with only refined (9 scrap) when needed is 5
 	items1 := []*trading.Item{
 		{MarketHashName: "Refined Metal"},
 	}
 	_, ok1 := FindPartnerCurrency(items1, 5, 0)
 	assert.False(t, ok1)
 
-	// 2. Match case: satisfy 15 scrap debt using 1 refined (9 scrap) and 2 reclaimed (6 scrap)
 	items2 := []*trading.Item{
 		{MarketHashName: "Refined Metal"},
 		{MarketHashName: "Reclaimed Metal"},
@@ -874,7 +866,6 @@ func TestSmartCounterMiddleware_SeparateKeyRates(t *testing.T) {
 
 	invProvider := new(mockPartnerInvProvider)
 
-	// Offer: bot gives 1 key-priced item, receives 1 key-priced item
 	offer := &trading.TradeOffer{
 		OtherSteamID: 76561198000000000,
 		ItemsToGive: []*trading.Item{
@@ -886,11 +877,11 @@ func TestSmartCounterMiddleware_SeparateKeyRates(t *testing.T) {
 	}
 
 	prices := map[string]*pricedb.Price{
-		"5021;6": { // Key Price
+		"5021;6": {
 			Buy:  pricedb.Currencies{Keys: 0, Metal: 60.0},
 			Sell: pricedb.Currencies{Keys: 0, Metal: 61.0},
 		},
-		"123;6": { // Key-priced Item
+		"123;6": {
 			Buy:  pricedb.Currencies{Keys: 1, Metal: 0.0},
 			Sell: pricedb.Currencies{Keys: 1, Metal: 0.0},
 		},
@@ -922,7 +913,6 @@ func TestSmartCounterMiddleware_SeparateKeyRates(t *testing.T) {
 		ctx := engine.NewTradeContext(t.Context(), offer)
 		ctx.Set("prices", prices)
 
-		// Mock partner inventory fetch to return empty, so the bot cannot request change
 		invProvider.On("GetPartnerInventory", mock.Anything, offer.OtherSteamID).Return([]*trading.Item{}, nil).Once()
 
 		mw := SmartCounterMiddleware(cfgManager, metalMgr, bp, invProvider, log.Discard)
@@ -932,9 +922,193 @@ func TestSmartCounterMiddleware_SeparateKeyRates(t *testing.T) {
 
 		err := handler(ctx)
 		assert.NoError(t, err)
-		// The bot values what we give (sell price of key = 61 ref = 549 scrap) higher than what we receive (buy price of key = 60 ref = 540 scrap).
-		// Thus we are underpaid by 1 ref (9 scrap). Since the partner has no metal, we decline.
 		assert.Equal(t, trading.ActionDecline, ctx.Verdict.Action)
 		assert.Equal(t, tf2reason.DeclineUnderpaid, ctx.Verdict.Reason)
 	})
+}
+
+type mockSpellPredictor struct {
+	mock.Mock
+}
+
+func (m *mockSpellPredictor) PredictSpellPrice(
+	ctx context.Context,
+	spells, item string,
+) (*pricedb.SpellPredictionResponse, error) {
+	args := m.Called(ctx, spells, item)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+
+	return args.Get(0).(*pricedb.SpellPredictionResponse), args.Error(1)
+}
+
+func TestHalloweenSpellMiddleware(t *testing.T) {
+	t.Parallel()
+
+	sh := schema.New(&schema.Raw{})
+
+	predictor := &mockSpellPredictor{}
+
+	offer := &trading.TradeOffer{
+		ItemsToGive: []*trading.Item{
+			{
+				SKU: "205;11",
+				Descriptions: []trading.Description{
+					{
+						Value: "Exorcism",
+						Color: "7ea9d1",
+					},
+				},
+			},
+		},
+		ItemsToReceive: []*trading.Item{
+			{
+				SKU: "205;6",
+				Descriptions: []trading.Description{
+					{
+						Value: "Voices from Below",
+						Color: "7ea9d1",
+					},
+				},
+			},
+		},
+	}
+
+	prices := map[string]*pricedb.Price{
+		"205;11": {
+			SKU:  "205;11",
+			Name: "Strange Rocket Launcher",
+			Buy:  pricedb.Currencies{Metal: 20.0},
+			Sell: pricedb.Currencies{Metal: 22.0},
+		},
+		"205;6": {
+			SKU:  "205;6",
+			Name: "Rocket Launcher",
+			Buy:  pricedb.Currencies{Metal: 1.0},
+			Sell: pricedb.Currencies{Metal: 1.1},
+		},
+	}
+
+	predGive := &pricedb.SpellPredictionResponse{
+		ItemName: "Strange Rocket Launcher",
+		Spells:   []string{"Exorcism"},
+	}
+	predGive.PremiumRanges = map[string]struct {
+		Ref       float64 `json:"ref"`
+		Formatted string  `json:"formatted"`
+	}{
+		"mid": {Ref: 5.0, Formatted: "5 ref"},
+	}
+
+	predRecv := &pricedb.SpellPredictionResponse{
+		ItemName: "Rocket Launcher",
+		Spells:   []string{"Voices from Below"},
+	}
+	predRecv.PremiumRanges = map[string]struct {
+		Ref       float64 `json:"ref"`
+		Formatted string  `json:"formatted"`
+	}{
+		"mid": {Ref: 8.0, Formatted: "8 ref"},
+	}
+
+	predictor.On("PredictSpellPrice", mock.Anything, "Exorcism", "Strange Rocket Launcher").Return(predGive, nil).Once()
+	predictor.On("PredictSpellPrice", mock.Anything, "Voices from Below", "Rocket Launcher").
+		Return(predRecv, nil).
+		Once()
+
+	ctx := engine.NewTradeContext(t.Context(), offer)
+	ctx.Set("prices", prices)
+
+	mockCfgProvider := func() Config {
+		return Config{
+			FallbackSpellPremiums: map[string]float64{
+				"Exorcism":          3.0,
+				"Voices from Below": 10.0,
+			},
+		}
+	}
+
+	mw := HalloweenSpellMiddleware(predictor, func() *schema.Schema { return sh }, mockCfgProvider, log.Discard)
+	handler := mw(func(c *engine.TradeContext) error {
+		return nil
+	})
+
+	err := handler(ctx)
+	assert.NoError(t, err)
+
+	ourVal, okOur := ctx.Get("our_spell_premium_scrap")
+	assert.True(t, okOur)
+	assert.Equal(t, currency.Scrap(45), ourVal.(currency.Scrap))
+
+	theirVal, okTheir := ctx.Get("their_spell_premium_scrap")
+	assert.True(t, okTheir)
+	assert.Equal(t, currency.Scrap(72), theirVal.(currency.Scrap))
+
+	diff, err := calculateValueDiff(ctx, false)
+	assert.NoError(t, err)
+
+	assert.Equal(t, currency.Scrap(-162), diff)
+
+	predictor.AssertExpectations(t)
+}
+
+func TestHalloweenSpellMiddleware_Fallback(t *testing.T) {
+	t.Parallel()
+
+	sh := schema.New(&schema.Raw{})
+	predictor := &mockSpellPredictor{}
+
+	offer := &trading.TradeOffer{
+		ItemsToGive: []*trading.Item{
+			{
+				SKU: "205;11",
+				Descriptions: []trading.Description{
+					{
+						Value: "Exorcism",
+						Color: "7ea9d1",
+					},
+				},
+			},
+		},
+	}
+
+	prices := map[string]*pricedb.Price{
+		"205;11": {
+			SKU:  "205;11",
+			Name: "Strange Rocket Launcher",
+			Buy:  pricedb.Currencies{Metal: 20.0},
+			Sell: pricedb.Currencies{Metal: 22.0},
+		},
+	}
+
+	// PredictSpellPrice fails, triggering fallback
+	predictor.On("PredictSpellPrice", mock.Anything, "Exorcism", "Strange Rocket Launcher").
+		Return(nil, errors.New("pricedb down")).Once()
+
+	ctx := engine.NewTradeContext(t.Context(), offer)
+	ctx.Set("prices", prices)
+
+	mockCfgProvider := func() Config {
+		return Config{
+			FallbackSpellPremiums: map[string]float64{
+				"Exorcism": 4.0, // 4.0 ref fallback
+			},
+		}
+	}
+
+	mw := HalloweenSpellMiddleware(predictor, func() *schema.Schema { return sh }, mockCfgProvider, log.Discard)
+	handler := mw(func(c *engine.TradeContext) error {
+		return nil
+	})
+
+	err := handler(ctx)
+	assert.NoError(t, err)
+
+	ourVal, okOur := ctx.Get("our_spell_premium_scrap")
+	assert.True(t, okOur)
+	// Exorcism has 4.0 ref premium = 36 scrap
+	assert.Equal(t, currency.Scrap(36), ourVal.(currency.Scrap))
+
+	predictor.AssertExpectations(t)
 }

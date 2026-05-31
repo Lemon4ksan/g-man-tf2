@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/lemon4ksan/g-man/pkg/log"
@@ -22,6 +23,7 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/crafting"
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
 	tf2reason "github.com/lemon4ksan/g-man-tf2/pkg/reason"
+	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/rep"
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
@@ -256,6 +258,182 @@ func BanCheckMiddleware(bans ReputationChecker, logger log.Logger) engine.Middle
 			return next(ctx)
 		}
 	}
+}
+
+// SpellPredictor defines the subset of pricedb methods needed for Halloween spell price predictions.
+type SpellPredictor interface {
+	PredictSpellPrice(ctx context.Context, spells, item string) (*pricedb.SpellPredictionResponse, error)
+}
+
+// HalloweenSpellMiddleware computes spell price premiums on spelled weapons and injects them into the trade value.
+func HalloweenSpellMiddleware(
+	predictor SpellPredictor,
+	schemaProvider func() *schema.Schema,
+	configProvider func() Config,
+	logger log.Logger,
+) engine.Middleware {
+	return func(next engine.Handler) engine.Handler {
+		return func(ctx *engine.TradeContext) error {
+			pricesRaw, ok := ctx.Get("prices")
+			if !ok {
+				return next(ctx)
+			}
+
+			priceMap, ok := pricesRaw.(map[string]*pricedb.Price)
+			if !ok {
+				return next(ctx)
+			}
+
+			ourSpellPremium, _ := computePremium(
+				ctx,
+				ctx.Offer.ItemsToGive,
+				priceMap,
+				schemaProvider,
+				configProvider,
+				logger,
+				predictor,
+			)
+			theirSpellPremium, _ := computePremium(
+				ctx,
+				ctx.Offer.ItemsToReceive,
+				priceMap,
+				schemaProvider,
+				configProvider,
+				logger,
+				predictor,
+			)
+
+			ctx.Set("our_spell_premium_scrap", ourSpellPremium)
+			ctx.Set("their_spell_premium_scrap", theirSpellPremium)
+
+			return next(ctx)
+		}
+	}
+}
+
+func computePremium(
+	ctx context.Context,
+	items []*trading.Item,
+	priceMap map[string]*pricedb.Price,
+	schemaProvider func() *schema.Schema,
+	configProvider func() Config,
+	logger log.Logger,
+	predictor SpellPredictor,
+) (currency.Scrap, error) {
+	var totalPremium currency.Scrap
+	for _, item := range items {
+		pricingSKU := GetPricingSKU(item.SKU)
+
+		p, hasPrice := priceMap[pricingSKU]
+		if !hasPrice {
+			continue
+		}
+
+		var spells []sku.Spell
+		for _, desc := range item.Descriptions {
+			if strings.EqualFold(desc.Color, "7ea9d1") {
+				if spell, ok := schema.IdentifySpell(desc.Value); ok {
+					spells = append(spells, spell)
+				}
+			}
+		}
+
+		if len(spells) == 0 {
+			continue
+		}
+
+		sh := schemaProvider()
+		if sh == nil {
+			logger.Warn("Schema is not ready, skipping spell premium calculation for item", log.String("sku", item.SKU))
+			continue
+		}
+
+		var spellNames []string
+		for _, s := range spells {
+			name := sh.SpellNameFromSKU(s)
+			if name != "" && !strings.Contains(name, "Unknown Spell") {
+				spellNames = append(spellNames, name)
+			}
+		}
+
+		if len(spellNames) == 0 {
+			continue
+		}
+
+		spellsQuery := strings.Join(spellNames, ",")
+		logger.Debug("Predicting spell premium for item", log.String("item", p.Name), log.String("spells", spellsQuery))
+
+		var (
+			premiumRef      float64
+			resolvedFromAPI bool
+		)
+
+		prediction, err := predictor.PredictSpellPrice(ctx, spellsQuery, p.Name)
+		if err == nil && prediction != nil {
+			if premium, ok := prediction.PremiumRanges["mid"]; ok {
+				premiumRef = premium.Ref
+				resolvedFromAPI = true
+			}
+		}
+
+		if !resolvedFromAPI {
+			logger.Warn("pricedb prediction failed or empty, falling back to static spell premiums",
+				log.String("item", p.Name),
+				log.String("spells", spellsQuery),
+				log.Err(err),
+			)
+
+			cfg := configProvider()
+
+			var staticTotal float64
+			for _, sName := range spellNames {
+				var (
+					matchedVal float64
+					found      bool
+				)
+
+				for k, v := range cfg.FallbackSpellPremiums {
+					if strings.EqualFold(k, sName) || strings.EqualFold(strings.TrimPrefix(k, "Halloween: "), sName) {
+						matchedVal = v
+						found = true
+						break
+					}
+				}
+
+				if !found {
+					matchedVal = 2.0 // 2 ref default fallback
+
+					logger.Warn(
+						"No custom fallback price configured for spell, using default 2.0 ref",
+						log.String("spell", sName),
+					)
+				}
+
+				staticTotal += matchedVal
+			}
+
+			premiumRef = staticTotal
+		}
+
+		premiumScrap := currency.ToScrap(premiumRef)
+		totalPremium += premiumScrap
+
+		if resolvedFromAPI {
+			logger.Info("Applied spell premium for item (API)",
+				log.String("item", p.Name),
+				log.String("spells", spellsQuery),
+				log.Float64("premium_ref", premiumRef),
+			)
+		} else {
+			logger.Info("Applied spell premium for item (Fallback)",
+				log.String("item", p.Name),
+				log.String("spells", spellsQuery),
+				log.Float64("premium_ref", premiumRef),
+			)
+		}
+	}
+
+	return totalPremium, nil
 }
 
 // SmartCounterMiddleware calculates transaction value balances and automatically adjusts mismatches.
@@ -642,6 +820,18 @@ func calculateValueDiff(ctx *engine.TradeContext, useSeparateKeyRates bool) (cur
 	ctx.Set("key_price_scrap", keyBuyPriceScrap)
 
 	var ourTotal, theirTotal currency.Scrap
+
+	var ourSpellPremium, theirSpellPremium currency.Scrap
+	if val, ok := ctx.Get("our_spell_premium_scrap"); ok {
+		ourSpellPremium = val.(currency.Scrap)
+	}
+
+	if val, ok := ctx.Get("their_spell_premium_scrap"); ok {
+		theirSpellPremium = val.(currency.Scrap)
+	}
+
+	ourTotal += ourSpellPremium
+	theirTotal += theirSpellPremium
 
 	for _, item := range ctx.Offer.ItemsToGive {
 		pricingSKU := GetPricingSKU(item.SKU)

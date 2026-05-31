@@ -78,6 +78,7 @@ type Bot struct {
 	bansManager     *rep.BansManager
 	bptfChecker     *bptf.BackpackTFChecker
 	pdbManager      *pricedb.Manager
+	pdbClient       *pricedb.Client
 	costBasis       *tf2jsonfile.CostBasisStore
 	critClient      *crit.Client
 }
@@ -139,6 +140,7 @@ func NewBot(cfg Config, store storage.Provider, logger log.Logger) (*Bot, error)
 		bansManager:     bansManager,
 		bptfChecker:     bptfChecker,
 		pdbManager:      pdbManager,
+		pdbClient:       pdbClient,
 		costBasis:       costBasis,
 		critClient:      critClient,
 	}
@@ -299,6 +301,15 @@ func (b *Bot) setupOrchestrator() {
 		tf2trading.EscrowMiddleware(webTradeManager, b.logger),
 		tf2trading.BanCheckMiddleware(b.bansManager, b.logger),
 		tf2trading.PricerMiddleware(b.pdbManager, b.logger),
+		tf2trading.HalloweenSpellMiddleware(b.pdbClient, func() *schema.Schema {
+			if m := schema.From(b.client); m != nil {
+				return m.Get()
+			}
+
+			return nil
+		}, func() tf2trading.Config {
+			return b.tradeCfgManager.GetConfig()
+		}, b.logger),
 		tf2trading.DupeCheckMiddleware(b.bptfChecker, b.logger),
 		tf2trading.StockLimitMiddleware(bp, stockCfg, b.logger),
 		tf2trading.SmartCounterMiddleware(b.tradeCfgManager, metalManager, bp, webTradeManager, b.logger),

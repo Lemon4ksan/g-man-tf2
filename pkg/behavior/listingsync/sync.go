@@ -64,6 +64,8 @@ type BackpackProvider interface {
 	GetItemsBySKU(targetSKU string) []uint64
 	// GetPureStock calculates and returns the current tradable keys and metal balances.
 	GetPureStock() currency.PureStock
+	// GetItem retrieves a cached item by its ID.
+	GetItem(id uint64) (*tf2.Item, bool)
 }
 
 // ListingProvider defines the subset of backpack.tf listing manager methods.
@@ -388,6 +390,20 @@ func (s *ListingsSynchronizer) syncCritBatch(ctx context.Context, skus []string)
 
 		physicalIDs := s.bp.GetItemsBySKU(skuStr)
 
+		// Filter out spelled items from available sellable inventory
+		var nonSpelledIDs []uint64
+		for _, id := range physicalIDs {
+			if it, ok := s.bp.GetItem(id); ok {
+				if len(it.Spells) > 0 {
+					continue
+				}
+			}
+
+			nonSpelledIDs = append(nonSpelledIDs, id)
+		}
+
+		physicalIDs = nonSpelledIDs
+
 		minStock := 0
 
 		enableSell := true
@@ -488,7 +504,19 @@ func (s *ListingsSynchronizer) syncBptfBatch(ctx context.Context, skus []string)
 			continue
 		}
 
-		stock := s.bp.GetStock(skuStr)
+		// Count only non-spelled items to prevent generic underpriced listing
+		physicalIDs := s.bp.GetItemsBySKU(skuStr)
+
+		stock := 0
+		for _, id := range physicalIDs {
+			if it, ok := s.bp.GetItem(id); ok {
+				if len(it.Spells) > 0 {
+					continue
+				}
+			}
+
+			stock++
+		}
 
 		maxStock := cfg.DefaultMaxStock
 		minStock := 0
@@ -503,6 +531,7 @@ func (s *ListingsSynchronizer) syncBptfBatch(ctx context.Context, skus []string)
 		}
 
 		existingBuy := s.listings.FindListingBySKU(skuStr, "buy")
+
 		canAfford := true
 		if cfg.FilterCantAfford {
 			canAfford = s.canAfford(pureStock, price.Buy, keyPrice)
@@ -568,10 +597,12 @@ func (s *ListingsSynchronizer) canAfford(pure currency.PureStock, buyPrice price
 		totalPureScrap := pure.TotalValueScrap(keyPrice)
 		buyPriceMetal := buyPrice.ToMetal(keyPrice)
 		buyPriceScrap := currency.ToScrap(buyPriceMetal)
+
 		return totalPureScrap >= buyPriceScrap
 	}
 
 	buyPriceMetalScrap := currency.ToScrap(buyPrice.Metal)
+
 	return pure.Keys >= buyPrice.Keys && pure.TotalScrap() >= buyPriceMetalScrap
 }
 
@@ -587,6 +618,7 @@ func formatPrice(currencies pricedb.Currencies) string {
 		}
 
 		return fmt.Sprintf("%d %s, %g ref", keys, keyStr, metal)
+
 	case keys > 0:
 		keyStr := "key"
 		if keys > 1 {
@@ -594,6 +626,7 @@ func formatPrice(currencies pricedb.Currencies) string {
 		}
 
 		return fmt.Sprintf("%d %s", keys, keyStr)
+
 	default:
 		return fmt.Sprintf("%g ref", metal)
 	}

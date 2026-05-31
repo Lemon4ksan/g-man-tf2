@@ -19,13 +19,15 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/bptf"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/crit"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
+	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 	"github.com/lemon4ksan/g-man-tf2/pkg/trading"
 )
 
 type mockBackpackProvider struct {
-	stock map[string]int
-	items map[string][]uint64
-	pure  currency.PureStock
+	stock       map[string]int
+	items       map[string][]uint64
+	pure        currency.PureStock
+	itemDetails map[uint64]*tf2.Item
 }
 
 func (m *mockBackpackProvider) GetStock(sku string) int {
@@ -38,6 +40,16 @@ func (m *mockBackpackProvider) GetItemsBySKU(targetSKU string) []uint64 {
 
 func (m *mockBackpackProvider) GetPureStock() currency.PureStock {
 	return m.pure
+}
+
+func (m *mockBackpackProvider) GetItem(id uint64) (*tf2.Item, bool) {
+	if m.itemDetails == nil {
+		return nil, false
+	}
+
+	it, ok := m.itemDetails[id]
+
+	return it, ok
 }
 
 type mockListingProvider struct {
@@ -378,40 +390,43 @@ func TestListingsSynchronizer_FilterCantAfford(t *testing.T) {
 
 	cfg := Config{}
 
-	t.Run("when FilterCantAfford is enabled and bot lacks balance, does not publish and deletes existing buy listing", func(t *testing.T) {
-		bp := &mockBackpackProvider{
-			stock: map[string]int{
-				"some_item_sku": 0,
-			},
-			pure: currency.PureStock{
-				Keys:    0,
-				Refined: 5,
-			},
-		}
-
-		listingMgr := &mockListingProvider{
-			listings: []*bptf.ListingResponse{
-				{
-					ID:      "existing_buy_id",
-					Intent:  "buy",
-					Details: "some_item_sku",
+	t.Run(
+		"when FilterCantAfford is enabled and bot lacks balance, does not publish and deletes existing buy listing",
+		func(t *testing.T) {
+			bp := &mockBackpackProvider{
+				stock: map[string]int{
+					"some_item_sku": 0,
 				},
-			},
-		}
+				pure: currency.PureStock{
+					Keys:    0,
+					Refined: 5,
+				},
+			}
 
-		cfgMgr := &mockConfigProvider{
-			cfg: trading.Config{
-				DefaultMaxStock:  5,
-				FilterCantAfford: true,
-			},
-		}
+			listingMgr := &mockListingProvider{
+				listings: []*bptf.ListingResponse{
+					{
+						ID:      "existing_buy_id",
+						Intent:  "buy",
+						Details: "some_item_sku",
+					},
+				},
+			}
 
-		syncer := New(bp, listingMgr, priceMgr, cfgMgr, nil, bus.New(), logger, cfg)
-		syncer.syncBptfBatch(t.Context(), []string{"some_item_sku"})
+			cfgMgr := &mockConfigProvider{
+				cfg: trading.Config{
+					DefaultMaxStock:  5,
+					FilterCantAfford: true,
+				},
+			}
 
-		assert.Empty(t, listingMgr.upserts)
-		assert.Contains(t, listingMgr.deletes, "existing_buy_id")
-	})
+			syncer := New(bp, listingMgr, priceMgr, cfgMgr, nil, bus.New(), logger, cfg)
+			syncer.syncBptfBatch(t.Context(), []string{"some_item_sku"})
+
+			assert.Empty(t, listingMgr.upserts)
+			assert.Contains(t, listingMgr.deletes, "existing_buy_id")
+		},
+	)
 
 	t.Run("when FilterCantAfford is enabled and bot has enough balance, publishes buy listing", func(t *testing.T) {
 		bp := &mockBackpackProvider{

@@ -184,3 +184,72 @@ func TestClient_Compare(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 10.5, res.Comparison.BuyDifference.Metal)
 }
+
+func TestClient_GetHealth(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode("API is healthy")
+	}))
+	defer server.Close()
+
+	client := NewClient(nil)
+	client.restClient = client.restClient.WithBaseURL(server.URL)
+
+	res, err := client.GetHealth(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "API is healthy", res)
+}
+
+func TestClient_ListEffects(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/effect/list", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+
+		resp := struct {
+			Success bool          `json:"success"`
+			Data    []*EffectInfo `json:"data"`
+		}{
+			Success: true,
+			Data: []*EffectInfo{
+				{ID: 13, Name: "Community Sparkle"},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := NewClient(nil)
+	client.skuClient = client.skuClient.WithBaseURL(server.URL)
+
+	effects, err := client.ListEffects(context.Background())
+	require.NoError(t, err)
+	assert.Len(t, effects, 1)
+	assert.Equal(t, 13, effects[0].ID)
+	assert.Equal(t, "Community Sparkle", effects[0].Name)
+}
+
+func TestClient_PredictSpellPrice(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/spell/predict", r.URL.Path)
+		assert.Equal(t, "Exorcism", r.URL.Query().Get("spells"))
+		assert.Equal(t, "Strange Rocket Launcher", r.URL.Query().Get("item"))
+
+		w.Header().Set("Content-Type", "application/json")
+
+		resp := SpellPredictionResponse{
+			ItemName: "Strange Rocket Launcher",
+			Spells:   []string{"Exorcism"},
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := NewClient(nil)
+	client.spellClient = client.spellClient.WithBaseURL(server.URL)
+
+	pred, err := client.PredictSpellPrice(context.Background(), "Exorcism", "Strange Rocket Launcher")
+	require.NoError(t, err)
+	assert.Equal(t, "Strange Rocket Launcher", pred.ItemName)
+	assert.Equal(t, []string{"Exorcism"}, pred.Spells)
+}

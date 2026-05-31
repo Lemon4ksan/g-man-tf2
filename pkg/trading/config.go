@@ -88,6 +88,8 @@ type Config struct {
 	PPUMaxProtectedUnits int `json:"ppu_max_protected_units"`
 	// CritCommandDescriptions overrides default command description strings in the chat interface.
 	CritCommandDescriptions map[string]string `json:"crit_command_descriptions,omitempty"`
+	// FallbackSpellPremiums maps spell names to their fallback premiums in refined metal (ref).
+	FallbackSpellPremiums map[string]float64 `json:"fallback_spell_premiums,omitempty"`
 }
 
 // GetPPUHoldDuration parses the [Config.PPUHoldDuration] string and returns a [time.Duration].
@@ -167,6 +169,28 @@ func (cm *ConfigManager) Load() error {
 			PPUExcludeSKUs:          []string{},
 			PPURemoveMaxRestriction: false,
 			PPUMaxProtectedUnits:    -1,
+			FallbackSpellPremiums: map[string]float64{
+				"Exorcism":                  3.0,
+				"Voices from Below":         5.0,
+				"Pumpkin Bombs":             10.0,
+				"Gourd Grenades":            10.0,
+				"Squash Rockets":            10.0,
+				"Sentry Quad-Pumpkins":      10.0,
+				"Halloween Fire":            15.0,
+				"Spectral Flame":            15.0,
+				"Die Job":                   10.0,
+				"Chromatic Corruption":      10.0,
+				"Putrescent Pigmentation":   10.0,
+				"Spectral Spectrum":         10.0,
+				"Sinister Staining":         10.0,
+				"Team Spirit Footprints":    40.0,
+				"Headless Horseshoes":       40.0,
+				"Gangreen Footprints":       40.0,
+				"Corpse Gray Footprints":    40.0,
+				"Violent Violet Footprints": 40.0,
+				"Rotten Orange Footprints":  40.0,
+				"Bruised Purple Footprints": 40.0,
+			},
 		}
 
 		if err := os.MkdirAll(filepath.Dir(cm.path), 0o755); err != nil {

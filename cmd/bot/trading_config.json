@@ -52,5 +52,27 @@
   "ppu_min_profit_scrap": 1,
   "ppu_exclude_skus": [],
   "ppu_remove_max_restriction": false,
-  "ppu_max_protected_units": -1
+  "ppu_max_protected_units": -1,
+  "fallback_spell_premiums": {
+    "Exorcism": 3.0,
+    "Voices from Below": 5.0,
+    "Pumpkin Bombs": 10.0,
+    "Gourd Grenades": 10.0,
+    "Squash Rockets": 10.0,
+    "Sentry Quad-Pumpkins": 10.0,
+    "Halloween Fire": 15.0,
+    "Spectral Flame": 15.0,
+    "Die Job": 10.0,
+    "Chromatic Corruption": 10.0,
+    "Putrescent Pigmentation": 10.0,
+    "Spectral Spectrum": 10.0,
+    "Sinister Staining": 10.0,
+    "Team Spirit Footprints": 40.0,
+    "Headless Horseshoes": 40.0,
+    "Gangreen Footprints": 40.0,
+    "Corpse Gray Footprints": 40.0,
+    "Violent Violet Footprints": 40.0,
+    "Rotten Orange Footprints": 40.0,
+    "Bruised Purple Footprints": 40.0
+  }
 }
