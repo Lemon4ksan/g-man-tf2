@@ -338,3 +338,163 @@ func TestFIFOSubscriber_StatsIntegration(t *testing.T) {
 	// Weapon: sold for 12 ref (= 108 scrap), bought for 10 ref (= 90 scrap) -> FIFO profit is 18 scrap
 	assert.Equal(t, 18, logEntry.FIFOProfitScrap)
 }
+
+func TestPPUMiddleware_AdvancedParams(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "costBasis.json")
+	logger := log.Discard
+
+	cbStore, err := jsonfile.NewCostBasisStore(filePath, logger)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	go cbStore.Start(ctx)
+
+	cbStore.Push("123;6", storage.CostBasisEntry{
+		SKU:       "123;6",
+		BuyKeys:   0,
+		BuyMetal:  10.0,
+		Diff:      0,
+		Timestamp: time.Now(),
+	})
+
+	cfgPath := filepath.Join(tmpDir, "trading_config.json")
+	cfgManager, err := NewConfigManager(cfgPath)
+	require.NoError(t, err)
+
+	bp := backpack.New()
+	setUnexportedField(bp, "manager", &fifoTestSchemaProvider{})
+
+	offer := &trading.TradeOffer{
+		ItemsToGive: []*trading.Item{
+			{SKU: "123;6"},
+		},
+	}
+
+	t.Run("ExcludeSKUs - sku is excluded from PPU", func(t *testing.T) {
+		cfg := cfgManager.GetConfig()
+		cfg.PPUMinProfitScrap = 9
+		cfg.PPUMaxStockLimit = 1
+		cfg.PPUExcludeSKUs = []string{"123;6"}
+		cfg.PPURemoveMaxRestriction = false
+		cfg.PPUMaxProtectedUnits = -1
+		setUnexportedField(cfgManager, "cfg", cfg)
+
+		cache := &mockBackpackCache{items: []*tf2.Item{
+			{ID: 1, SKU: "123;6"},
+		}}
+		setUnexportedField(bp, "cache", cache)
+
+		tradeCtx := engine.NewTradeContext(t.Context(), offer)
+		// Deep-copy prices map
+		testPrices := map[string]*pricedb.Price{
+			currency.SKUKey: {
+				SKU:  currency.SKUKey,
+				Buy:  pricedb.Currencies{Metal: 50.0},
+				Sell: pricedb.Currencies{Metal: 50.0},
+			},
+			"123;6": {SKU: "123;6", Buy: pricedb.Currencies{Metal: 11.0}, Sell: pricedb.Currencies{Metal: 9.5}},
+		}
+		tradeCtx.Set("prices", testPrices)
+
+		mw := PPUMiddleware(bp, cbStore, cfgManager, logger)
+		handler := mw(func(c *engine.TradeContext) error {
+			return nil
+		})
+
+		err = handler(tradeCtx)
+		assert.NoError(t, err)
+
+		modulatedPrices := testPrices
+		p := modulatedPrices["123;6"]
+		// Because it's excluded, sell price should remain unmodulated (9.5)
+		assert.Equal(t, 9.5, p.Sell.Metal)
+	})
+
+	t.Run("RemoveMaxRestriction - stock > limit but remove restriction is true", func(t *testing.T) {
+		cfg := cfgManager.GetConfig()
+		cfg.PPUMinProfitScrap = 9
+		cfg.PPUMaxStockLimit = 1 // Limit is 1, but we have 3
+		cfg.PPUExcludeSKUs = []string{}
+		cfg.PPURemoveMaxRestriction = true
+		cfg.PPUMaxProtectedUnits = -1
+		setUnexportedField(cfgManager, "cfg", cfg)
+
+		// Stock is 3
+		cache := &mockBackpackCache{items: []*tf2.Item{
+			{ID: 1, SKU: "123;6"},
+			{ID: 2, SKU: "123;6"},
+			{ID: 3, SKU: "123;6"},
+		}}
+		setUnexportedField(bp, "cache", cache)
+
+		tradeCtx := engine.NewTradeContext(t.Context(), offer)
+		testPrices := map[string]*pricedb.Price{
+			currency.SKUKey: {
+				SKU:  currency.SKUKey,
+				Buy:  pricedb.Currencies{Metal: 50.0},
+				Sell: pricedb.Currencies{Metal: 50.0},
+			},
+			"123;6": {SKU: "123;6", Buy: pricedb.Currencies{Metal: 11.0}, Sell: pricedb.Currencies{Metal: 9.5}},
+		}
+		tradeCtx.Set("prices", testPrices)
+
+		mw := PPUMiddleware(bp, cbStore, cfgManager, logger)
+		handler := mw(func(c *engine.TradeContext) error {
+			return nil
+		})
+
+		err = handler(tradeCtx)
+		assert.NoError(t, err)
+
+		modulatedPrices := testPrices
+		p := modulatedPrices["123;6"]
+		// Because restriction is removed, sell price should be protected (11.0)
+		assert.Equal(t, 11.0, p.Sell.Metal)
+	})
+
+	t.Run("MaxProtectedUnits - stock exceeds max protected units", func(t *testing.T) {
+		cfg := cfgManager.GetConfig()
+		cfg.PPUMinProfitScrap = 9
+		cfg.PPUMaxStockLimit = 1
+		cfg.PPUExcludeSKUs = []string{}
+		cfg.PPURemoveMaxRestriction = false
+		cfg.PPUMaxProtectedUnits = 2 // Protect only if stock <= 2, but we have 3
+		setUnexportedField(cfgManager, "cfg", cfg)
+
+		cache := &mockBackpackCache{items: []*tf2.Item{
+			{ID: 1, SKU: "123;6"},
+			{ID: 2, SKU: "123;6"},
+			{ID: 3, SKU: "123;6"},
+		}}
+		setUnexportedField(bp, "cache", cache)
+
+		tradeCtx := engine.NewTradeContext(t.Context(), offer)
+		testPrices := map[string]*pricedb.Price{
+			currency.SKUKey: {
+				SKU:  currency.SKUKey,
+				Buy:  pricedb.Currencies{Metal: 50.0},
+				Sell: pricedb.Currencies{Metal: 50.0},
+			},
+			"123;6": {SKU: "123;6", Buy: pricedb.Currencies{Metal: 11.0}, Sell: pricedb.Currencies{Metal: 9.5}},
+		}
+		tradeCtx.Set("prices", testPrices)
+
+		mw := PPUMiddleware(bp, cbStore, cfgManager, logger)
+		handler := mw(func(c *engine.TradeContext) error {
+			return nil
+		})
+
+		err = handler(tradeCtx)
+		assert.NoError(t, err)
+
+		modulatedPrices := testPrices
+		p := modulatedPrices["123;6"]
+		// Because stock (3) > max protected units (2), it should remain unprotected (9.5)
+		assert.Equal(t, 9.5, p.Sell.Metal)
+	})
+}

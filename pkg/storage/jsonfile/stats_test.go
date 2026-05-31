@@ -47,6 +47,9 @@ func TestStatsStore_PushAndPersist(t *testing.T) {
 	err = store.Push(log1)
 	assert.NoError(t, err)
 
+	// Give the background persistence worker a tiny moment to process the write channel
+	time.Sleep(20 * time.Millisecond)
+
 	// Stop persistence to flush and wait until it's finished
 	cancel()
 	<-done

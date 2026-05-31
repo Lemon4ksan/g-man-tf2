@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"time"
 
 	"github.com/lemon4ksan/g-man/pkg/log"
@@ -422,19 +423,49 @@ func PPUMiddleware(
 					continue
 				}
 
-				stockCount := bp.GetStock(sku)
-
 				state, exists := cbStore.GetPPUState(sku)
 				if !exists {
 					state = storage.PPUState{SKU: sku}
 				}
 
-				inStock := stockCount > 0 && stockCount <= maxStockLimit
+				if slices.Contains(cfg.PPUExcludeSKUs, sku) {
+					if state.IsPartialPriced {
+						state.IsPartialPriced = false
+						state.ProtectionStarted = time.Time{}
+						cbStore.SetPPUState(sku, state)
+						logger.Info("PPU price protection deactivated because SKU was excluded", log.String("sku", sku))
+					}
+
+					continue
+				}
+
+				stockCount := bp.GetStock(sku)
+
+				isProtectedStock := false
+				if stockCount > 0 {
+					switch {
+					case cfg.PPURemoveMaxRestriction || cfg.PPUMaxProtectedUnits == -1:
+						isProtectedStock = true
+					case cfg.PPUMaxProtectedUnits > 0:
+						isProtectedStock = stockCount <= cfg.PPUMaxProtectedUnits
+					default:
+						isProtectedStock = stockCount <= maxStockLimit
+					}
+				}
+
+				inStock := isProtectedStock
 				inGrace := stockCount == 0 &&
 					!state.LastSoldTime.IsZero() &&
 					time.Since(state.LastSoldTime) < gracePeriod
 
 				if !inStock && !inGrace {
+					if state.IsPartialPriced {
+						state.IsPartialPriced = false
+						state.ProtectionStarted = time.Time{}
+						cbStore.SetPPUState(sku, state)
+						logger.Info("PPU price protection deactivated due to stock limits", log.String("sku", sku))
+					}
+
 					continue
 				}
 

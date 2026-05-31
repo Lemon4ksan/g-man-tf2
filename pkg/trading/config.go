@@ -78,6 +78,12 @@ type Config struct {
 	PPUMaxStockLimit int `json:"ppu_max_stock_limit"`
 	// PPUMinProfitScrap represents the minimum profit threshold added to the cost basis during PPU calculations.
 	PPUMinProfitScrap int `json:"ppu_min_profit_scrap"`
+	// PPUExcludeSKUs specifies a list of item SKUs that are excluded from PPU protection.
+	PPUExcludeSKUs []string `json:"ppu_exclude_skus,omitempty"`
+	// PPURemoveMaxRestriction, if true, completely bypasses stock quantity checks for price protection.
+	PPURemoveMaxRestriction bool `json:"ppu_remove_max_restriction"`
+	// PPUMaxProtectedUnits defines the maximum stock count threshold up to which protection is active (-1 for unlimited).
+	PPUMaxProtectedUnits int `json:"ppu_max_protected_units"`
 	// CritCommandDescriptions overrides default command description strings in the chat interface.
 	CritCommandDescriptions map[string]string `json:"crit_command_descriptions,omitempty"`
 }
@@ -149,12 +155,15 @@ func (cm *ConfigManager) Load() error {
 			PriceSwingLimits: PriceSwingLimits{
 				MaxBuyIncrease: 0.10,
 			},
-			Items:               make(map[string]ItemConfig),
-			PPUHoldDuration:     "24h",
-			PPUGracePeriod:      "1h",
-			PPUMaxStockLimit:    1,
-			PPUMinProfitScrap:   1,
-			UseSeparateKeyRates: false,
+			Items:                   make(map[string]ItemConfig),
+			PPUHoldDuration:         "24h",
+			PPUGracePeriod:          "1h",
+			PPUMaxStockLimit:        1,
+			PPUMinProfitScrap:       1,
+			UseSeparateKeyRates:     false,
+			PPUExcludeSKUs:          []string{},
+			PPURemoveMaxRestriction: false,
+			PPUMaxProtectedUnits:    -1,
 		}
 
 		if err := os.MkdirAll(filepath.Dir(cm.path), 0o755); err != nil {
@@ -205,6 +214,14 @@ func (cm *ConfigManager) Load() error {
 
 	if cfg.PPUMinProfitScrap <= 0 {
 		cfg.PPUMinProfitScrap = 1
+	}
+
+	if cfg.PPUExcludeSKUs == nil {
+		cfg.PPUExcludeSKUs = []string{}
+	}
+
+	if cfg.PPUMaxProtectedUnits == 0 {
+		cfg.PPUMaxProtectedUnits = -1
 	}
 
 	cm.cfg = cfg
