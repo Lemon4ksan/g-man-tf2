@@ -9,7 +9,7 @@
 [![License](https://img.shields.io/github/license/lemon4ksan/g-man-tf2?style=flat-square)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/lemon4ksan/g-man-tf2?style=flat-square)](https://github.com/lemon4ksan/g-man-tf2/stargazers)
 
-> _"Professionals have standards" - Sniper TF2"_
+> _"Professionals have standards"_
 
 #### 🇺🇸 [English](README.md) • 🇷🇺 [Русский](README_RU.md)
 
@@ -21,26 +21,40 @@
 go get github.com/lemon4ksan/g-man-tf2@latest
 ```
 
-## ⚡ Key Features Deep Dive
+## ⚡ Core Ecosystem Capabilities
 
-### 🪙 1. Floating-Point Safe Currency Math (`tf2/currency`)
-Trading TF2 items demands zero-tolerance precision in **Keys** and **Refined Metal (Scrap, Reclaimed, Refined)**. Standard `float64` floating-point math introduces rounding errors (e.g., `0.11 + 0.22 = 0.33000000000000007`), which will instantly trigger trade failures.
-* G-MAN TF2 handles all currency by internally converting metal units to base-level integers (`Scrap`).
-* Operations like `AddRefined(1.55, 0.55)` guarantee an exact `2.11` refined output. It safely handles keys-to-metal conversion and vice-versa using active pricing indexes.
+### 🪙 1. Advanced Currency & Pricing Mechanics (`tf2/currency`)
+Trading TF2 items demands zero-tolerance precision in **Keys** and **Refined Metal**. 
+* **Float-Safe Metal Arithmetic**: G-MAN TF2 handles all currency by internally converting metal units to base-level integers (`Scrap`), guaranteeing exact results (e.g., `AddRefined(1.55, 0.55)` returns exactly `2.11` without precision drift).
+* **Separate Key Rates**: Evaluates keys dynamically depending on trade direction (buy rate when receiving keys, sell rate when giving keys) to maximize arbitrage profit margin.
+* **Weapon as Currency**: Seamlessly integrates weapons (0.05 refined) into the base metal arithmetic, facilitating precise micro-transactions and change.
 
-### 🎒 2. Game Coordinator `SOCache` Synchronization (`tf2/backpack`)
-Scraping raw HTTP inventories is slow and heavily rate-limited by Valve. G-MAN TF2 stays synced with the active **SOCache (Shared Object Cache)** in the Game Coordinator's memory space:
-* Whenever an item is crafted, deleted, or moved, Valve pushes binary deltas to the socket.
-* G-MAN TF2 parses these packets, patches the local in-memory inventory view in O(1) time, and fires a `BackpackLoadedEvent`, ensuring your bot has real-time inventory awareness.
+### 🎒 2. Real-Time Inventory & Storage Optimization (`tf2/backpack`, `tf2/crafting`)
+Avoid heavy rate-limits from web inventory requests and keep storage organized.
+* **GC `SOCache` Synchronization**: Stays synced with the active **SOCache (Shared Object Cache)** in the Game Coordinator's memory space. Binary GC packets are parsed in O(1) time to patch the local inventory view instantly.
+* **Backpack Auto-Sorting**: Automatically packs and groups items cleanly (pure currency first, weapons, cosmetics, or custom page categories) using sequential `SetSingleItemPosition` Game Coordinator updates.
+* **Smart Trash Cleanup**: Automatically scans and permanently purges untradable junk items (empty crates/cases, noise makers, seasonal holiday garbage) to prevent backpack overflow and trading halts.
+* **Smelting & Crafting Engine**: Automatically constructs recipes, combines metal units (`Scrap` $\leftrightarrow$ `Reclaimed` $\leftrightarrow$ `Refined`), and melts duplicate weapons to manage storage dynamically and resolve exact change requirements.
 
-### 📈 3. Stateful PriceDB Synchronization (`tf2/pricedb`)
-Retrieve and sync asset values without spamming HTTP request limits.
-* The `pricedb` package streams live pricing changes directly from the **PriceDB** service using a persistent Socket.IO connection (note that `backpack.tf` does not feed us prices; all pricing data is supplied by the `pricedb` microservice).
-* The `pricedb` manager processes these updates in the background, updating the local, thread-safe price cache so validation checks are instantaneous.
+### 📈 3. PriceDB & Premium Item Valuation (`tf2/pricedb`)
+Retrieve and sync asset values without spamming HTTP request limits and capture premium item value.
+* **Real-Time PriceDB Sync**: Streams live pricing changes directly from the **PriceDB** service using a persistent Socket.IO connection.
+* **Premium Painted Items Valuation**: Automatically calculates added premiums for custom-painted weapons and gear.
+* **Halloween Spells Premium Valuation**: Recognizes spelled items (Pumpkin Bombs, Exorcism, footprints, vocal) and layers customizable pricing premiums above base rates dynamically.
 
-### ⚒️ 4. Automated Crafting & Smelting Engine (`tf2/crafting`)
-Need to make change or organize your storage during a trade?
-* The smelting engine automatically constructs recipes, combines metal units (`Scrap` $\leftrightarrow$ `Reclaimed` $\leftrightarrow$ `Refined`), and melts duplicate weapons to manage storage dynamically and resolve exact change requirements.
+### 🧅 4. Onion-Trading Middlewares & Anti-Ghost Listings (`tf2/trading`)
+Secure your reputation and transactions with a decoupled onion-style middleware engine.
+* **Anti-Ghost Listings Filter**: Prevents posting listings on backpack.tf for buy orders if the bot doesn't have enough pure currency to fulfill them, preventing negative community reputation.
+* **Smart Countering & Change Maker**: Automatically counters imbalanced offers with exact change using the smelting engine.
+
+### 📊 5. Trade Accounting & Analytics Subsystem (`tf2/stats`)
+Monitor your business performance with real-time financial ledger tracking.
+* **FIFO Profit Accounting Ledger**: Calculates exact transaction profits in refined/keys and maintains active cost bases dynamically.
+
+### 🤖 6. Automation & Safety Systems
+* **Auto-Reset Manual Prices**: Re-evaluates manually priced items once they sell out, resetting them automatically to dynamic autotrading rates.
+* **Auto-Cancel Stale Sent Offers**: Automatically cancels sent offers pending too long (e.g. 15 minutes) to unlock locked items and avoid trade overrides.
+
 
 ## 📂 Project Directory Structure
 
