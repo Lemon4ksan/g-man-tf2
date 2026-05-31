@@ -82,6 +82,10 @@ type Config struct {
 	EnableSmartTrashCleanup bool `json:"enable_smart_trash_cleanup"`
 	// EnableAutoSorting, if true, automatically sorts items in the backpack using optimal hierarchical layout.
 	EnableAutoSorting bool `json:"enable_auto_sorting"`
+	// EnableAutoCancelStaleOffers, if true, automatically cancels sent trade offers that have been pending/active for too long.
+	EnableAutoCancelStaleOffers bool `json:"enable_auto_cancel_stale_offers"`
+	// CancelStaleOffersAfter defines how long an active sent trade offer remains pending before being automatically cancelled (e.g. "15m", "30m").
+	CancelStaleOffersAfter string `json:"cancel_stale_offers_after"`
 	// PPUHoldDuration defines how long a cost basis entry remains valid for price protection (e.g. "24h").
 	PPUHoldDuration string `json:"ppu_hold_duration"`
 	// PPUGracePeriod defines how long price protection remains active after an item is sold out (e.g. "1h").
@@ -191,6 +195,8 @@ func (cm *ConfigManager) Load() error {
 				AutoResetToAutopriceOnceSold: true,
 				EnableSmartTrashCleanup:      false,
 				EnableAutoSorting:            false,
+				EnableAutoCancelStaleOffers:  false,
+				CancelStaleOffersAfter:       "15m",
 				BackpackSortingSections:      []BackpackSectionConfig{},
 
 				PPUExcludeSKUs:          []string{},
@@ -262,6 +268,10 @@ func (cm *ConfigManager) Load() error {
 
 	if cfg.PPUGracePeriod == "" {
 		cfg.PPUGracePeriod = "1h"
+	}
+
+	if cfg.CancelStaleOffersAfter == "" {
+		cfg.CancelStaleOffersAfter = "15m"
 	}
 
 	if cfg.PPUMaxStockLimit <= 0 {

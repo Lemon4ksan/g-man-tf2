@@ -33,6 +33,7 @@ import (
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 	"github.com/lemon4ksan/g-man-tf2/pkg/behavior/critlistener"
+	"github.com/lemon4ksan/g-man-tf2/pkg/behavior/staleoffers"
 	"github.com/lemon4ksan/g-man-tf2/pkg/behavior/stock"
 	"github.com/lemon4ksan/g-man-tf2/pkg/crafting"
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
@@ -307,6 +308,7 @@ func (b *Bot) setupOrchestrator() {
 	b.orchestrator.Install(
 		guard.AutoAccept(guardian, guardBehaviorCfg),
 		stock.Control(bp, b.pdbManager, b.tradeCfgManager, b.costBasis, craftingManager, stock.DefaultConfig()),
+		staleoffers.Monitor(webTradeManager, b.tradeCfgManager, staleoffers.DefaultConfig()),
 		achievements.Simulate(tf2Mod, tf2.AchievementConfig()),
 	)
 

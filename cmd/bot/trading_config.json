@@ -30,6 +30,8 @@
     "max_sell_decrease": 0.1
   },
   "enable_auto_sorting": true,
+  "enable_auto_cancel_stale_offers": true,
+  "cancel_stale_offers_after": "15m",
   "backpack_sorting_sections": [
     {
       "name": "Pure",
