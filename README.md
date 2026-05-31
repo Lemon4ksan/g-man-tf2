@@ -33,9 +33,9 @@ Scraping raw HTTP inventories is slow and heavily rate-limited by Valve. G-MAN T
 * Whenever an item is crafted, deleted, or moved, Valve pushes binary deltas to the socket.
 * G-MAN TF2 parses these packets, patches the local in-memory inventory view in O(1) time, and fires a `BackpackLoadedEvent`, ensuring your bot has real-time inventory awareness.
 
-### 📈 3. Stateful PriceDB & backpack.tf Sync (`tf2/bptf` & `tf2/pricedb`)
+### 📈 3. Stateful PriceDB Synchronization (`tf2/pricedb`)
 Retrieve and sync asset values without spamming HTTP request limits.
-* The `bptf` package streams live pricing changes directly from `backpack.tf` using a persistent Socket.IO connection.
+* The `pricedb` package streams live pricing changes directly from the **PriceDB** service using a persistent Socket.IO connection (note that `backpack.tf` does not feed us prices; all pricing data is supplied by the `pricedb` microservice).
 * The `pricedb` manager processes these updates in the background, updating the local, thread-safe price cache so validation checks are instantaneous.
 
 ### ⚒️ 4. Automated Crafting & Smelting Engine (`tf2/crafting`)
@@ -51,16 +51,18 @@ pkg/
 │   ├── socache.go    # Live GC Shared Object parser & inventory keeper
 │   └── actions.go    # Low-level GC commands (Crafting, Achievement Unlocking)
 ├── backpack/         # Unified in-memory inventory views & slot lock management
+├── crafting/         # Automated crafting & weapon smelting engine recipes
 ├── schema/           # High-fidelity TF2 schema manager & items_game parser
 ├── sku/              # Standardized item SKU parsers (quality, effect, paint, etc.)
 ├── currency/         # Float-safe metal arithmetic & Key-to-Scrap equations
-├── pricedb/          # Local pricing store adapters and Socket.IO connection sync
-├── bptf/             # backpack.tf integrations (listing management, snap scraper)
+├── services/         # Third-party platform services integrations
+│   ├── pricedb/      # Local pricing store adapters and PriceDB Socket.IO connection sync
+│   ├── bptf/         # backpack.tf integrations (listing management, snap scraper)
+│   ├── crit/         # Crit.tf storefront listing synchronizer
+│   └── rep/          # Trust, feedback, and user reputation lookup utilities
 ├── behavior/         # High-level behavior loops (autokeys, stock manager, syncers)
 ├── trading/          # Onion-style trading middlewares (pricer, limits, counters)
-├── crit/             # Crit.tf & backpack.tf storefront listing synchronizer
 ├── ecp/              # Escrow Bypass Chat Protocol (Obfuscator & Compressor)
-├── rep/              # Trust, feedback, and user reputation lookup utilities
 ├── reason/           # TF2-specific trade rejection reasons
 └── storage/          # Local JSON file & cache adapters
 ```
