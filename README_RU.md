@@ -9,13 +9,11 @@
 [![License](https://img.shields.io/github/license/lemon4ksan/g-man-tf2?style=flat-square)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/lemon4ksan/g-man-tf2?style=flat-square)](https://github.com/lemon4ksan/g-man-tf2/stargazers)
 
-> _"Нужный бот в нужном месте может перевернуть весь рынок металла."_
+> _"У профессионалов есть правила"_
 
 #### 🇺🇸 [English](README.md) • 🇷🇺 [Русский](README_RU.md)
 
 </div>
-
----
 
 **G-MAN TF2** — это официальный высокопроизводительный доменный модуль Team Fortress 2 промышленного уровня, разработанный специально для автоматизационного фреймворка [G-MAN](https://github.com/lemon4ksan/g-man). Он объединяет интеграцию с Игровым Координатором Valve (GC), real-time кэширование инвентаря SOCache и сложные алгоритмы арифметики валюты TF2 в единый потокобезопасный Go-пакет.
 
@@ -24,73 +22,6 @@
 ```shell
 go get github.com/lemon4ksan/g-man-tf2@latest
 ```
-
----
-
-## 🛠 Архитектура и интеграция
-
-**G-MAN TF2** подключается к ядру клиента G-MAN в виде набора независимых модулей, регистрируемых через стандартные опции инициализации. Модуль слушает бинарные сетевые пакеты сокетов и публикует строго типизированные события в общую шину данных:
-
-```mermaid
-flowchart LR
-    classDef steam fill:#111b24,stroke:#66c0f4,stroke-width:1.5px,color:#ffffff;
-    classDef core fill:#181524,stroke:#cba6f7,stroke-width:1.5px,color:#ffffff;
-    classDef extension fill:#141b17,stroke:#a6e3a1,stroke-width:1.5px,color:#ffffff;
-    classDef pipeline fill:#1c1a14,stroke:#f9e2af,stroke-width:1.5px,color:#ffffff;
-    classDef nodeStyle fill:#21262d,stroke:#30363d,stroke-width:1px,color:#ecf2f8;
-
-    subgraph SteamSystem [Сеть Steam]
-        SteamCloud((Облако Steam))
-    end
-    class SteamSystem steam;
-    class SteamCloud steam;
-
-    subgraph GManCore [Ядро G-MAN Client SDK]
-        ConnManager[Подключение Socket CM]
-        WebAPI[Клиент REST и WebAPI]
-        EventBus([Потокобезопасная шина событий])
-        TradeEngine[Конвейер Middleware Onion]
-    end
-    class GManCore core;
-    class ConnManager,WebAPI,EventBus,TradeEngine nodeStyle;
-
-    subgraph TF2Extension [Доменный SDK TF2 G-MAN]
-        TF2Module[Модуль сессии TF2 GC]
-        BPSyncer[Кэш рюкзака SOCache]
-        SchemaMgr[Высокоточный менеджер схемы]
-        Pricer[Синхронизатор PriceDB Socket.IO]
-    end
-    class TF2Extension extension;
-    class TF2Module,BPSyncer,SchemaMgr,Pricer nodeStyle;
-
-    subgraph MMiddlewares [Торговые Middleware TF2]
-        P1[Лимиты склада] --> P2[Фильтр банов] --> P3[Проверка цен] --> P4[Плавка и сдача]
-    end
-    class MMiddlewares pipeline;
-    class P1,P2,P3,P4 nodeStyle;
-
-    SteamCloud <--> ConnManager
-    SteamCloud <--> WebAPI
-
-    ConnManager --> EventBus
-    WebAPI --> EventBus
-    EventBus <--> TradeEngine
-
-    TF2Module -- "Регистрация" --> EventBus
-    BPSyncer -- "Регистрация" --> EventBus
-    SchemaMgr -- "Регистрация" --> EventBus
-    Pricer -- "Регистрация" --> EventBus
-
-    TF2Module -- "Пакеты GC" --> BPSyncer
-
-    TradeEngine -- "Запуск конвейера" --> P1
-    BPSyncer -.-> |Чтение склада| P1
-    Pricer -.-> |Чтение цен| P3
-
-    P4 -- "Отправка вердикта" --> SteamCloud
-```
-
----
 
 ## ⚡ Разбор ключевых возможностей
 
@@ -112,8 +43,6 @@ flowchart LR
 ### ⚒️ 4. Автоматический крафт и размен металла (`tf2/crafting`)
 Необходима точная сдача или распределение слотов во время сделки?
 * Движок плавки автоматически конструирует рецепты, объединяет и разъединяет металл (`Scrap` $\leftrightarrow$ `Reclaimed` $\leftrightarrow$ `Refined`), а также переплавляет дубликаты оружия для точной выдачи сдачи партнеру.
-
----
 
 ## 📂 Структура директорий проекта
 
@@ -137,8 +66,6 @@ pkg/
 ├── reason/           # Специфичные для TF2 причины отклонения сделок
 └── storage/          # Локальные файловые кэш-адаптеры JSON
 ```
-
----
 
 ## 🚀 Быстрый старт
 
@@ -267,15 +194,11 @@ func RegisterPipeline(
 }
 ```
 
----
-
 ## ⚡ Оптимизация памяти и производительности
 
 G-MAN TF2 унаследовал фокус на минимизацию системных требований, что позволяет запускать десятки ботов на одном бюджетном VPS:
 * **Fidelity Schema Engine:** Отсекает избыточные структуры данных игрового трекера (особенно в режиме `LiteMode`), кэшируя defindex предметов и схему в пределах **~10 МБ** оперативной памяти.
 * **Хранилище SOCache:** Использует высокоэффективные указатели без аллокаций памяти, удерживая общий физический профиль RSS в пределах **~25 МБ** в боевых условиях.
-
----
 
 ## 🤝 Участие в разработке
 
@@ -285,16 +208,20 @@ G-MAN TF2 унаследовал фокус на минимизацию сист
 2. Покрывайте изменения тестами: `go test -race ./...`.
 3. Создавайте Pull Request с подробным описанием предлагаемой архитектуры.
 
----
+## ☕ Поддержите разработку
+
+Тестирование координатора игры, трейды в реальном времени и плавки требует активный капитал для покрытия комиссий за транзакции на торговой площадке Steam, приобретения внутриигровых предметов и комиссий за тестовые транзакции. Если G-man помог вам автоматизировать ваши торговые процессы или оптимизировать ресурсы, не стесняйтесь оказать поддержку:
+
+<div align="center">
+
+[![Торговое предложение](https://img.shields.io/badge/Steam-Trade_Offer-blue?style=for-the-badge&logo=steam)](https://steamcommunity.com/tradeoffer/new/?partner=1141078357&token=HjsTJQFX)
+
+> _"Да, деньги потрачены с пользой!"_
+
+</div>
 
 ## ⚖️ Лицензия и правовая информация
 
 **Дисклеймер:** Данное программное обеспечение **не** связано, не поддерживается и не одобрено **Valve Corporation** или ее дочерними компаниями. Steam, Team Fortress 2 и все соответствующие товарные знаки принадлежат Valve Corporation. Использование библиотеки происходит на ваш собственный страх и риск.
 
 Проект распространяется под лицензией **BSD 3-Clause License**. Полный текст лицензии доступен в файле [LICENSE](LICENSE).
-
----
-
-<div align="center">
-  <sub>Будьте готовы к непредвиденным последствиям... или просто к следующей распродаже Steam.</sub>
-</div>

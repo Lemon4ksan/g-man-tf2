@@ -21,69 +21,6 @@
 go get github.com/lemon4ksan/g-man-tf2@latest
 ```
 
-## 🛠 Integration & Architecture
-
-**G-MAN TF2** integrates with the core G-MAN client as a set of decoupled modules registered via standard options during startup. It consumes general socket protocols and publishes granular events to the shared Event Bus:
-
-```mermaid
-flowchart LR
-    classDef steam fill:#111b24,stroke:#66c0f4,stroke-width:1.5px,color:#ffffff;
-    classDef core fill:#181524,stroke:#cba6f7,stroke-width:1.5px,color:#ffffff;
-    classDef extension fill:#141b17,stroke:#a6e3a1,stroke-width:1.5px,color:#ffffff;
-    classDef pipeline fill:#1c1a14,stroke:#f9e2af,stroke-width:1.5px,color:#ffffff;
-    classDef nodeStyle fill:#21262d,stroke:#30363d,stroke-width:1px,color:#ecf2f8;
-
-    subgraph SteamSystem [Steam Network]
-        SteamCloud((Steam Cloud))
-    end
-    class SteamSystem steam;
-    class SteamCloud steam;
-
-    subgraph GManCore [G-MAN Core Client SDK]
-        ConnManager[Socket CM Connection]
-        WebAPI[REST & WebAPI Client]
-        EventBus([Thread-Safe Event Bus])
-        TradeEngine[Onion Middleware Pipeline]
-    end
-    class GManCore core;
-    class ConnManager,WebAPI,EventBus,TradeEngine nodeStyle;
-
-    subgraph TF2Extension [G-MAN TF2 Domain SDK]
-        TF2Module[TF2 GC Session Module]
-        BPSyncer[SOCache & Backpack View]
-        SchemaMgr[High-Fidelity Schema Manager]
-        Pricer[PriceDB Socket.IO Syncer]
-    end
-    class TF2Extension extension;
-    class TF2Module,BPSyncer,SchemaMgr,Pricer nodeStyle;
-
-    subgraph MMiddlewares [TF2 Trading Middlewares Pipeline]
-        P1[Stock Limits] --> P2[Ban Filter] --> P3[Pricer Check] --> P4[Smelting & Counter]
-    end
-    class MMiddlewares pipeline;
-    class P1,P2,P3,P4 nodeStyle;
-
-    SteamCloud <--> ConnManager
-    SteamCloud <--> WebAPI
-
-    ConnManager --> EventBus
-    WebAPI --> EventBus
-    EventBus <--> TradeEngine
-
-    TF2Module -- "Register" --> EventBus
-    BPSyncer -- "Register" --> EventBus
-    SchemaMgr -- "Register" --> EventBus
-    Pricer -- "Register" --> EventBus
-
-    TF2Module -- "GC Packets" --> BPSyncer
-
-    TradeEngine -- "Execute Pipeline" --> P1
-    BPSyncer -.-> |Reads Stock| P1
-    Pricer -.-> |Reads Prices| P3
-
-    P4 -- "Send Verdict" --> SteamCloud
-```
-
 ## ⚡ Key Features Deep Dive
 
 ### 🪙 1. Floating-Point Safe Currency Math (`tf2/currency`)
@@ -255,8 +192,6 @@ func RegisterPipeline(
 }
 ```
 
----
-
 ## ⚡ Memory & Performance Efficiency
 
 G-MAN TF2 inherits G-MAN’s core focus on low-footprint systems, making it highly suitable for running dozens of concurrent accounts on a single cheap VPS:
@@ -271,12 +206,26 @@ We welcome contributions to G-MAN TF2! If you're interested in refining metal co
 2. Verify changes with unit tests: `go test -race ./...`.
 3. Open a Pull Request detailing the changes and your design logic.
 
+## ☕ Support the Development
+
+Testing Game Coordinator states, live trade offers, and smelting workflows requires active capital to cover Steam Market transaction fees, in-game item acquisitions, and test-transaction fees. If G-man helped you automate your trading workflows or optimized your server resources, feel free to show some support:
+
+<div align="center">
+
+[![Trade Offer](https://img.shields.io/badge/Steam-Trade_Offer-blue?style=for-the-badge&logo=steam)](https://steamcommunity.com/tradeoffer/new/?partner=1141078357&token=HjsTJQFX)
+
+> _"Yeah, money well spent!"_
+
+</div>
+
 ## ⚖️ Legal & License
 
 **Disclaimer:** This software is **not** affiliated with, maintained by, or endorsed by **Valve Corporation** or any of its subsidiaries. Steam, Team Fortress 2, and all related Valve properties are registered trademarks of Valve Corporation. Use of this library is at your own risk.
 
 This project is licensed under the **BSD 3-Clause License**. See [LICENSE](LICENSE) for full details.
 
+---
+
 <div align="center">
-  <sub>Prepare for unforeseen consequences... or just prepare for the next Steam Sale.</sub>
+  <sub>"Professionals have standards" - Sniper TF2</sub>
 </div>
