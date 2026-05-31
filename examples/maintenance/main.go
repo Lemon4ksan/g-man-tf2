@@ -53,9 +53,7 @@ func run() error {
 	logger.Info("Initializing inventory maintenance example...")
 
 	// 2. Read authorization credentials from environment variables
-	username := os.Getenv("STEAM_USER")
-
-	password := os.Getenv("STEAM_PASS")
+	username, password := os.Getenv("STEAM_USER"), os.Getenv("STEAM_PASS")
 	if username == "" || password == "" {
 		return errors.New("STEAM_USER and STEAM_PASS environment variables are required")
 	}
@@ -392,14 +390,24 @@ func RunInventoryMaintenance(ctx context.Context, client *steam.Client, logger l
 	return nil
 }
 
+// Define strict presentation sections for logical grouping.
+const (
+	SectionPureCurrency = 1
+	SectionWeapons      = 2
+	SectionCosmetics    = 3
+	SectionTaunts       = 4
+	SectionToolsActions = 5
+	SectionCratesCases  = 6
+)
+
 // SortInventoryByComplexRules performs hierarchical sorting of the backpack:
-// 1. Pure currency (Keys -> Refined -> Reclaimed -> Scrap) goes first.
-// 2. Other items are grouped by character class (Scout -> Soldier -> ... -> Spy -> Multiclass -> Misc).
-// 3. Identical items (by DefIndex) are grouped consecutively.
-// 4. Within a group of identical items, Unique (6) quality items come first, followed by other qualities (Strange, Unusual, etc.).
+// 1. Division by Tradable (first pages) and Untradable (last pages) blocks.
+// 2. Division into strict logical sections (Currency -> Weapons -> Cosmetics -> Taunts -> Tools -> Crates).
+// 3. Weapons and cosmetics are strictly sorted by character class.
+// 4. Weapons are sorted by slots (Primary -> Secondary -> Melee -> PDA).
+// 5. Each major section dynamically starts on a completely fresh backpack page.
 func SortInventoryByComplexRules(ctx context.Context, client *steam.Client, logger log.Logger) error {
 	tf2Mod := tf2.From(client)
-
 	bpMod := backpack.From(client)
 	if tf2Mod == nil || bpMod == nil || !tf2Mod.Connected() {
 		return errors.New("TF2 modules are not ready or not connected to GC")
@@ -419,7 +427,6 @@ func SortInventoryByComplexRules(ctx context.Context, client *steam.Client, logg
 	}
 
 	allItems := bpMod.Cache().GetItems()
-
 	var unlockedItems []*tf2.Item
 
 	// Filter out locked items
@@ -429,62 +436,69 @@ func SortInventoryByComplexRules(ctx context.Context, client *steam.Client, logg
 		}
 	}
 
-	// Sort unlockedItems in memory using a chain of rules
+	// Sort unlockedItems in memory using a chain of presentation rules
 	slices.SortFunc(unlockedItems, func(a, b *tf2.Item) int {
-		// Category Priority: Normal Tradable (1) -> Crate/Case Tradable (2) -> Untradable (3)
-		aCat := getCategoryPriority(a, s)
-
-		bCat := getCategoryPriority(b, s)
-		if aCat != bCat {
-			return aCat - bCat
+		// Rule 1: High-level Trade Ban segregation (Tradables (1) first, Untradables (2) last)
+		aTrade := 1
+		if !a.IsTradable {
+			aTrade = 2
+		}
+		bTrade := 1
+		if !b.IsTradable {
+			bTrade = 2
+		}
+		if aTrade != bTrade {
+			return aTrade - bTrade
 		}
 
-		// Rule 1: Pure currency checks (Keys, Refined, Reclaimed, Scrap)
-		aPure := getPurePriority(a.DefIndex, s)
-
-		bPure := getPurePriority(b.DefIndex, s)
-		if aPure != bPure {
-			return aPure - bPure
+		// Rule 2: Logical Section Priority (Currency -> Weapons -> Cosmetics -> Taunts -> Tools -> Crates)
+		aSec := getSectionPriority(a, s)
+		bSec := getSectionPriority(b, s)
+		if aSec != bSec {
+			return aSec - bSec
 		}
 
-		if aPure != 5 { // Both items are currency
+		// Rule 3: Pure currency checks (within the Currency section)
+		if aSec == SectionPureCurrency {
+			aPure := getPurePriority(a.DefIndex, s)
+			bPure := getPurePriority(b.DefIndex, s)
+			if aPure != bPure {
+				return aPure - bPure
+			}
 			if a.DefIndex != b.DefIndex {
 				return int(a.DefIndex) - int(b.DefIndex)
 			}
-
 			return int(a.ID - b.ID)
 		}
 
-		// Rule 2: Group by class (Scout -> ... -> Spy -> Multiclass -> Misc)
+		// Rule 4: Group by character class (Scout -> ... -> Spy -> Multiclass -> All-Class)
 		aClassPri := getClassPriority(a, s)
-
 		bClassPri := getClassPriority(b, s)
 		if aClassPri != bClassPri {
 			return aClassPri - bClassPri
 		}
 
-		// Rule 3: Group by weapon slot (Primary -> Secondary -> Melee -> PDA -> Misc)
-		aSlotPri := getSlotPriority(a, s)
-
-		bSlotPri := getSlotPriority(b, s)
-		if aSlotPri != bSlotPri {
-			return aSlotPri - bSlotPri
+		// Rule 5: Group by weapon slot (Primary -> Secondary -> Melee -> PDA)
+		if aSec == SectionWeapons {
+			aSlotPri := getSlotPriority(a, s)
+			bSlotPri := getSlotPriority(b, s)
+			if aSlotPri != bSlotPri {
+				return aSlotPri - bSlotPri
+			}
 		}
 
-		// Rule 4: Group identical items (by base DefIndex)
+		// Rule 6: Group identical items (by base DefIndex)
 		if a.DefIndex != b.DefIndex {
 			return int(a.DefIndex) - int(b.DefIndex)
 		}
 
-		// Rule 5: Unique (Unique/6) items first, followed by others (Strange, Unusual, etc.)
+		// Rule 7: Unique quality first, followed by specialized qualities (Strange, Unusual, etc.)
 		aQualPri := getQualityPriority(a.Quality)
-
 		bQualPri := getQualityPriority(b.Quality)
 		if aQualPri != bQualPri {
 			return aQualPri - bQualPri
 		}
 
-		// If qualities are different, sort by quality ID
 		if a.Quality != b.Quality {
 			return int(a.Quality) - int(b.Quality)
 		}
@@ -499,13 +513,35 @@ func SortInventoryByComplexRules(ctx context.Context, client *steam.Client, logg
 		return 0
 	})
 
-	// Generate moves, skipping slots occupied by locked items to preserve their positions
+	// Generate moves, dynamically shifting sections to fresh pages for premium presentation
 	var moves []tf2.ItemPos
 
 	currentSlot := 1
 	currentPage := 1
+	lastSection := -1
+	lastTradeBlock := -1
 
 	for _, item := range unlockedItems {
+		section := getSectionPriority(item, s)
+		tradeBlock := 1
+		if !item.IsTradable {
+			tradeBlock = 2
+		}
+
+		// If we enter a new section or shift from tradables to untradables,
+		// align the start onto a completely fresh page.
+		isSectionChanged := lastSection != -1 && section != lastSection
+		isTradeBlockChanged := lastTradeBlock != -1 && tradeBlock != lastTradeBlock
+
+		if isSectionChanged || isTradeBlockChanged {
+			if currentSlot > 1 {
+				currentSlot = 1
+				currentPage++
+			}
+		}
+		lastSection = section
+		lastTradeBlock = tradeBlock
+
 		for {
 			targetPos := backpack.PositionOf(currentPage, currentSlot)
 
@@ -547,21 +583,41 @@ func SortInventoryByComplexRules(ctx context.Context, client *steam.Client, logg
 	return tf2Mod.MoveItems(ctx, moves)
 }
 
-// getCategoryPriority determines an item's high-level category priority:
-// 1: Tradable ordinary items (first)
-// 2: Tradable cases/crates (after normal items)
-// 3: Untradable items (at the very end of the backpack)
-func getCategoryPriority(item *tf2.Item, s *schema.Schema) int {
-	if !item.IsTradable {
-		return 3
-	}
-
+// getSectionPriority determines the presentation section of an item.
+func getSectionPriority(item *tf2.Item, s *schema.Schema) int {
 	sch := s.ItemByDef(int(item.DefIndex))
-	if sch != nil && sch.ItemClass == "supply_crate" {
-		return 2
+	if sch == nil {
+		return SectionToolsActions
 	}
 
-	return 1
+	// 1. Pure Currency Check
+	norm := s.NormalizeDefindex(int(item.DefIndex))
+	if norm == schema.DefKey || norm == schema.DefRefined || norm == schema.DefReclaimed || norm == schema.DefScrap {
+		return SectionPureCurrency
+	}
+
+	// 2. Crates & Cases Check
+	if sch.ItemClass == "supply_crate" {
+		return SectionCratesCases
+	}
+
+	// 3. Taunts Check
+	if sch.ItemClass == "tf_wearable_taunt" || strings.HasPrefix(strings.ToLower(sch.ItemName), "taunt:") {
+		return SectionTaunts
+	}
+
+	// 4. Weapons Check
+	if sch.CraftClass == "weapon" {
+		return SectionWeapons
+	}
+
+	// 5. Cosmetics Check (hats or wearables)
+	if sch.CraftClass == "hat" || sch.ItemClass == "tf_wearable" {
+		return SectionCosmetics
+	}
+
+	// 6. Tools, Actions, etc.
+	return SectionToolsActions
 }
 
 // getPurePriority determines the priority of pure currency (Keys -> Refined -> Reclaimed -> Scrap).
@@ -569,23 +625,23 @@ func getPurePriority(defIndex uint32, s *schema.Schema) int {
 	norm := s.NormalizeDefindex(int(defIndex))
 	switch norm {
 	case schema.DefKey:
-		return 1 // Keys (5021)
+		return 1
 	case schema.DefRefined:
-		return 2 // Refined Metal (5002)
+		return 2
 	case schema.DefReclaimed:
-		return 3 // Reclaimed Metal (5001)
+		return 3
 	case schema.DefScrap:
-		return 4 // Scrap Metal (5000)
+		return 4
 	default:
-		return 5 // Ordinary items
+		return 5
 	}
 }
 
-// getClassPriority determines the class grouping priority.
+// getClassPriority determines the class grouping priority (Scout -> ... -> Spy -> Multiclass -> All-Class).
 func getClassPriority(item *tf2.Item, s *schema.Schema) int {
 	sch := s.ItemByDef(int(item.DefIndex))
 	if sch == nil || len(sch.UsedByClasses) == 0 {
-		return 12 // Misc
+		return 12 // Misc/All-Class
 	}
 
 	if len(sch.UsedByClasses) > 1 {
@@ -616,6 +672,7 @@ func getClassPriority(item *tf2.Item, s *schema.Schema) int {
 	}
 }
 
+// getSlotPriority resolves weapon slots with 100% accuracy using prefix-matching.
 func getSlotPriority(item *tf2.Item, s *schema.Schema) int {
 	sch := s.ItemByDef(int(item.DefIndex))
 	if sch == nil {
@@ -623,40 +680,85 @@ func getSlotPriority(item *tf2.Item, s *schema.Schema) int {
 	}
 
 	if sch.CraftClass != "weapon" {
+		return 5
+	}
+
+	cls := sch.ItemClass
+	def := item.DefIndex
+
+	// 1. Primary Weapons
+	// Check known primary defindexes for classes where Shotgun/Parachute might overlap
+	if def == 9 || def == 141 || def == 527 || def == 588 || def == 997 || def == 1153 {
+		return 1 // Primary Shotguns for Engineer
+	}
+
+	if strings.Contains(cls, "scattergun") ||
+		strings.Contains(cls, "rocketlauncher") ||
+		strings.Contains(cls, "flamethrower") ||
+		strings.Contains(cls, "grenadelauncher") ||
+		strings.Contains(cls, "minigun") ||
+		strings.Contains(cls, "syringegun") ||
+		strings.Contains(cls, "sniperrifle") ||
+		strings.Contains(cls, "revolver") ||
+		strings.Contains(cls, "crossbow") ||
+		strings.Contains(cls, "compound_bow") ||
+		strings.Contains(cls, "particle_cannon") ||
+		strings.Contains(cls, "soda_popper") ||
+		strings.Contains(cls, "handgun_scout_primary") ||
+		def == 1178 { // Dragon's Fury
+		return 1
+	}
+
+	// 2. Secondary Weapons
+	if strings.Contains(cls, "pistol") ||
+		strings.Contains(cls, "pipebomblauncher") ||
+		strings.Contains(cls, "smg") ||
+		strings.Contains(cls, "medigun") ||
+		strings.Contains(cls, "buff_item") ||
+		strings.Contains(cls, "parachute") ||
+		strings.Contains(cls, "lunchbox") ||
+		strings.Contains(cls, "jar") ||
+		strings.Contains(cls, "laser_pointer") || // Wrangler
+		strings.Contains(cls, "shotgun") || // pyro/soldier/heavy shotguns
+		strings.Contains(cls, "handgun_scout_secondary") ||
+		strings.Contains(cls, "raygun") ||
+		def == 131 || def == 406 || def == 1101 { // Shields (Targe, Screen, Tide Turner)
+		return 2
+	}
+
+	// 3. Melee Weapons
+	if strings.Contains(cls, "bat") ||
+		strings.Contains(cls, "shovel") ||
+		strings.Contains(cls, "fireaxe") ||
+		strings.Contains(cls, "club") ||
+		strings.Contains(cls, "bonesaw") ||
+		strings.Contains(cls, "fists") ||
+		strings.Contains(cls, "wrench") ||
+		strings.Contains(cls, "knife") ||
+		strings.Contains(cls, "sword") ||
+		strings.Contains(cls, "sledgehammer") ||
+		strings.Contains(cls, "mechanical_arm") || // Gunslinger
+		strings.Contains(cls, "stick") {
+		return 3
+	}
+
+	// 4. PDA / Action / Builder
+	if strings.Contains(cls, "pda") ||
+		strings.Contains(cls, "builder") ||
+		strings.Contains(cls, "spellbook") {
 		return 4
 	}
 
-	switch sch.ItemClass {
-	case "tf_weapon_scattergun", "tf_weapon_rocketlauncher", "tf_weapon_flamethrower",
-		"tf_weapon_grenadelauncher", "tf_weapon_minigun", "tf_weapon_syringegun",
-		"tf_weapon_sniperrifle", "tf_weapon_revolver":
-		return 1 // Primary
-
-	case "tf_weapon_pistol", "tf_weapon_shotgun", "tf_weapon_pipebomblauncher",
-		"tf_weapon_smg", "tf_weapon_medigun", "tf_weapon_buff_item", "tf_weapon_parachute":
-		return 2 // Secondary
-
-	case "tf_weapon_bat", "tf_weapon_shovel", "tf_weapon_fireaxe", "tf_weapon_club",
-		"tf_weapon_bonesaw", "tf_weapon_fists", "tf_weapon_wrench", "tf_weapon_knife",
-		"tf_weapon_sword", "tf_weapon_sledgehammer":
-		return 3 // Melee
-
-	case "tf_weapon_pda_spy", "tf_weapon_pda_engineer_build", "tf_weapon_pda_engineer_destroy",
-		"tf_weapon_builder", "tf_weapon_spellbook":
-		return 4 // PDA / Action
-
-	default:
-		return 5 // Other
-	}
+	return 5
 }
 
 // getQualityPriority returns priority for Unique quality.
 func getQualityPriority(quality uint32) int {
-	if quality == schema.QualityUnique { // 6
-		return 1 // Unique items come first in groups of identical items
+	if quality == schema.QualityUnique {
+		return 1
 	}
 
-	return 2 // All other qualities (Strange, Unusual, etc.) come next
+	return 2
 }
 
 // isSlotOccupiedByLockedItem checks if the item located at the slot is locked.

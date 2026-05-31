@@ -35,7 +35,7 @@ func main() {
 }
 
 func run() error {
-	logCfg := log.DefaultConfig(log.LevelDebug)
+	logCfg := log.DefaultConfig(log.LevelInfo)
 	logCfg.FullPath = true
 
 	logger := log.New(logCfg)
@@ -47,9 +47,7 @@ func run() error {
 
 	logger.Info("Initializing inventory dumper...")
 
-	username := os.Getenv("STEAM_USER")
-
-	password := os.Getenv("STEAM_PASS")
+	username, password := os.Getenv("STEAM_USER"), os.Getenv("STEAM_PASS")
 	if username == "" || password == "" {
 		return errors.New("STEAM_USER and STEAM_PASS environment variables are required")
 	}
