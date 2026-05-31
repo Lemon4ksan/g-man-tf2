@@ -39,6 +39,10 @@ type ItemConfig struct {
 	MinSellPrice currency.Currency `json:"min_sell_price"`
 	// MaxSellPrice represents the highest sell price allowed for automatic trades.
 	MaxSellPrice currency.Currency `json:"max_sell_price"`
+	// FixedBuyPrice represents the fixed manual buy price that overrides automatic pricing.
+	FixedBuyPrice *currency.Currency `json:"fixed_buy_price,omitempty"`
+	// FixedSellPrice represents the fixed manual sell price that overrides automatic pricing.
+	FixedSellPrice *currency.Currency `json:"fixed_sell_price,omitempty"`
 }
 
 // PriceSwingLimits defines the maximum percentage changes allowed in a single price update.

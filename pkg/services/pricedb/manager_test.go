@@ -357,7 +357,7 @@ func TestPriceManager_EventPublication(t *testing.T) {
 	defer sub.Unsubscribe()
 
 	// Initial SetPrice
-	manager.SetPrice("5021;6", Currencies{Metal: 50.0}, Currencies{Metal: 55.0}, PricelistChangedSourceManual)
+	manager.SetPrice("5021;6", Currencies{Metal: 50.0}, Currencies{Metal: 55.0}, "Manual")
 
 	select {
 	case ev := <-sub.C():

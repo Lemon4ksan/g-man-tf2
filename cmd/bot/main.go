@@ -35,9 +35,12 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/behavior/critlistener"
 	"github.com/lemon4ksan/g-man-tf2/pkg/behavior/stock"
 	"github.com/lemon4ksan/g-man-tf2/pkg/crafting"
+	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
+	"github.com/lemon4ksan/g-man-tf2/pkg/pricing"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/bptf"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/crit"
+	"github.com/lemon4ksan/g-man-tf2/pkg/services/manualprices"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/rep"
 	tf2jsonfile "github.com/lemon4ksan/g-man-tf2/pkg/storage/jsonfile"
@@ -81,6 +84,7 @@ type Bot struct {
 	pdbClient       *pricedb.Client
 	costBasis       *tf2jsonfile.CostBasisStore
 	critClient      *crit.Client
+	manualPrices    *manualprices.Manager
 }
 
 // NewBot creates and initializes a new bot instance using the provided configuration
@@ -130,6 +134,30 @@ func NewBot(cfg Config, store storage.Provider, logger log.Logger) (*Bot, error)
 		return nil, fmt.Errorf("steam client initialization failed: %w", err)
 	}
 
+	manualPricesStore, err := tf2jsonfile.NewManualPricesStore("cache/tf2/manual_prices.json", logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize manual prices store: %w", err)
+	}
+
+	getStaticFixedPrices := func() map[string]manualprices.PriceEntry {
+		cfg := tradeCfgManager.GetConfig()
+		staticPrices := make(map[string]manualprices.PriceEntry)
+
+		for sku, itemCfg := range cfg.Items {
+			if itemCfg.FixedBuyPrice != nil && itemCfg.FixedSellPrice != nil {
+				staticPrices[sku] = manualprices.PriceEntry{
+					Buy:  *itemCfg.FixedBuyPrice,
+					Sell: *itemCfg.FixedSellPrice,
+				}
+			}
+		}
+
+		return staticPrices
+	}
+
+	priceAdapter := &pdbPriceProviderAdapter{mgr: pdbManager}
+	manualPrices := manualprices.New(manualPricesStore, priceAdapter, getStaticFixedPrices, logger)
+
 	bot := &Bot{
 		cfg:             cfg,
 		store:           store,
@@ -143,6 +171,7 @@ func NewBot(cfg Config, store storage.Provider, logger log.Logger) (*Bot, error)
 		pdbClient:       pdbClient,
 		costBasis:       costBasis,
 		critClient:      critClient,
+		manualPrices:    manualPrices,
 	}
 
 	return bot, nil
@@ -174,6 +203,13 @@ func (b *Bot) Run(ctx context.Context) error {
 
 	// Start config hot-reloader
 	b.tradeCfgManager.StartWatching(ctx, 10*time.Second, b.logger)
+
+	// Start manual prices watcher and load initial values
+	if err := b.manualPrices.LoadAndApply(); err != nil {
+		b.logger.Error("Failed to apply initial manual prices", log.Err(err))
+	}
+
+	b.manualPrices.StartWatcher(ctx, 10*time.Second)
 
 	b.sub = b.client.Bus().Subscribe(&auth.LoggedOnEvent{}, &auth.LoggedOffEvent{})
 
@@ -422,4 +458,18 @@ func main() {
 		logger.Error("Bot runtime error", log.Err(err))
 		return
 	}
+}
+
+type pdbPriceProviderAdapter struct {
+	mgr *pricedb.Manager
+}
+
+func (a *pdbPriceProviderAdapter) SetPrice(sku string, buy, sell currency.Currency, source pricing.Source) {
+	a.mgr.SetPrice(sku, pricedb.Currencies{
+		Keys:  int(buy.Keys),
+		Metal: buy.Metal,
+	}, pricedb.Currencies{
+		Keys:  int(sell.Keys),
+		Metal: sell.Metal,
+	}, source)
 }

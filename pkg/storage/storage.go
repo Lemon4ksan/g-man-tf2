@@ -102,3 +102,27 @@ type TradeProfitStore interface {
 	// Prune removes trade profit logs that are older than the given keep duration.
 	Prune(keepDuration time.Duration) error
 }
+
+// ManualPriceEntry represents a persistent manual price configured dynamically.
+type ManualPriceEntry struct {
+	// BuyKeys defines the number of keys required to buy the item.
+	BuyKeys int `json:"buy_keys"`
+	// BuyMetal defines the amount of metal required to buy the item.
+	BuyMetal float64 `json:"buy_metal"`
+	// SellKeys defines the number of keys required to sell the item.
+	SellKeys int `json:"sell_keys"`
+	// SellMetal defines the amount of metal required to sell the item.
+	SellMetal float64 `json:"sell_metal"`
+}
+
+// ManualPriceStore manages persisting, modifying, and querying manual prices from disk/DB.
+type ManualPriceStore interface {
+	// GetAll returns all manual price entries currently tracked in the store.
+	GetAll() (map[string]ManualPriceEntry, error)
+	// Set adds or updates a manual price entry for the given SKU.
+	Set(sku string, entry ManualPriceEntry) error
+	// Delete removes a manual price entry for the given SKU.
+	Delete(sku string) error
+	// GetModTime returns the last modification time of the underlying storage source.
+	GetModTime() (time.Time, error)
+}

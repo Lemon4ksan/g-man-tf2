@@ -4,12 +4,14 @@
 
 package pricedb
 
+import "github.com/lemon4ksan/g-man-tf2/pkg/pricing"
+
 // PricelistChangedSource specifies the origin of pricelist modifications.
-type PricelistChangedSource string
+type PricelistChangedSource = pricing.Source
 
 const (
 	// PricelistChangedSourceManual is the source for pricelist modifications made manually.
-	PricelistChangedSourceManual PricelistChangedSource = "Manual"
+	PricelistChangedSourceManual PricelistChangedSource = pricing.SourceManual
 	// PricelistChangedSourcePriceDB is the source for automatic pricing from the price database.
 	PricelistChangedSourcePriceDB PricelistChangedSource = "PriceDB"
 )
