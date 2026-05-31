@@ -662,6 +662,25 @@ func TestSOCache_processDestroy_WrongTypeID_DoesNothing(t *testing.T) {
 	assert.Len(t, cache.items, 0)
 }
 
+func TestSOCache_protoToItem_CustomDecal(t *testing.T) {
+	t.Parallel()
+
+	tf, _, _ := setupTF2(t)
+	cache := tf.Cache()
+
+	p := &pb.CSOEconItem{
+		Id: proto.Uint64(123),
+		Attribute: []*pb.CSOEconItemAttribute{
+			{DefIndex: proto.Uint32(152), ValueBytes: uint32ToBytes(0x11223344)},
+			{DefIndex: proto.Uint32(227), ValueBytes: uint32ToBytes(0x55667788)},
+		},
+	}
+
+	item := cache.protoToItem(p)
+	assert.True(t, item.HasCustomDecal)
+	assert.Equal(t, uint64(0x5566778811223344), item.DecalUGCID)
+}
+
 func createPacket(msgType pb.ESOMsg, msg proto.Message) *protocol.GCPacket {
 	b, _ := proto.Marshal(msg)
 

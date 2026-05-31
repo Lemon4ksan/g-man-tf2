@@ -453,6 +453,10 @@ func (m *Backpack) FindWeaponsByClassForSmelting(class string) []*tf2.Item {
 			continue
 		}
 
+		if item.HasCustomDecal {
+			continue
+		}
+
 		if s.IsPromoItem(sch) {
 			continue
 		}

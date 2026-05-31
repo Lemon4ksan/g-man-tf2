@@ -277,6 +277,10 @@ type Item struct {
 	Spells []sku.Spell
 	// Parts contains the list of Strange Part IDs.
 	Parts []uint32
+	// HasCustomDecal indicates whether the item has a custom decal (applied picture).
+	HasCustomDecal bool
+	// DecalUGCID represents the reconstructed 64-bit UGC ID of the custom decal image.
+	DecalUGCID uint64
 }
 
 // Position returns the item's slot index in the backpack.
@@ -869,6 +873,11 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 		return binary.LittleEndian.Uint32(b)
 	}
 
+	var (
+		decalLo uint32
+		decalHi uint32
+	)
+
 	for _, attr := range p.GetAttribute() {
 		def := attr.GetDefIndex()
 		val := attr.GetValueBytes()
@@ -936,7 +945,17 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 			item.Australium = getFloat(val) != 0
 		case AttrFestivized:
 			item.Festivized = getFloat(val) != 0
+		case 152: // custom_texture_lo
+			decalLo = getUint(val)
+			item.HasCustomDecal = true
+		case 227: // custom_texture_hi
+			decalHi = getUint(val)
+			item.HasCustomDecal = true
 		}
+	}
+
+	if item.HasCustomDecal {
+		item.DecalUGCID = (uint64(decalHi) << 32) | uint64(decalLo)
 	}
 
 	if slices.Contains(

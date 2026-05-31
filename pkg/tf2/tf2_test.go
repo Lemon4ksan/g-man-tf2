@@ -562,7 +562,7 @@ func TestTF2_MoveItems_BatchingAndErrors(t *testing.T) {
 		t.Parallel()
 		tf, _, _ := setupTF2(t)
 
-		var items []ItemPos
+		items := make([]ItemPos, 0, 51)
 		for i := range 51 {
 			items = append(items, ItemPos{
 				ID:       uint64(1000 + i),
