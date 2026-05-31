@@ -9,7 +9,7 @@
 [![License](https://img.shields.io/github/license/lemon4ksan/g-man-tf2?style=flat-square)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/lemon4ksan/g-man-tf2?style=flat-square)](https://github.com/lemon4ksan/g-man-tf2/stargazers)
 
-> _"The right bot in the wrong place can make all the difference in the metal market."_
+> _"Professionals have standards" - Sniper TF2"_
 
 #### 🇺🇸 [English](README.md) • 🇷🇺 [Русский](README_RU.md)
 
@@ -223,9 +223,3 @@ Testing Game Coordinator states, live trade offers, and smelting workflows requi
 **Disclaimer:** This software is **not** affiliated with, maintained by, or endorsed by **Valve Corporation** or any of its subsidiaries. Steam, Team Fortress 2, and all related Valve properties are registered trademarks of Valve Corporation. Use of this library is at your own risk.
 
 This project is licensed under the **BSD 3-Clause License**. See [LICENSE](LICENSE) for full details.
-
----
-
-<div align="center">
-  <sub>"Professionals have standards" - Sniper TF2</sub>
-</div>
