@@ -333,19 +333,19 @@ func (b *Bot) setupOrchestrator() {
 		stockCfg.MaxPerSKU[sku] = c.MaxStock
 	}
 
+	schemaFunc := func() *schema.Schema {
+		if m := schema.From(b.client); m != nil {
+			return m.Get()
+		}
+
+		return nil
+	}
+
 	tradeEngine.Use(
 		tf2trading.EscrowMiddleware(webTradeManager, b.logger),
 		tf2trading.BanCheckMiddleware(b.bansManager, b.logger),
-		tf2trading.PricerMiddleware(b.pdbManager, b.logger),
-		tf2trading.HalloweenSpellMiddleware(b.pdbClient, func() *schema.Schema {
-			if m := schema.From(b.client); m != nil {
-				return m.Get()
-			}
-
-			return nil
-		}, func() tf2trading.Config {
-			return b.tradeCfgManager.GetConfig()
-		}, b.logger),
+		tf2trading.PricerMiddleware(b.pdbManager, schemaFunc, b.logger),
+		tf2trading.HalloweenSpellMiddleware(b.pdbClient, schemaFunc, b.tradeCfgManager.GetConfig, b.logger),
 		tf2trading.DupeCheckMiddleware(b.bptfChecker, b.logger),
 		tf2trading.StockLimitMiddleware(bp, stockCfg, b.logger),
 		tf2trading.SmartCounterMiddleware(b.tradeCfgManager, metalManager, bp, webTradeManager, b.logger),

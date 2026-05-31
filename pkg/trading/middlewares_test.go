@@ -587,7 +587,7 @@ func TestMiddlewares_Pricer(t *testing.T) {
 
 		mgr.On("GetPrice", "5021;6").Return(&pricedb.Price{SKU: "5021;6"}, true)
 
-		mw := PricerMiddleware(mgr, log.Discard)
+		mw := PricerMiddleware(mgr, func() *schema.Schema { return nil }, log.Discard)
 		handler := mw(func(c *engine.TradeContext) error {
 			return nil
 		})
@@ -614,7 +614,7 @@ func TestMiddlewares_Pricer(t *testing.T) {
 		mgr.On("Watch", "5021;6").Return()
 		mgr.On("Fetch", mock.Anything, []string{"5021;6"}).Return(nil, errors.New("pricedb error"))
 
-		mw := PricerMiddleware(mgr, log.Discard)
+		mw := PricerMiddleware(mgr, func() *schema.Schema { return nil }, log.Discard)
 		handler := mw(func(c *engine.TradeContext) error {
 			return nil
 		})
@@ -641,7 +641,7 @@ func TestMiddlewares_Pricer(t *testing.T) {
 		mgr.On("Watch", "5021;6").Return()
 		mgr.On("Fetch", mock.Anything, []string{"5021;6"}).Return(map[string]*pricedb.Price{}, nil)
 
-		mw := PricerMiddleware(mgr, log.Discard)
+		mw := PricerMiddleware(mgr, func() *schema.Schema { return nil }, log.Discard)
 		handler := mw(func(c *engine.TradeContext) error {
 			return nil
 		})
@@ -649,6 +649,38 @@ func TestMiddlewares_Pricer(t *testing.T) {
 		err := handler(ctx)
 		assert.Error(t, err)
 		assert.Equal(t, tf2reason.ReviewUnpricedItem, ctx.Verdict.Reason)
+	})
+
+	// 4. Weapon currency case: item is a unique weapon, bypasses price check and gets accepted
+	t.Run("Weapon_Currency", func(t *testing.T) {
+		t.Parallel()
+
+		mgr := new(mockPriceProvider)
+		offer := &trading.TradeOffer{
+			ItemsToGive: []*trading.Item{
+				{SKU: "199;6"},
+			},
+		}
+
+		ctx := engine.NewTradeContext(t.Context(), offer)
+
+		mgr.On("GetPrice", "199;6").Return(nil, false)
+		mgr.On("Watch", "199;6").Return()
+		mgr.On("Fetch", mock.Anything, []string{"199;6"}).Return(map[string]*pricedb.Price{}, nil)
+
+		raw := &schema.Raw{}
+		raw.Schema.Items = []*schema.Item{
+			{Defindex: 199, CraftClass: "weapon"},
+		}
+		mockSchema := schema.New(raw)
+
+		mw := PricerMiddleware(mgr, func() *schema.Schema { return mockSchema }, log.Discard)
+		handler := mw(func(c *engine.TradeContext) error {
+			return nil
+		})
+
+		err := handler(ctx)
+		assert.NoError(t, err)
 	})
 }
 
@@ -837,7 +869,7 @@ func TestMiddlewares_FindPartnerCurrency_Backtracking(t *testing.T) {
 	items1 := []*trading.Item{
 		{MarketHashName: "Refined Metal"},
 	}
-	_, ok1 := FindPartnerCurrency(items1, 5, 0)
+	_, ok1 := FindPartnerCurrency(items1, 5, 0, nil)
 	assert.False(t, ok1)
 
 	items2 := []*trading.Item{
@@ -845,7 +877,7 @@ func TestMiddlewares_FindPartnerCurrency_Backtracking(t *testing.T) {
 		{MarketHashName: "Reclaimed Metal"},
 		{MarketHashName: "Reclaimed Metal"},
 	}
-	res2, ok2 := FindPartnerCurrency(items2, 15, 0)
+	res2, ok2 := FindPartnerCurrency(items2, 15, 0, nil)
 	assert.True(t, ok2)
 	assert.Len(t, res2, 3)
 }
@@ -1111,4 +1143,129 @@ func TestHalloweenSpellMiddleware_Fallback(t *testing.T) {
 	assert.Equal(t, currency.Scrap(36), ourVal.(currency.Scrap))
 
 	predictor.AssertExpectations(t)
+}
+
+func TestCalculateValueDiff_WeaponCurrency(t *testing.T) {
+	t.Parallel()
+
+	raw := &schema.Raw{}
+	raw.Schema.Items = []*schema.Item{
+		{Defindex: 199, CraftClass: "weapon"},
+		{Defindex: 200, CraftClass: "weapon"},
+	}
+	sh := schema.New(raw)
+
+	prices := map[string]*pricedb.Price{
+		"5021;6": { // Priced item, e.g. Reclaimed Metal worth 3 scrap
+			SKU:  "5021;6",
+			Name: "Reclaimed Metal",
+			Buy:  pricedb.Currencies{Metal: 0.33},
+			Sell: pricedb.Currencies{Metal: 0.33},
+		},
+	}
+
+	t.Run("Weapon_as_change_floor_rounding", func(t *testing.T) {
+		t.Parallel()
+
+		offer := &trading.TradeOffer{
+			ItemsToGive: []*trading.Item{
+				{SKU: "5021;6"}, // 3 scrap
+				{SKU: "199;6"},  // 0.5 scrap (Unique weapon, unpriced)
+			},
+			ItemsToReceive: []*trading.Item{
+				{SKU: "5021;6"}, // 3 scrap
+				{SKU: "5021;6"}, // 3 scrap
+				{SKU: "199;6"},  // 0.5 scrap (Unique weapon, unpriced)
+				{SKU: "200;6"},  // 0.5 scrap (Unique weapon, unpriced)
+			},
+		}
+		// Give: 3.5 scrap
+		// Receive: 7.0 scrap
+		// Diff: 7.0 - 3.5 = 3.5 scrap. Floored: 3 scrap.
+
+		ctx := engine.NewTradeContext(t.Context(), offer)
+		ctx.Set("schema", sh)
+		ctx.Set("prices", prices)
+
+		diff, err := calculateValueDiff(ctx, false)
+		assert.NoError(t, err)
+		assert.Equal(t, currency.Scrap(3), diff)
+
+		isProfitable, ok := ctx.Get("is_profitable")
+		assert.True(t, ok)
+		assert.True(t, isProfitable.(bool))
+	})
+
+	t.Run("Underpay_by_half_scrap_is_profitable_zero", func(t *testing.T) {
+		t.Parallel()
+
+		offer := &trading.TradeOffer{
+			ItemsToGive: []*trading.Item{
+				{SKU: "5021;6"}, // 3 scrap
+			},
+			ItemsToReceive: []*trading.Item{
+				{SKU: "5021;6"}, // 3 scrap
+				{SKU: "199;6"},  // 0.5 scrap
+			},
+		}
+		// Give: 3 scrap
+		// Receive: 3.5 scrap
+		// Diff: 3.5 - 3.0 = 0.5 scrap. Floored: 0 scrap.
+		// Since we round down in our favor, we treat 0.5 scrap overpayment as 0 scrap net difference, which is acceptable/profitable.
+
+		ctx := engine.NewTradeContext(t.Context(), offer)
+		ctx.Set("schema", sh)
+		ctx.Set("prices", prices)
+
+		diff, err := calculateValueDiff(ctx, false)
+		assert.NoError(t, err)
+		assert.Equal(t, currency.Scrap(0), diff)
+
+		isProfitable, ok := ctx.Get("is_profitable")
+		assert.True(t, ok)
+		assert.True(t, isProfitable.(bool))
+	})
+}
+
+func TestFindPartnerCurrency_WithWeapons(t *testing.T) {
+	t.Parallel()
+
+	raw := &schema.Raw{}
+	raw.Schema.Items = []*schema.Item{
+		{Defindex: 199, CraftClass: "weapon"},
+		{Defindex: 200, CraftClass: "weapon"},
+		{Defindex: 201, CraftClass: "weapon"},
+	}
+	sh := schema.New(raw)
+
+	t.Run("Pull_two_weapons_for_one_scrap", func(t *testing.T) {
+		t.Parallel()
+
+		items := []*trading.Item{
+			{SKU: "199;6", MarketHashName: "Shotgun"},
+			{SKU: "200;6", MarketHashName: "Pistol"},
+			{SKU: "201;6", MarketHashName: "Fists"},
+		}
+
+		res, ok := FindPartnerCurrency(items, 1, 0, sh)
+		assert.True(t, ok)
+		assert.Len(t, res, 2)
+		// Should pull two weapons
+		assert.Contains(t, []string{"199;6", "200;6"}, res[0].SKU)
+		assert.Contains(t, []string{"199;6", "200;6"}, res[1].SKU)
+	})
+
+	t.Run("Fail_not_enough_weapons", func(t *testing.T) {
+		t.Parallel()
+
+		items := []*trading.Item{
+			{SKU: "199;6", MarketHashName: "Shotgun"},
+			{SKU: "200;6", MarketHashName: "Pistol"},
+			{SKU: "201;6", MarketHashName: "Fists"},
+		}
+
+		// Needs 2 scrap (= 4 weapons), but they only have 3 weapons
+		_, ok := FindPartnerCurrency(items, 2, 0, sh)
+		assert.False(t, ok)
+	})
 }

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -123,9 +124,11 @@ type ReputationChecker interface {
 
 // PricerMiddleware enriches the trade context with current item pricing models retrieved from a [PriceProvider].
 // It resolves prices, updates watches, and halts evaluation with [tf2reason.ReviewUnpricedItem] if any item is unpriced.
-func PricerMiddleware(mgr PriceProvider, logger log.Logger) engine.Middleware {
+func PricerMiddleware(mgr PriceProvider, schemaProvider func() *schema.Schema, logger log.Logger) engine.Middleware {
 	return func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
+			ctx.Set("schema", schemaProvider())
+
 			skus := make(map[string]bool)
 			for _, item := range append(ctx.Offer.ItemsToGive, ctx.Offer.ItemsToReceive...) {
 				pricingSKU := GetPricingSKU(item.SKU)
@@ -159,8 +162,13 @@ func PricerMiddleware(mgr PriceProvider, logger log.Logger) engine.Middleware {
 
 			for _, item := range append(ctx.Offer.ItemsToGive, ctx.Offer.ItemsToReceive...) {
 				if _, ok := priceMap[item.SKU]; !ok {
+					if isUniqueWeapon(item.SKU, schemaProvider()) {
+						continue
+					}
+
 					logger.Warn("Item in trade is not priced", log.String("sku", item.SKU))
 					ctx.Review(tf2reason.ReviewUnpricedItem)
+
 					return errors.New("unpriced item in trade")
 				}
 			}
@@ -507,7 +515,14 @@ func SmartCounterMiddleware(
 
 				needed := -diff
 
-				toAdd, ok := FindPartnerCurrency(partnerInv, needed, keyPrice)
+				var sch *schema.Schema
+				if val, ok := ctx.Get("schema"); ok {
+					if s, ok := val.(*schema.Schema); ok {
+						sch = s
+					}
+				}
+
+				toAdd, ok := FindPartnerCurrency(partnerInv, needed, keyPrice, sch)
 				if ok {
 					logger.Info("Smart countering: found missing currency in partner inventory",
 						log.Int("needed_scrap", int(needed)),
@@ -705,12 +720,17 @@ func PPUMiddleware(
 
 // FindPartnerCurrency searches partner items to assemble a combination of currencies covering the specified scrap debt.
 // Returns false if the partner's inventory cannot satisfy the required scrap value.
-func FindPartnerCurrency(items []*trading.Item, needed, keyPrice currency.Scrap) ([]*trading.Item, bool) {
+func FindPartnerCurrency(
+	items []*trading.Item,
+	needed, keyPrice currency.Scrap,
+	sch *schema.Schema,
+) ([]*trading.Item, bool) {
 	var (
 		keys      []*trading.Item
 		refined   []*trading.Item
 		reclaimed []*trading.Item
 		scrap     []*trading.Item
+		weapons   []*trading.Item
 	)
 
 	for _, it := range items {
@@ -723,6 +743,10 @@ func FindPartnerCurrency(items []*trading.Item, needed, keyPrice currency.Scrap)
 			reclaimed = append(reclaimed, it)
 		case "Scrap Metal":
 			scrap = append(scrap, it)
+		default:
+			if sch != nil && isUniqueWeapon(it.SKU, sch) {
+				weapons = append(weapons, it)
+			}
 		}
 	}
 
@@ -753,6 +777,12 @@ func FindPartnerCurrency(items []*trading.Item, needed, keyPrice currency.Scrap)
 	for len(scrap) > 0 && remaining >= 1 {
 		result = append(result, scrap[0])
 		scrap = scrap[1:]
+		remaining -= 1
+	}
+
+	for len(weapons) >= 2 && remaining >= 1 {
+		result = append(result, weapons[0], weapons[1])
+		weapons = weapons[2:]
 		remaining -= 1
 	}
 
@@ -819,7 +849,14 @@ func calculateValueDiff(ctx *engine.TradeContext, useSeparateKeyRates bool) (cur
 
 	ctx.Set("key_price_scrap", keyBuyPriceScrap)
 
-	var ourTotal, theirTotal currency.Scrap
+	var sch *schema.Schema
+	if val, ok := ctx.Get("schema"); ok {
+		if s, ok := val.(*schema.Schema); ok {
+			sch = s
+		}
+	}
+
+	var ourTotalScrapVal, theirTotalScrapVal float64
 
 	var ourSpellPremium, theirSpellPremium currency.Scrap
 	if val, ok := ctx.Get("our_spell_premium_scrap"); ok {
@@ -830,15 +867,21 @@ func calculateValueDiff(ctx *engine.TradeContext, useSeparateKeyRates bool) (cur
 		theirSpellPremium = val.(currency.Scrap)
 	}
 
-	ourTotal += ourSpellPremium
-	theirTotal += theirSpellPremium
+	ourTotalScrapVal += float64(ourSpellPremium)
+	theirTotalScrapVal += float64(theirSpellPremium)
 
 	for _, item := range ctx.Offer.ItemsToGive {
 		pricingSKU := GetPricingSKU(item.SKU)
 
 		p, ok := priceMap[pricingSKU]
 		if !ok {
+			if isUniqueWeapon(item.SKU, sch) {
+				ourTotalScrapVal += 0.5
+				continue
+			}
+
 			ctx.Review(tf2reason.ReviewUnpricedItem)
+
 			return 0, fmt.Errorf("unpriced item in 'give' side: %s", item.SKU)
 		}
 
@@ -848,7 +891,7 @@ func calculateValueDiff(ctx *engine.TradeContext, useSeparateKeyRates bool) (cur
 		}
 
 		val := currency.Scrap(p.Sell.Keys)*keyRate + currency.ToScrap(p.Sell.Metal)
-		ourTotal += val
+		ourTotalScrapVal += float64(val)
 	}
 
 	for _, item := range ctx.Offer.ItemsToReceive {
@@ -856,19 +899,64 @@ func calculateValueDiff(ctx *engine.TradeContext, useSeparateKeyRates bool) (cur
 
 		p, ok := priceMap[pricingSKU]
 		if !ok {
+			if isUniqueWeapon(item.SKU, sch) {
+				theirTotalScrapVal += 0.5
+				continue
+			}
+
 			ctx.Review(tf2reason.ReviewUnpricedItem)
+
 			return 0, fmt.Errorf("unpriced item in 'receive' side: %s", item.SKU)
 		}
 
 		keyRate := keyBuyPriceScrap
 		val := currency.Scrap(p.Buy.Keys)*keyRate + currency.ToScrap(p.Buy.Metal)
-		theirTotal += val
+		theirTotalScrapVal += float64(val)
 	}
 
-	diff := currency.NewValueDiff(ourTotal, theirTotal, keyBuyPriceScrap)
+	// Overpaying is accepted, underpaying by even 0.5 scrap is rejected
+	diffVal := theirTotalScrapVal - ourTotalScrapVal
+	diffScrap := currency.Scrap(math.Floor(diffVal))
 
-	ctx.Set("value_diff_scrap", diff.Diff())
-	ctx.Set("is_profitable", diff.IsProfitable())
+	ctx.Set("value_diff_scrap", diffScrap)
+	ctx.Set("is_profitable", diffScrap >= 0)
 
-	return diff.Diff(), nil
+	return diffScrap, nil
+}
+
+// isUniqueWeapon returns true if the SKU represents a standard craftable Unique weapon.
+func isUniqueWeapon(skuStr string, s *schema.Schema) bool {
+	if s == nil {
+		return false
+	}
+
+	item, err := sku.FromString(skuStr)
+	if err != nil {
+		return false
+	}
+
+	if item.Quality != schema.QualityUnique {
+		return false
+	}
+
+	if !item.Craftable || !item.Tradable {
+		return false
+	}
+
+	if item.Effect != 0 ||
+		item.Killstreak != 0 ||
+		item.Festivized ||
+		item.Australium ||
+		item.Paintkit != 0 ||
+		item.Wear != 0 ||
+		item.Quality2 != 0 ||
+		item.Crateseries != 0 ||
+		item.Craftnumber != 0 {
+		return false
+	}
+
+	sch := s.ItemByDef(item.Defindex)
+
+	return sch != nil &&
+		(sch.CraftClass == "weapon" || sch.ItemClass == "weapon" || strings.HasPrefix(sch.ItemClass, "tf_weapon_"))
 }
