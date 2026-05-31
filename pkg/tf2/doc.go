@@ -3,15 +3,14 @@
 // license that can be found in the LICENSE file.
 
 /*
-Package tf2 implements the Team Fortress 2 Game Coordinator communication and inventory cache.
+Package tf2 provides integration with the Team Fortress 2 Game Coordinator.
 
-The package handles connection state handshakes, in-game actions, and real-time inventory updates.
-It parses raw shared object notifications into structured, queryable data models.
+It handles sessions, manages the shared object cache, and exposes native actions.
 
 Key Types:
-  - [TF2] manages the Game Coordinator session connection state and action commands.
-  - [SOCache] maintains the local inventory replica updated by shared object packets.
-  - [Item] represents an inventory item parsed with all standard economic attributes.
+  - [TF2] represents the central Game Coordinator client.
+  - [SOCache] manages the real-time local inventory replica.
+  - [Item] represents parsed item parameters and SKU metadata.
 
 Basic Example:
 
@@ -28,15 +27,15 @@ Basic Example:
 		ctx := context.Background()
 		client := steam.NewClient(...)
 
-		// Get the registered TF2 module
-		tf2Module := tf2.From(client)
-		if tf2Module == nil {
+		// Retrieve the registered TF2 module
+		t := tf2.From(client)
+		if t == nil {
 			return
 		}
 
-		// Access the local synchronized inventory cache
-		cache := tf2Module.Cache()
-		fmt.Printf("Total backpack items: %d\n", len(cache.GetItems()))
+		// Retrieve items currently synchronized in the cache
+		items := t.Cache().GetItems()
+		fmt.Printf("Total items in cache: %d\n", len(items))
 	}
 */
 package tf2

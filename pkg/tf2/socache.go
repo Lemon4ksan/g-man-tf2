@@ -24,7 +24,7 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 )
 
-// EconItemFlag represents bitmask flags for Steam Econ items (GC).
+// EconItemFlag represents bitmask flags for Steam Econ items.
 type EconItemFlag uint32
 
 const (
@@ -34,11 +34,11 @@ const (
 	EconItemFlagCannotBeUsedInCrafting
 	// EconItemFlagCanBeTradedByFreeAccounts indicates the item can be traded even if the account is not premium.
 	EconItemFlagCanBeTradedByFreeAccounts
-	// EconItemFlagNonEconomy indicates the item is a non-economy item (e.g., achievement items).
+	// EconItemFlagNonEconomy indicates the item is a non-economy item.
 	EconItemFlagNonEconomy
 	// EconItemFlagPurchasedAfterStoreCraftabilityChanges2012 relates to store items bought after the 2012 craftability update.
 	EconItemFlagPurchasedAfterStoreCraftabilityChanges2012
-	// EconItemFlagForceBlueTeam indicates the item is forced to blue team (client-only).
+	// EconItemFlagForceBlueTeam indicates the item is forced to blue team.
 	EconItemFlagForceBlueTeam
 	// EconItemFlagStoreItem indicates the item was bought from the Mann Co. Store.
 	EconItemFlagStoreItem
@@ -195,11 +195,11 @@ const (
 	QualityDecorated uint32 = 15
 )
 
-// Item represents a parsed and normalized TF2 item with all its economic and technical metadata.
+// Item represents a parsed and normalized TF2 item with its economic and technical metadata.
 type Item struct {
-	// ID represents the unique asset identifier.
+	// ID represents the unique asset identifier of the item.
 	ID uint64
-	// OriginalID represents the permanent origin identifier.
+	// OriginalID represents the permanent origin identifier assigned upon creation.
 	OriginalID uint64
 	// AccountID represents the Steam Account ID of the current owner.
 	AccountID uint32
@@ -207,96 +207,95 @@ type Item struct {
 	DefIndex uint32
 	// Level represents the cosmetic item level.
 	Level uint32
-	// Quality represents the item quality ID.
+	// Quality represents the quality ID of the item.
 	Quality uint32
-	// Inventory represents the raw inventory bitmask containing positioning.
+	// Inventory represents the raw inventory positioning bits.
 	Inventory uint32
 	// Quantity represents the stack size of the item.
 	Quantity uint32
-	// Origin represents the item drop or purchase source ID.
+	// Origin represents the item drop, craft, or purchase source ID.
 	Origin uint32
-	// Flags represents the restriction bitmask flags.
+	// Flags represents the bitmask restrictions applied to the item.
 	Flags EconItemFlag
 	// Style represents the selected cosmetic style index.
 	Style uint32
-	// InUse indicates whether the item is currently equipped.
+	// InUse indicates whether the item is currently equipped or in use.
 	InUse bool
 
 	// CustomName represents the custom text applied by a name tag.
 	CustomName string
 	// CustomDesc represents the custom text applied by a description tag.
 	CustomDesc string
-	// SKU represents the canonical SKU string of the item.
+	// SKU represents the canonical SKU string for pricing.
 	SKU string
 
-	// IsTradable indicates whether the item is eligible for trades.
+	// IsTradable indicates whether the item can be traded.
 	IsTradable bool
-	// IsMarketable indicates whether the item is eligible for community market listings.
+	// IsMarketable indicates whether the item can be listed on the Steam Market.
 	IsMarketable bool
-	// IsCraftable indicates whether the item is eligible for crafting recipes.
+	// IsCraftable indicates whether the item can be used in crafting recipes.
 	IsCraftable bool
 
 	// Effect represents the Unusual particle effect ID.
 	Effect uint32
-	// KillstreakTier represents the Killstreak active level.
+	// KillstreakTier represents the active killstreak tier index.
 	KillstreakTier uint32
 	// Australium indicates whether the item is an Australium variant.
 	Australium bool
-	// Festivized indicates whether the item has been modified with a festivizer.
+	// Festivized indicates whether a festivizer has been applied.
 	Festivized bool
-	// Wear represents the skin pattern wear decimal value.
+	// Wear represents the skin wear fraction value.
 	Wear float32
-	// Paintkit represents the skin pattern ID index.
+	// Paintkit represents the skin pattern ID.
 	Paintkit uint32
-	// CrateSeries represents the crate series number.
+	// CrateSeries represents the series number for supply crates.
 	CrateSeries uint32
-	// Paint represents the applied paint color ID decimal.
+	// Paint represents the applied paint color ID.
 	Paint uint32
 
-	// Sheen represents the specialized killstreak sheen effect ID.
+	// Sheen represents the killstreak sheen effect index.
 	Sheen uint32
-	// Killstreaker represents the professional killstreak eye effect ID.
+	// Killstreaker represents the professional killstreak eye effect index.
 	Killstreaker uint32
 	// CraftNumber represents the limited edition craft number.
 	CraftNumber uint32
-	// Series represents the secondary Duck Journal or level index.
+	// Series represents the secondary series ID.
 	Series uint32
-	// MedalNumber represents the tournament medal registration number.
+	// MedalNumber represents the number assigned to tournament medals.
 	MedalNumber uint32
-	// Target represents the target DefIndex for strangifiers and killstreak kits.
+	// Target represents the defindex of the target item.
 	Target uint32
-	// IsElevated indicates whether the item has strange counters despite non-strange quality.
+	// IsElevated indicates whether the item is an elevated strange cosmetic.
 	IsElevated bool
-	// EarlySupporter indicates whether the item has the early EOTL supporter attribute.
+	// EarlySupporter indicates whether the item has the early supporter tag.
 	EarlySupporter bool
-	// QuestID represents the 64-bit quest or contract link identifier.
+	// QuestID represents the 64-bit ID of the linked contract.
 	QuestID uint64
-	// IsBuggedLoaner indicates whether the item has a loaner origin but is actually tradable.
+	// IsBuggedLoaner indicates whether the loaner is exceptionally tradable.
 	IsBuggedLoaner bool
-	// Spells contains the list of applied Halloween spell configurations.
+	// Spells contains the list of applied Halloween spells.
 	Spells []sku.Spell
-	// Parts contains the list of applied Strange Part counter IDs.
+	// Parts contains the list of Strange Part IDs.
 	Parts []uint32
 }
 
-// Position returns the item's slot in the backpack.
-// The lower 16 bits of the Inventory field represent the position.
+// Position returns the item's slot index in the backpack.
 func (i *Item) Position() uint32 {
 	return i.Inventory & 0xFFFF
 }
 
-// GetSchema returns data about an item from the provided schema.
+// GetSchema returns the [schema.Item] metadata for the item.
 func (i *Item) GetSchema(s *schema.Schema) *schema.Item {
 	return s.ItemByDef(int(i.DefIndex))
 }
 
-// IsWeapon checks if an item is a weapon using the schema.
+// IsWeapon returns true if the item is classified as a weapon.
 func (i *Item) IsWeapon(s *schema.Schema) bool {
 	sch := i.GetSchema(s)
 	return sch != nil && sch.CraftClass == "weapon"
 }
 
-// ToEconItem converts the item to an EconItem.
+// ToEconItem maps the item fields into a universal exchange [trading.Item] format.
 func (i Item) ToEconItem() *trading.Item {
 	return &trading.Item{
 		AppID:          AppID,
@@ -311,7 +310,7 @@ func (i Item) ToEconItem() *trading.Item {
 	}
 }
 
-// ToSKUObject converts the item to a SKU object.
+// ToSKUObject converts the item parameters to a [sku.Item] representation.
 func (i Item) ToSKUObject() *sku.Item {
 	quality := int(i.Quality)
 	quality2 := 0
@@ -353,7 +352,7 @@ func (i Item) ToSKUObject() *sku.Item {
 	}
 }
 
-// GetSKU returns the SKU string for the item using the provided schema.
+// GetSKU retrieves or generates the standard SKU string for the item.
 func (i *Item) GetSKU(s *schema.Schema) string {
 	if i.SKU != "" {
 		return i.SKU
@@ -362,7 +361,7 @@ func (i *Item) GetSKU(s *schema.Schema) string {
 	return s.SKUFromItem(i.ToSKUObject())
 }
 
-// Fix applies schema-based fixes and normalizations to the item.
+// Fix applies schema-based normalizations and defindex overrides to the item.
 func (i *Item) Fix(s *schema.Schema) {
 	sch := i.GetSchema(s)
 	if sch == nil {
@@ -409,29 +408,29 @@ const (
 // Option defines configuration setter functions for [SOCache] instances.
 type Option = bus.Option[*SOCache]
 
-// WithLogger configures a custom [log.Logger] for logging [SOCache] events.
+// WithLogger configures a custom [log.Logger] for logging [SOCache] operations.
 func WithLogger(l log.Logger) Option {
 	return func(s *SOCache) {
 		s.logger = l.With(log.Component("so_cache"))
 	}
 }
 
-// WithBus configures an alternate [bus.Bus] for dispatching inventory events.
+// WithBus sets a custom event bus for emitting events.
 func WithBus(b *bus.Bus) Option {
 	return func(s *SOCache) {
 		s.bus = b
 	}
 }
 
-// WithSchema registers a static [schema.Schema] to resolve SKU values on parsing.
+// WithSchema allows filling out the item SKU's during processing.
 func WithSchema(schema *schema.Schema) Option {
 	return func(s *SOCache) {
 		s.schema = schema
 	}
 }
 
-// SOCache manages the Team Fortress 2 inventory replica state.
-// It synchronizes and processes shared object updates sent by the Game Coordinator.
+// SOCache manages the real-time Team Fortress 2 inventory.
+// It maps and processes incoming Shared Object updates from the Game Coordinator.
 type SOCache struct {
 	mu sync.RWMutex
 
@@ -474,44 +473,42 @@ func NewSOCache(coord CoordinatorProvider, opts ...Option) *SOCache {
 	return s
 }
 
-// GetMaxSlots returns the maximum number of item slots in the backpack.
+// GetMaxSlots returns the maximum slot capacity of the backpack.
 func (c *SOCache) GetMaxSlots() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return int(c.slots)
 }
 
-// IsPremium returns true if the account is a premium TF2 account.
+// IsPremium returns true if the account is premium in TF2.
 func (c *SOCache) IsPremium() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.isPremium
 }
 
-// GetMMR returns the rating for a specific matchmaking group.
-// Common types: 1 = Casual, 2 = 6v6 Competitive.
+// GetMMR returns the rating value for the specified matchmaking group.
 func (c *SOCache) GetMMR(ratingType int32) uint32 {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.ratings[ratingType]
 }
 
-// GetTradeBanExpiration returns the unix timestamp when the account's trade ban expires.
-// Returns 0 if not banned.
+// GetTradeBanExpiration returns the unix timestamp when the trade ban expires.
 func (c *SOCache) GetTradeBanExpiration() uint32 {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.tradeBanExpiration
 }
 
-// HasCompetitiveAccess returns true if the account can join competitive matches.
+// HasCompetitiveAccess returns true if the account is eligible for competitive matchmaking.
 func (c *SOCache) HasCompetitiveAccess() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.compAccess
 }
 
-// GetItems returns a snapshot of the current inventory.
+// GetItems returns a snapshot slice of all items stored in the cache.
 func (c *SOCache) GetItems() []*Item {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -524,7 +521,7 @@ func (c *SOCache) GetItems() []*Item {
 	return list
 }
 
-// GetItem returns a specific item by its AssetID, or nil if not found.
+// GetItem returns the [Item] matching the specified asset ID.
 func (c *SOCache) GetItem(id uint64) (*Item, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -534,7 +531,7 @@ func (c *SOCache) GetItem(id uint64) (*Item, bool) {
 	return item, ok
 }
 
-// GetMetal returns the list of metal item ids.
+// GetMetal returns up to count tradable metal item IDs matching the specified defIndex.
 func (c *SOCache) GetMetal(defIndex uint32, count int) []uint64 {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -553,8 +550,7 @@ func (c *SOCache) GetMetal(defIndex uint32, count int) []uint64 {
 	return ids
 }
 
-// FindCraftableItems searches for items by DefIndex that are safe to use in crafting.
-// Returns an array of item IDs. If count > 0, returns the maximum count of items.
+// FindCraftableItems returns up to count tradable and craftable item IDs matching the defIndex.
 func (c *SOCache) FindCraftableItems(defIndex uint32, count int) []uint64 {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -573,7 +569,7 @@ func (c *SOCache) FindCraftableItems(defIndex uint32, count int) []uint64 {
 	return ids
 }
 
-// FindWeaponsByClass searches for tradable weapons of a specific class.
+// FindWeaponsByClass returns all tradable weapons usable by the specified character class.
 func (c *SOCache) FindWeaponsByClass(class string) []*Item {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -592,7 +588,7 @@ func (c *SOCache) FindWeaponsByClass(class string) []*Item {
 	return result
 }
 
-// GetMetalCount returns the amount of available metal of a given type.
+// GetMetalCount returns the count of tradable metal items matching the defIndex.
 func (c *SOCache) GetMetalCount(defIndex uint32) int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -608,8 +604,7 @@ func (c *SOCache) GetMetalCount(defIndex uint32) int {
 	return count
 }
 
-// GetAssetIDsBySKU returns a list of AssetIDs for a given item.
-// If limit > 0, returns up to limit items.
+// GetAssetIDsBySKU returns up to limit item IDs matching the target SKU.
 func (c *SOCache) GetAssetIDsBySKU(targetSKU string, limit int) []uint64 {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -836,23 +831,26 @@ func (c *SOCache) processDestroy(typeID int32, data []byte, events *[]bus.Event)
 
 func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 	item := &Item{
-		ID:           p.GetId(),
-		OriginalID:   p.GetOriginalId(),
-		DefIndex:     p.GetDefIndex(),
-		Level:        p.GetLevel(),
-		Quality:      p.GetQuality(),
-		Inventory:    p.GetInventory(),
-		Quantity:     p.GetQuantity(),
-		Origin:       p.GetOrigin(),
-		Flags:        EconItemFlag(p.GetFlags()),
-		Style:        p.GetStyle(),
-		InUse:        p.GetInUse(),
-		AccountID:    p.GetAccountId(),
-		CustomName:   p.GetCustomName(),
-		CustomDesc:   p.GetCustomDesc(),
+		ID:         p.GetId(),
+		OriginalID: p.GetOriginalId(),
+		DefIndex:   p.GetDefIndex(),
+		Level:      p.GetLevel(),
+		Quality:    p.GetQuality(),
+		Inventory:  p.GetInventory(),
+		Quantity:   p.GetQuantity(),
+		Origin:     p.GetOrigin(),
+		Flags:      EconItemFlag(p.GetFlags()),
+		Style:      p.GetStyle(),
+		InUse:      p.GetInUse(),
+		AccountID:  p.GetAccountId(),
+
+		CustomName: p.GetCustomName(),
+		CustomDesc: p.GetCustomDesc(),
+
 		IsTradable:   !EconItemFlag(p.GetFlags()).HasFlag(EconItemFlagCannotTrade),
 		IsMarketable: !EconItemFlag(p.GetFlags()).HasFlag(EconItemFlagNonEconomy),
-		IsCraftable:  true,
+
+		IsCraftable: true,
 	}
 
 	getFloat := func(b []byte) float32 {

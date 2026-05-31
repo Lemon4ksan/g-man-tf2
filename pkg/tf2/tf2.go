@@ -41,8 +41,7 @@ const (
 	ModuleName string = "tf2"
 )
 
-// GetModule resolves and returns a registered module instance from the initialization context.
-// Returns an error if the module is not found or has an incompatible type.
+// GetModule is a generic helper to retrieve a typed module from the init context.
 func GetModule[T any](init module.InitContext, name string) (T, error) {
 	var zero T
 
@@ -59,19 +58,19 @@ func GetModule[T any](init module.InitContext, name string) (T, error) {
 	return typed, nil
 }
 
-// WithModule returns a [steam.Option] that registers the [TF2] module with the client.
+// WithModule returns an option that registers the [TF2] module with the client.
 func WithModule() steam.Option {
 	return func(c *steam.Client) {
 		c.RegisterModule(New())
 	}
 }
 
-// From returns the [TF2] module instance retrieved from the [steam.Client].
+// From returns the [TF2] module instance from the [steam.Client].
 func From(c *steam.Client) *TF2 {
 	return steam.GetModule[*TF2](c)
 }
 
-// AchievementConfig returns the standard TF2 strategy configuration for the achievements manager.
+// AchievementConfig returns standard TF2 configuration options for the achievements manager.
 func AchievementConfig() achievements.Config {
 	return achievements.Config{
 		AppID:            AppID,
@@ -114,7 +113,7 @@ const (
 	Connected
 )
 
-// CoordinatorProvider defines the GC communication interface required by the [TF2] module.
+// CoordinatorProvider defines the interface for communicating with the Game Coordinator.
 type CoordinatorProvider interface {
 	Send(ctx context.Context, appID, msgType uint32, msg proto.Message) error
 	SendRaw(ctx context.Context, appID, msgType uint32, payload []byte) error
@@ -122,18 +121,18 @@ type CoordinatorProvider interface {
 	CallRaw(ctx context.Context, appID, msgType uint32, payload []byte, cb jobs.Callback[*protocol.GCPacket]) error
 }
 
-// AppsProvider defines the game execution interface required by the [TF2] module.
+// AppsProvider defines the interface for starting and stopping games.
 type AppsProvider interface {
 	PlayGames(ctx context.Context, appIDs []uint32, forceKick bool) error
 }
 
-// SchemaProvider defines the schema retrieval interface required by the [TF2] module.
+// SchemaProvider defines the interface for retrieving the active item schema.
 type SchemaProvider interface {
 	Get() *schema.Schema
 }
 
-// TF2 coordinates the session connection and commands with the Team Fortress 2 Game Coordinator.
-// It maintains the [SOCache] inventory and publishes state events to the global bus.
+// TF2 manages the session and coordinates commands with the Game Coordinator.
+// It maintains the [SOCache] inventory view and publishes relevant lifecycle events.
 type TF2 struct {
 	module.Base
 
@@ -147,18 +146,18 @@ type TF2 struct {
 	schema SchemaProvider
 }
 
-// New constructs a new [TF2] module with pre-declared dependency modules.
+// New creates a new TF2 module.
 func New() *TF2 {
 	return &TF2{
 		Base: module.New(ModuleName).WithDeps(gc.ModuleName, apps.ModuleName, schema.ModuleName),
 	}
 }
 
-// Name returns the unique registration name of the module.
+// Name returns the unique module identifier.
 func (t *TF2) Name() string { return ModuleName }
 
-// Init initializes the [TF2] module and resolves its registered dependencies.
-// Returns an error if any of the required modules are missing.
+// Init initializes the [TF2] module and registers internal handlers.
+// Returns an error if any of the mandatory dependency modules are missing.
 func (t *TF2) Init(init module.InitContext) error {
 	if err := t.Base.Init(init); err != nil {
 		return err
@@ -193,8 +192,8 @@ func (t *TF2) Init(init module.InitContext) error {
 	return nil
 }
 
-// StartAuthed begins the asynchronous connection handshakes when Steam authentication succeeds.
-// Returns an error if game execution fails or the context is cancelled.
+// StartAuthed signals Steam to launch the TF2 client and starts the hello loop.
+// Returns an error if the context is cancelled or the launch request fails.
 func (t *TF2) StartAuthed(ctx context.Context, authCtx module.AuthContext) error {
 	if authCtx != nil {
 		t.steamID = authCtx.SteamID()
@@ -212,14 +211,13 @@ func (t *TF2) StartAuthed(ctx context.Context, authCtx module.AuthContext) error
 	return nil
 }
 
-// Close terminates the active Game Coordinator session.
-// Returns an error if termination fails.
+// Close terminates the session and cleans up active background loops.
 func (t *TF2) Close() error {
 	t.state.Store(int32(Disconnected))
 	return t.Base.Close()
 }
 
-// Connected returns true if the Game Coordinator session is currently established.
+// Connected returns true if the module has established a session with the Game Coordinator.
 func (t *TF2) Connected() bool {
 	return t.state.Load() == int32(Connected)
 }
@@ -229,8 +227,8 @@ func (t *TF2) Cache() *SOCache {
 	return t.cache
 }
 
-// AwardAchievement unlocks the specified TF2 achievement.
-// Returns an error if the Game Coordinator is disconnected or the request fails.
+// AwardAchievement requests Steam to unlock the specified TF2 achievement.
+// Returns an error if the GC is disconnected or the API request fails.
 func (t *TF2) AwardAchievement(ctx context.Context, achievementID uint32) error {
 	if t.state.Load() != int32(Connected) {
 		return errors.New("tf2: GC is not connected")
@@ -257,8 +255,8 @@ func (t *TF2) AwardAchievement(ctx context.Context, achievementID uint32) error 
 	return err
 }
 
-// SetStat updates the value of the specified TF2 gameplay statistic.
-// Returns an error if the Game Coordinator is disconnected or the request fails.
+// SetStat requests Steam to update the specified TF2 gameplay statistic.
+// Returns an error if the GC is disconnected or the API request fails.
 func (t *TF2) SetStat(ctx context.Context, statID, value uint32) error {
 	if t.state.Load() != int32(Connected) {
 		return errors.New("tf2: GC is not connected")
@@ -285,8 +283,8 @@ func (t *TF2) SetStat(ctx context.Context, statID, value uint32) error {
 	return err
 }
 
-// GetCurrentAchievements retrieves a map of already unlocked TF2 achievements.
-// Returns an error if the Game Coordinator is disconnected or the request fails.
+// GetCurrentAchievements retrieves a map of currently unlocked achievements.
+// Returns an error if the GC is disconnected, or if the request fails.
 func (t *TF2) GetCurrentAchievements(ctx context.Context) (map[uint32]bool, error) {
 	if t.state.Load() != int32(Connected) {
 		return nil, errors.New("tf2: GC is not connected")
@@ -349,8 +347,8 @@ func (t *TF2) GetCurrentAchievements(ctx context.Context) (map[uint32]bool, erro
 	return unlocked, nil
 }
 
-// PlayGames launches or terminates games for the specified app ID list.
-// Returns an error if launching fails or the context is cancelled.
+// PlayGames launches or stops TF2 and coordinates Game Coordinator states.
+// Returns an error if the play request fails or the context is cancelled.
 func (t *TF2) PlayGames(ctx context.Context, appIDs []uint32) error {
 	err := t.apps.PlayGames(ctx, appIDs, false)
 	if err == nil {
@@ -382,9 +380,9 @@ func (t *TF2) PlayGames(ctx context.Context, appIDs []uint32) error {
 	return err
 }
 
-// Craft sends a crafting recipe execution command to the Game Coordinator and awaits the response.
-// It blocks until the Game Coordinator publishes a response event or the 15-second timeout expires.
-// Returns the created item IDs, or an error if the request fails or times out.
+// Craft sends a crafting request to the Game Coordinator and blocks waiting for response.
+// It times out after 15 seconds if no response is received.
+// Returns the asset IDs of the newly created items, or an error.
 func (t *TF2) Craft(ctx context.Context, items []uint64, recipe int16) ([]uint64, error) {
 	if t.state.Load() != int32(Connected) {
 		return nil, errors.New("tf2: GC is not connected")

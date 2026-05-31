@@ -16,8 +16,8 @@ import (
 	pb "github.com/lemon4ksan/g-man-tf2/pkg/protobuf/tf2"
 )
 
-// RemoveItemName requests the Game Coordinator to strip a custom name from an item.
-// Returns an error if the connection is down, if itemID is 0, or if the context is cancelled.
+// RemoveItemName requests the Game Coordinator to clear a custom name from an item.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) RemoveItemName(ctx context.Context, itemID uint64) error {
 	data := make([]byte, 9)
 	binary.LittleEndian.PutUint64(data[0:8], itemID)
@@ -26,8 +26,8 @@ func (t *TF2) RemoveItemName(ctx context.Context, itemID uint64) error {
 	return t.gc.SendRaw(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCRemoveItemName), data)
 }
 
-// RemoveItemDescription requests the Game Coordinator to strip a custom description from an item.
-// Returns an error if the connection is down, if itemID is 0, or if the context is cancelled.
+// RemoveItemDescription requests the Game Coordinator to clear a custom description from an item.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) RemoveItemDescription(ctx context.Context, itemID uint64) error {
 	data := make([]byte, 9)
 	binary.LittleEndian.PutUint64(data[0:8], itemID)
@@ -36,8 +36,8 @@ func (t *TF2) RemoveItemDescription(ctx context.Context, itemID uint64) error {
 	return t.gc.SendRaw(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCRemoveItemName), data)
 }
 
-// RemoveItemPaint requests the Game Coordinator to strip custom paint from an item.
-// Returns an error if the connection is down, if itemID is 0, or if the context is cancelled.
+// RemoveItemPaint requests the Game Coordinator to clear custom paint from an item.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) RemoveItemPaint(ctx context.Context, itemID uint64) error {
 	req := &pb.CMsgGCRemoveCustomizationAttributeSimple{
 		ItemId: proto.Uint64(itemID),
@@ -46,8 +46,8 @@ func (t *TF2) RemoveItemPaint(ctx context.Context, itemID uint64) error {
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCRemoveItemPaint), req)
 }
 
-// RemoveMakersMark requests the Game Coordinator to strip the custom creator tag from an item.
-// Returns an error if the connection is down, if itemID is 0, or if the context is cancelled.
+// RemoveMakersMark requests the Game Coordinator to clear the crafted-by signature from an item.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) RemoveMakersMark(ctx context.Context, itemID uint64) error {
 	req := &pb.CMsgGCRemoveCustomizationAttributeSimple{
 		ItemId: proto.Uint64(itemID),
@@ -56,8 +56,8 @@ func (t *TF2) RemoveMakersMark(ctx context.Context, itemID uint64) error {
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCRemoveMakersMark), req)
 }
 
-// ResetStrangeScores requests the Game Coordinator to reset the strange counters on an item back to zero.
-// Returns an error if the connection is down, if itemID is 0, or if the context is cancelled.
+// ResetStrangeScores requests the Game Coordinator to clear counters on a Strange item back to zero.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) ResetStrangeScores(ctx context.Context, itemID uint64) error {
 	req := &pb.CMsgGCResetStrangeScores{
 		ItemId: proto.Uint64(itemID),
@@ -66,8 +66,8 @@ func (t *TF2) ResetStrangeScores(ctx context.Context, itemID uint64) error {
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCResetStrangeScores), req)
 }
 
-// RemoveKillstreak requests the Game Coordinator to strip a killstreak kit from an item.
-// Returns an error if the connection is down, if itemID is 0, or if the context is cancelled.
+// RemoveKillstreak requests the Game Coordinator to clear a killstreak kit modification from an item.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) RemoveKillstreak(ctx context.Context, itemID uint64) error {
 	req := &pb.CMsgGCRemoveCustomizationAttributeSimple{
 		ItemId: proto.Uint64(itemID),
@@ -76,8 +76,8 @@ func (t *TF2) RemoveKillstreak(ctx context.Context, itemID uint64) error {
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCRemoveKillStreak), req)
 }
 
-// RemoveFestivizer requests the Game Coordinator to strip a festivizer from an item.
-// Returns an error if the connection is down, if itemID is 0, or if the context is cancelled.
+// RemoveFestivizer requests the Game Coordinator to clear a festivizer modification from an item.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) RemoveFestivizer(ctx context.Context, itemID uint64) error {
 	req := &pb.CMsgGCRemoveCustomizationAttributeSimple{
 		ItemId: proto.Uint64(itemID),
@@ -86,8 +86,8 @@ func (t *TF2) RemoveFestivizer(ctx context.Context, itemID uint64) error {
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCRemoveFestivizer), req)
 }
 
-// RemoveGiftedBy requests the Game Coordinator to strip the custom gifter tag from an item.
-// Returns an error if the connection is down, if itemID is 0, or if the context is cancelled.
+// RemoveGiftedBy requests the Game Coordinator to clear the gifted-by signature from an item.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) RemoveGiftedBy(ctx context.Context, itemID uint64) error {
 	req := &pb.CMsgGCRemoveCustomizationAttributeSimple{
 		ItemId: proto.Uint64(itemID),
@@ -96,9 +96,9 @@ func (t *TF2) RemoveGiftedBy(ctx context.Context, itemID uint64) error {
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCRemoveGiftedBy), req)
 }
 
-// RemoveItemAttribute requests the Game Coordinator to strip a specific customization attribute from an item.
-// This is used for removing spells or strange parts.
-// Returns an error if the connection is down, if itemID is 0, or if the context is cancelled.
+// RemoveItemAttribute requests the Game Coordinator to clear a specific modification attribute from an item.
+// This utilizes a specific Game Coordinator message type override.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) RemoveItemAttribute(ctx context.Context, itemID uint64, attributeID uint32) error {
 	req := &pb.CMsgGCRemoveCustomizationAttributeSimple{
 		ItemId: proto.Uint64(itemID),
@@ -107,21 +107,21 @@ func (t *TF2) RemoveItemAttribute(ctx context.Context, itemID uint64, attributeI
 	return t.gc.Send(ctx, AppID, attributeID, req)
 }
 
-// AcknowledgeItem acknowledges a newly acquired or traded item to the Game Coordinator.
-// It moves the item from position 0 to slot 1 to complete the in-game notification process.
-// Returns an error if the connection is down, if itemID is 0, or if the context is cancelled.
+// AcknowledgeItem requests the Game Coordinator to flag a newly received item as acknowledged.
+// It implements this by shifting the item to position 1.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) AcknowledgeItem(ctx context.Context, itemID uint64) error {
 	return t.SetItemPosition(ctx, itemID, 1)
 }
 
-// NameItem applies a custom name tag to an item.
-// Returns an error if the toolID or itemID is 0, if the name is empty or too long, or if the context is cancelled.
+// NameItem requests the Game Coordinator to apply a custom name tag to an item.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) NameItem(ctx context.Context, toolID, itemID uint64, name string) error {
 	return t.nameOrDescribeItem(ctx, toolID, itemID, name, false)
 }
 
-// DescribeItem applies a custom description tag to an item.
-// Returns an error if the toolID or itemID is 0, if the description is empty or too long, or if the context is cancelled.
+// DescribeItem requests the Game Coordinator to apply a custom description tag to an item.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) DescribeItem(ctx context.Context, toolID, itemID uint64, description string) error {
 	return t.nameOrDescribeItem(ctx, toolID, itemID, description, true)
 }
@@ -143,9 +143,9 @@ func (t *TF2) nameOrDescribeItem(ctx context.Context, toolID, itemID uint64, tex
 	return t.gc.SendRaw(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCNameItem), buf.Bytes())
 }
 
-// AcknowledgeAll acknowledges all unacknowledged items in the backpack by moving them to the first available slots.
-// Unacknowledged items are identified by having a position of 0 or a new item bit mask.
-// Returns an error if the connection is down or if the context is cancelled.
+// AcknowledgeAll requests the Game Coordinator to flag all unacknowledged items as seen.
+// It shifts newly acquired items from index 0 to the first available slots.
+// Returns an error if any of the position change packets fail to send.
 func (t *TF2) AcknowledgeAll(ctx context.Context) error {
 	items := t.cache.GetItems()
 
@@ -168,8 +168,8 @@ func (t *TF2) AcknowledgeAll(ctx context.Context) error {
 	return t.MoveItems(ctx, toMove)
 }
 
-// SetItemStyle updates the cosmetic style index of the specified item.
-// Returns an error if the connection is down, if itemID is 0, or if the context is cancelled.
+// SetItemStyle requests the Game Coordinator to change the cosmetic style index of an item.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) SetItemStyle(ctx context.Context, itemID uint64, style uint8) error {
 	data := make([]byte, 9)
 	binary.LittleEndian.PutUint64(data[0:8], itemID)
@@ -178,8 +178,8 @@ func (t *TF2) SetItemStyle(ctx context.Context, itemID uint64, style uint8) erro
 	return t.gc.SendRaw(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCSetItemStyle), data)
 }
 
-// SetItemPosition moves an item to the specified page/slot position index in the backpack.
-// Returns an error if the connection is down, if itemID is 0, or if the context is cancelled.
+// SetItemPosition requests the Game Coordinator to shift an item to the specified backpack index.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) SetItemPosition(ctx context.Context, itemID uint64, position uint32) error {
 	data := make([]byte, 12)
 	binary.LittleEndian.PutUint64(data[0:8], itemID)
@@ -188,8 +188,8 @@ func (t *TF2) SetItemPosition(ctx context.Context, itemID uint64, position uint3
 	return t.gc.SendRaw(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCSetSingleItemPosition), data)
 }
 
-// DeleteItem permanently deletes an item from the inventory state.
-// Returns an error if the connection is down, if itemID is 0, or if the context is cancelled.
+// DeleteItem requests the Game Coordinator to permanently delete the specified item.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) DeleteItem(ctx context.Context, itemID uint64) error {
 	buf := new(bytes.Buffer)
 	_ = binary.Write(buf, binary.LittleEndian, itemID)
@@ -197,8 +197,8 @@ func (t *TF2) DeleteItem(ctx context.Context, itemID uint64) error {
 	return t.gc.SendRaw(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCDelete), buf.Bytes())
 }
 
-// SetUnusualEffectOffset adjusts the vertical placement offset of an Unusual effect attached to an item.
-// Returns an error if the connection is down, if itemID is 0, or if the context is cancelled.
+// SetUnusualEffectOffset requests the Game Coordinator to adjust the vertical alignment of an Unusual effect.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) SetUnusualEffectOffset(ctx context.Context, itemID uint64, offset float32) error {
 	req := &pb.CMsgSetItemEffectVerticalOffset{
 		ItemId: proto.Uint64(itemID),
@@ -208,8 +208,8 @@ func (t *TF2) SetUnusualEffectOffset(ctx context.Context, itemID uint64, offset 
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCSetItemEffectVerticalOffset), req)
 }
 
-// TransferStrangeCount transfers stats from a source strange item to a destination strange item using a tool.
-// Returns an error if any ID is 0, if the items are incompatible, or if the context is cancelled.
+// TransferStrangeCount requests the Game Coordinator to shift stats between two compatible Strange items.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) TransferStrangeCount(ctx context.Context, toolID, srcID, destID uint64) error {
 	req := &pb.CMsgApplyStrangeCountTransfer{
 		ToolItemId:     proto.Uint64(toolID),
@@ -220,8 +220,8 @@ func (t *TF2) TransferStrangeCount(ctx context.Context, toolID, srcID, destID ui
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCApplyStrangeCountTransfer), req)
 }
 
-// ShuffleCrate shuffles the contents of a crate using a shuffle tool and custom user code.
-// Returns an error if the connection is down, if itemID is 0, or if the context is cancelled.
+// ShuffleCrate requests the Game Coordinator to randomize the contents of the specified crate.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) ShuffleCrate(ctx context.Context, itemID uint64, userCode string) error {
 	req := &pb.CMsgGCShuffleCrateContents{
 		CrateItemId:    proto.Uint64(itemID),
@@ -231,8 +231,8 @@ func (t *TF2) ShuffleCrate(ctx context.Context, itemID uint64, userCode string) 
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCShuffleCrateContents), req)
 }
 
-// ApplyAutograph applies an autograph tool to an item.
-// Returns an error if the connection is down, if any ID is 0, or if the context is cancelled.
+// ApplyAutograph requests the Game Coordinator to apply an autograph tool to the target item.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) ApplyAutograph(ctx context.Context, toolID, itemID uint64) error {
 	req := &pb.CMsgApplyAutograph{
 		AutographItemId: proto.Uint64(toolID),
@@ -242,8 +242,8 @@ func (t *TF2) ApplyAutograph(ctx context.Context, toolID, itemID uint64) error {
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCApplyAutograph), req)
 }
 
-// RequestMarketData requests official Steam Market pricing details from the Game Coordinator.
-// Returns an error if the connection is down, if the currency is unsupported, or if the context is cancelled.
+// RequestMarketData requests the Game Coordinator to provide current Steam Market price lists.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) RequestMarketData(ctx context.Context, currency uint32) error {
 	req := &pb.CMsgGCClientMarketDataRequest{
 		UserCurrency: proto.Uint32(currency),
@@ -252,8 +252,8 @@ func (t *TF2) RequestMarketData(ctx context.Context, currency uint32) error {
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCClientRequestMarketData), req)
 }
 
-// ReportPlayer submits a player report for a specified reason to the Game Coordinator.
-// Returns an error if target accountID is 0, if the reason is nil, or if the context is cancelled.
+// ReportPlayer requests the Game Coordinator to file a formal abuse or cheating report against a user.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) ReportPlayer(ctx context.Context, accountID uint32, reason *pb.CMsgGC_ReportPlayer_EReason) error {
 	req := &pb.CMsgGC_ReportPlayer{
 		AccountIdTarget: proto.Uint32(accountID),
@@ -263,8 +263,8 @@ func (t *TF2) ReportPlayer(ctx context.Context, accountID uint32, reason *pb.CMs
 	return t.gc.Send(ctx, AppID, uint32(pb.ETFGCMsg_k_EMsgGC_ReportPlayer), req)
 }
 
-// RequestFriends requests TF2-specific profile data for a slice of Steam account IDs.
-// Returns an error if the connection is down, if the slice is empty, or if the context is cancelled.
+// RequestFriends requests the Game Coordinator to retrieve profile metadata for the specified account IDs.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) RequestFriends(ctx context.Context, accountIDs []uint32) error {
 	req := &pb.CMsgTFRequestTF2Friends{
 		AccountIds: accountIDs,
@@ -273,8 +273,8 @@ func (t *TF2) RequestFriends(ctx context.Context, accountIDs []uint32) error {
 	return t.gc.Send(ctx, AppID, uint32(pb.ETFGCMsg_k_EMsgGCRequestTF2Friends), req)
 }
 
-// UseItem triggers an interactive use action on an item (e.g., opening bags or applying badges).
-// Returns an error if the connection is down, if itemID is 0, or if the context is cancelled.
+// UseItem requests the Game Coordinator to activate an item-specific action (e.g. consuming a tool).
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) UseItem(ctx context.Context, itemID uint64) error {
 	req := &pb.CMsgUseItem{
 		ItemId: proto.Uint64(itemID),
@@ -283,8 +283,8 @@ func (t *TF2) UseItem(ctx context.Context, itemID uint64) error {
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCUseItemRequest), req)
 }
 
-// ApplyStrangePart applies a strange part modifier item to a strange target item.
-// Returns an error if the connection is down, if any ID is 0, or if the context is cancelled.
+// ApplyStrangePart requests the Game Coordinator to apply a strange part modifier to a Strange quality item.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) ApplyStrangePart(ctx context.Context, itemID, partID uint64) error {
 	req := &pb.CMsgApplyStrangePart{
 		ItemItemId:        proto.Uint64(itemID),
@@ -294,8 +294,8 @@ func (t *TF2) ApplyStrangePart(ctx context.Context, itemID, partID uint64) error
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCApplyStrangePart), req)
 }
 
-// ApplyStrangifier applies a strangifier or unusualifier tool to a cosmetic item.
-// Returns an error if the connection is down, if any ID is 0, or if the context is cancelled.
+// ApplyStrangifier requests the Game Coordinator to apply a strangifier or unusualifier tool to an item.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) ApplyStrangifier(ctx context.Context, itemID, toolID uint64) error {
 	req := &pb.CMsgApplyToolToItem{
 		ToolItemId:    proto.Uint64(toolID),
@@ -305,8 +305,8 @@ func (t *TF2) ApplyStrangifier(ctx context.Context, itemID, toolID uint64) error
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCApplyXifier), req)
 }
 
-// SortBackpack requests the Game Coordinator to sort the backpack by a specific sort type ID.
-// Returns an error if the connection is down or if the context is cancelled.
+// SortBackpack requests the Game Coordinator to trigger a native inventory sorting operation.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) SortBackpack(ctx context.Context, sortType uint32) error {
 	req := &pb.CMsgSortItems{
 		SortType: proto.Uint32(sortType),
@@ -315,8 +315,8 @@ func (t *TF2) SortBackpack(ctx context.Context, sortType uint32) error {
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCSortItems), req)
 }
 
-// EquipItem assigns an item to a loadout slot for a specific character class.
-// Returns an error if any ID is 0, if classID or slot are invalid, or if the context is cancelled.
+// EquipItem requests the Game Coordinator to assign an item to the designated class loadout slot.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) EquipItem(ctx context.Context, itemID uint64, classID, slot uint32) error {
 	req := &pb.CMsgAdjustItemEquippedState{
 		ItemId:   proto.Uint64(itemID),
@@ -327,8 +327,8 @@ func (t *TF2) EquipItem(ctx context.Context, itemID uint64, classID, slot uint32
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCAdjustItemEquippedState), req)
 }
 
-// UnlockCrate consumes a key to unlock a specific supply crate.
-// Returns an error if the connection is down, if any ID is 0, or if the context is cancelled.
+// UnlockCrate requests the Game Coordinator to consume a key and unlock the specified crate.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) UnlockCrate(ctx context.Context, keyID, crateID uint64) error {
 	buf := new(bytes.Buffer)
 	_ = binary.Write(buf, binary.LittleEndian, keyID)
@@ -337,8 +337,8 @@ func (t *TF2) UnlockCrate(ctx context.Context, keyID, crateID uint64) error {
 	return t.gc.SendRaw(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCUnlockCrate), buf.Bytes())
 }
 
-// WrapItem applies a gift wrap tool to an item.
-// Returns an error if the connection is down, if any ID is 0, or if the context is cancelled.
+// WrapItem requests the Game Coordinator to apply a gift wrap modification to an item.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) WrapItem(ctx context.Context, wrapID, itemID uint64) error {
 	buf := new(bytes.Buffer)
 	_ = binary.Write(buf, binary.LittleEndian, wrapID)
@@ -347,8 +347,8 @@ func (t *TF2) WrapItem(ctx context.Context, wrapID, itemID uint64) error {
 	return t.gc.SendRaw(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCGiftWrapItem), buf.Bytes())
 }
 
-// DeliverGift delivers a wrapped gift item to the specified target Steam account.
-// Returns an error if the connection is down, if any ID is 0, or if the context is cancelled.
+// DeliverGift requests the Game Coordinator to send a packaged gift item to another player.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) DeliverGift(ctx context.Context, giftID, targetSteamID uint64) error {
 	buf := new(bytes.Buffer)
 	_ = binary.Write(buf, binary.LittleEndian, giftID)
@@ -357,8 +357,8 @@ func (t *TF2) DeliverGift(ctx context.Context, giftID, targetSteamID uint64) err
 	return t.gc.SendRaw(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCDeliverGift), buf.Bytes())
 }
 
-// InviteToTrade sends an in-game live trade session request to another Steam user.
-// Returns an error if the connection is down, if steamID is 0, or if the context is cancelled.
+// InviteToTrade requests the Game Coordinator to initiate a live trade invitation with another player.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) InviteToTrade(ctx context.Context, steamID uint64) error {
 	buf := new(bytes.Buffer)
 	_ = binary.Write(buf, binary.LittleEndian, uint32(0))
@@ -367,8 +367,8 @@ func (t *TF2) InviteToTrade(ctx context.Context, steamID uint64) error {
 	return t.gc.SendRaw(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCTrading_InitiateTradeRequest), buf.Bytes())
 }
 
-// RespondToTrade responds to an incoming live trade request invitation.
-// Returns an error if the connection is down, if tradeID is 0, or if the context is cancelled.
+// RespondToTrade requests the Game Coordinator to accept or decline an active live trade invitation.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) RespondToTrade(ctx context.Context, tradeID uint32, accept bool) error {
 	const (
 		ResponseAccepted = 0
@@ -387,8 +387,14 @@ func (t *TF2) RespondToTrade(ctx context.Context, tradeID uint32, accept bool) e
 	return t.gc.SendRaw(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCTrading_InitiateTradeResponse), buf.Bytes())
 }
 
-// ApplyPaint applies a paint can tool to a paintable cosmetic item.
-// Returns an error if the connection is down, if any ID is 0, or if the context is cancelled.
+// CancelTradeRequest requests the Game Coordinator to abort any active live trade invitation.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
+func (t *TF2) CancelTradeRequest(ctx context.Context) error {
+	return t.gc.SendRaw(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCTrading_CancelSession), nil)
+}
+
+// ApplyPaint requests the Game Coordinator to apply a paint can modification to an item.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) ApplyPaint(ctx context.Context, toolID, itemID uint64) error {
 	buf := new(bytes.Buffer)
 	_ = binary.Write(buf, binary.LittleEndian, toolID)
@@ -397,8 +403,8 @@ func (t *TF2) ApplyPaint(ctx context.Context, toolID, itemID uint64) error {
 	return t.gc.SendRaw(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCPaintItem), buf.Bytes())
 }
 
-// UnwrapGift unpacks a delivered gift package item in the inventory.
-// Returns an error if the connection is down, if itemID is 0, or if the context is cancelled.
+// UnwrapGift requests the Game Coordinator to unwrap a packaged gift in the inventory.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) UnwrapGift(ctx context.Context, itemID uint64) error {
 	buf := new(bytes.Buffer)
 	_ = binary.Write(buf, binary.LittleEndian, itemID)
@@ -406,23 +412,17 @@ func (t *TF2) UnwrapGift(ctx context.Context, itemID uint64) error {
 	return t.gc.SendRaw(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCUnwrapGiftRequest), buf.Bytes())
 }
 
-// CancelTradeRequest cancels any active trading session invitation.
-// Returns an error if the connection is down or if the context is cancelled.
-func (t *TF2) CancelTradeRequest(ctx context.Context) error {
-	return t.gc.SendRaw(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCTrading_CancelSession), nil)
-}
-
-// ItemPos represents an item placement configuration in the backpack.
+// ItemPos represents an item identifier and its intended backpack position.
 type ItemPos struct {
 	// ID represents the unique asset identifier of the item.
 	ID uint64
-	// Position represents the destination page/slot index in the backpack.
+	// Position represents the intended backpack position index.
 	Position uint32
 }
 
-// MoveItems moves multiple items to designated positions in the backpack.
-// Operations are grouped and sent in sequential batches of 50 moves to prevent rate limiting.
-// Returns an error if any batch fails to send or if the context is cancelled.
+// MoveItems sends batched backpack slot reassignment requests to the Game Coordinator.
+// It splits the list into small chunks to avoid exceeding Game Coordinator limits.
+// Returns an error if any of the batches fail to send or if the context is cancelled.
 func (t *TF2) MoveItems(ctx context.Context, items []ItemPos) error {
 	const maxBatchSize = 50
 
