@@ -701,3 +701,56 @@ func uint32ToBytes(u uint32) []byte {
 	binary.LittleEndian.PutUint32(b, u)
 	return b
 }
+
+func TestSOCache_Item_Fix_StaticRestrictions(t *testing.T) {
+	t.Parallel()
+
+	raw := &schema.Raw{}
+	raw.Schema.Items = []*schema.Item{
+		{
+			Defindex:  537,
+			ItemName:  "Party Hat",
+			ItemClass: "tf_wearable",
+			Attributes: []schema.ItemAttribute{
+				{Name: "cannot trade", Value: 1},
+			},
+		},
+		{
+			Defindex:  9999,
+			ItemName:  "Uncraftable Item",
+			ItemClass: "tool",
+			Attributes: []schema.ItemAttribute{
+				{Class: "cannot_craft", Value: 1},
+			},
+		},
+	}
+	s := schema.New(raw)
+
+	t.Run("Item.Fix applies cannot trade and cannot craft", func(t *testing.T) {
+		item1 := &Item{DefIndex: 537, IsTradable: true, IsCraftable: true}
+		item1.Fix(s)
+		assert.False(t, item1.IsTradable)
+		assert.False(t, item1.IsMarketable)
+		assert.True(t, item1.IsCraftable)
+
+		item2 := &Item{DefIndex: 9999, IsTradable: true, IsCraftable: true}
+		item2.Fix(s)
+		assert.True(t, item2.IsTradable)
+		assert.False(t, item2.IsCraftable)
+	})
+
+	t.Run("SOCache.UpdateSchema updates and fixes cached items", func(t *testing.T) {
+		tf, _, _ := setupTF2(t)
+		cache := tf.Cache()
+
+		item := &Item{ID: 101, DefIndex: 537, IsTradable: true, IsCraftable: true}
+		cache.items[101] = item
+
+		assert.True(t, item.IsTradable)
+
+		cache.UpdateSchema(s)
+
+		assert.False(t, item.IsTradable)
+		assert.False(t, item.IsMarketable)
+	})
+}

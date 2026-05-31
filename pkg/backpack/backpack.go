@@ -7,6 +7,7 @@ package backpack
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"sync"
 	"time"
@@ -566,7 +567,8 @@ func (m *Backpack) GetLockedAssetIDs() []uint64 {
 	return result
 }
 
-// ApplyLayout executes layout rules and moves items to designated backpack pages.
+// ApplyLayout analyzes the current inventory and moves items according to the rules.
+// It packs items tightly in a continuous sequence, advancing pages only when a page is full.
 // Returns an error if the schema is not ready, if item moves fail, or if the context is cancelled.
 func (m *Backpack) ApplyLayout(ctx context.Context, layout Layout) error {
 	m.mu.Lock()
@@ -584,17 +586,63 @@ func (m *Backpack) ApplyLayout(ctx context.Context, layout Layout) error {
 
 	allItems := m.cache.GetItems()
 
-	for page, cfg := range layout.Pages {
-		currentSlot := 1
+	currentPage := 1
+	currentSlot := 1
 
-		for _, filter := range cfg.Filters {
-			for _, item := range allItems {
-				if plannedIDs[item.ID] || locked[item.ID] {
-					continue
+	for _, section := range layout.Sections {
+		if section.StartPage > 0 {
+			if section.StartPage < currentPage || (section.StartPage == currentPage && currentSlot > 1) {
+				// The previous section overflowed into this section's starting page.
+				// Automatically shift this section to start on the next fresh page to prevent overlaps.
+				if currentSlot > 1 {
+					currentPage++
 				}
 
-				if filter(item, s) {
-					targetPos := PositionOf(page, currentSlot)
+				currentSlot = 1
+			} else {
+				currentPage = section.StartPage
+				currentSlot = 1
+			}
+		}
+
+		var matchedItems []*tf2.Item
+		for _, item := range allItems {
+			if plannedIDs[item.ID] || locked[item.ID] {
+				continue
+			}
+
+			matches := false
+			for _, f := range section.Filters {
+				if f(item, s) {
+					matches = true
+					break
+				}
+			}
+
+			if matches {
+				matchedItems = append(matchedItems, item)
+			}
+		}
+
+		// Sort matched items within this section if a sorter is provided.
+		if section.OrderBy != nil {
+			slices.SortFunc(matchedItems, func(a, b *tf2.Item) int {
+				return section.OrderBy(a, b, s)
+			})
+		}
+
+		// Allocate continuous slots for matched items.
+		for _, item := range matchedItems {
+			for {
+				if section.EndPage > 0 && currentPage > section.EndPage {
+					return fmt.Errorf("backpack: section %q overflowed its allocated page range (%d-%d)",
+						section.Name, section.StartPage, section.EndPage)
+				}
+
+				targetPos := PositionOf(currentPage, currentSlot)
+
+				// Skip slots occupied by locked items to preserve their positions.
+				if !isSlotOccupiedByLockedItem(targetPos, allItems, locked) {
 					plannedIDs[item.ID] = true
 
 					if item.Position() != targetPos {
@@ -606,21 +654,41 @@ func (m *Backpack) ApplyLayout(ctx context.Context, layout Layout) error {
 
 					currentSlot++
 					if currentSlot > ItemsPerPage {
-						break
+						currentSlot = 1
+						currentPage++
 					}
+
+					break
+				}
+
+				// Move to next slot as current is occupied by a locked item
+				currentSlot++
+				if currentSlot > ItemsPerPage {
+					currentSlot = 1
+					currentPage++
 				}
 			}
 		}
 	}
 
 	if len(moves) == 0 {
-		m.Logger.InfoContext(ctx, "Inventory is already sorted according to layout")
+		m.Logger.InfoContext(ctx, "Inventory is already sorted according to the layout")
 		return nil
 	}
 
 	m.Logger.InfoContext(ctx, "Applying inventory layout", log.Int("moves_count", len(moves)))
 
 	return m.tf2.MoveItems(ctx, moves)
+}
+
+func isSlotOccupiedByLockedItem(pos uint32, allItems []*tf2.Item, lockedMap map[uint64]bool) bool {
+	for _, item := range allItems {
+		if item.Position() == pos && lockedMap[item.ID] {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (m *Backpack) eventLoop(ctx context.Context) {

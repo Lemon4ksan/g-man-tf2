@@ -87,4 +87,43 @@ func TestLayoutFilters_StandardFilters_ExpectedMatching(t *testing.T) {
 		filterWrong := BySKU("2;6")
 		assert.False(t, filterWrong(item, s))
 	})
+
+	t.Run("noisemakers_and_secret_saxton", func(t *testing.T) {
+		raw := &schema.Raw{}
+		raw.Schema.Items = []*schema.Item{
+			{
+				Defindex:  233,
+				ItemName:  "Secret Saxton",
+				Name:      "Gift - 1 Player",
+				ItemClass: "tf_wearable",
+			},
+			{
+				Defindex:  280,
+				ItemName:  "Noise Maker - Black Cat",
+				Name:      "Halloween Noise Maker - Black Cat",
+				ItemClass: "tf_wearable",
+			},
+			{
+				Defindex:  30880,
+				ItemName:  "Pocket Saxton",
+				Name:      "Pocket Saxton",
+				ItemClass: "tf_wearable",
+			},
+		}
+		sCustom := schema.New(raw)
+
+		itemSaxton := &tf2.Item{DefIndex: 233}
+		itemNoise := &tf2.Item{DefIndex: 280}
+		itemPocket := &tf2.Item{DefIndex: 30880}
+
+		assert.True(t, IsAction()(itemSaxton, sCustom))
+		assert.False(t, IsCosmetic()(itemSaxton, sCustom))
+
+		assert.True(t, IsAction()(itemNoise, sCustom))
+		assert.False(t, IsCosmetic()(itemNoise, sCustom))
+
+		// Pocket Saxton is a regular toy cosmetic
+		assert.False(t, IsAction()(itemPocket, sCustom))
+		assert.True(t, IsCosmetic()(itemPocket, sCustom))
+	})
 }

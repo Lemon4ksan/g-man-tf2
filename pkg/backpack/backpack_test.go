@@ -211,8 +211,9 @@ func TestBackpack_ApplyLayout_SuccessfulEmptyMoves_ReturnsNil(t *testing.T) {
 	bp.Logger = log.Discard
 
 	layout := Layout{
-		Pages: map[int]PageLayout{
-			1: {
+		Sections: []SectionLayout{
+			{
+				Name: "Test Section",
 				Filters: []Filter{
 					BySKU("1;6"),
 					BySKU("5000;6"),
@@ -223,6 +224,113 @@ func TestBackpack_ApplyLayout_SuccessfulEmptyMoves_ReturnsNil(t *testing.T) {
 
 	err := bp.ApplyLayout(t.Context(), layout)
 	assert.NoError(t, err)
+}
+
+func TestBackpack_ApplyLayout_PageRanges(t *testing.T) {
+	t.Parallel()
+
+	s := mockSchema()
+	bp := New()
+	bp.manager = &mockSchemaProvider{s: s}
+	bp.Logger = log.Discard
+
+	t.Run("successfully places items on correct start pages", func(t *testing.T) {
+		mock := &mockCache{
+			items: []*tf2.Item{
+				{ID: 10, DefIndex: 1, Quality: 6, SKU: "1;6", Inventory: 51},        // slot 1 of page 2
+				{ID: 20, DefIndex: 5000, Quality: 6, SKU: "5000;6", Inventory: 151}, // slot 1 of page 4
+			},
+		}
+		bp.cache = mock
+
+		// Section 1 should start at page 2, Section 2 should start at page 4
+		layout := Layout{
+			Sections: []SectionLayout{
+				{
+					Name:      "Section 1",
+					Filters:   []Filter{BySKU("1;6")},
+					StartPage: 2,
+					EndPage:   2,
+				},
+				{
+					Name:      "Section 2",
+					Filters:   []Filter{BySKU("5000;6")},
+					StartPage: 4,
+				},
+			},
+		}
+
+		err := bp.ApplyLayout(t.Context(), layout)
+		assert.NoError(t, err)
+	})
+
+	t.Run("returns error when section overflows its end page", func(t *testing.T) {
+		// Place 51 items on a 1-page section (max capacity 50 items)
+		items := make([]*tf2.Item, 51)
+		for i := 0; i < 51; i++ {
+			items[i] = &tf2.Item{ID: uint64(i + 1), DefIndex: 1, Quality: 6, SKU: "1;6", Inventory: uint32(i + 1)}
+		}
+
+		mock := &mockCache{items: items}
+		bp.cache = mock
+
+		layout := Layout{
+			Sections: []SectionLayout{
+				{
+					Name:      "Section 1",
+					Filters:   []Filter{BySKU("1;6")},
+					StartPage: 1,
+					EndPage:   1, // 1 page can only hold 50 items
+				},
+			},
+		}
+
+		err := bp.ApplyLayout(t.Context(), layout)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "overflowed its allocated page range (1-1)")
+	})
+
+	t.Run("automatically shifts subsequent sections when previous section overflows", func(t *testing.T) {
+		// Place 51 items in Section 1 (which starts at page 1).
+		// Page 1 can only hold 50 items, so the 51st item overflows to page 2 slot 1.
+		// Section 2 is configured to start at page 2.
+		// Since Section 1 overflowed to page 2, Section 2 should automatically shift to start on page 3!
+		items := make([]*tf2.Item, 52)
+		for i := 0; i < 51; i++ {
+			items[i] = &tf2.Item{ID: uint64(i + 1), DefIndex: 1, Quality: 6, SKU: "1;6", Inventory: uint32(i + 1)}
+		}
+
+		// The 52nd item belongs to Section 2 (SKU "5000;6")
+		items[51] = &tf2.Item{
+			ID:        52,
+			DefIndex:  5000,
+			Quality:   6,
+			SKU:       "5000;6",
+			Inventory: 101,
+		} // already at slot 1 of page 3 (PositionOf(3, 1) = 101)
+
+		mock := &mockCache{items: items}
+		bp.cache = mock
+
+		layout := Layout{
+			Sections: []SectionLayout{
+				{
+					Name:      "Section 1",
+					Filters:   []Filter{BySKU("1;6")},
+					StartPage: 1,
+					// EndPage is 0 (no strict cap), so it naturally overflows to page 2
+				},
+				{
+					Name:      "Section 2",
+					Filters:   []Filter{BySKU("5000;6")},
+					StartPage: 2, // will shift to page 3
+				},
+			},
+		}
+
+		err := bp.ApplyLayout(t.Context(), layout)
+		assert.NoError(t, err) // should successfully place item 52 on page 3 with 0 moves
+	})
 }
 
 func TestBackpack_GetItemsBySKU_ValidSKU_ReturnsMatchingIDs(t *testing.T) {

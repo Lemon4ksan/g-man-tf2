@@ -372,6 +372,21 @@ func (i *Item) Fix(s *schema.Schema) {
 		return
 	}
 
+	for _, attr := range sch.Attributes {
+		if attr.Name == "cannot trade" || attr.Class == "cannot_trade" {
+			if attr.Value == 1 {
+				i.IsTradable = false
+				i.IsMarketable = false
+			}
+		}
+
+		if attr.Name == "cannot craft" || attr.Class == "cannot_craft" {
+			if attr.Value == 1 {
+				i.IsCraftable = false
+			}
+		}
+	}
+
 	if (i.DefIndex >= 5726 && i.DefIndex <= 5733) ||
 		(i.DefIndex >= 5743 && i.DefIndex <= 5751) ||
 		(i.DefIndex >= 5793 && i.DefIndex <= 5801) {
@@ -475,6 +490,24 @@ func NewSOCache(coord CoordinatorProvider, opts ...Option) *SOCache {
 	}
 
 	return s
+}
+
+// UpdateSchema sets the active item schema and automatically applies all schema-based
+// normalizations, overrides, and SKU strings to all currently cached items.
+func (c *SOCache) UpdateSchema(s *schema.Schema) {
+	if s == nil {
+		return
+	}
+
+	c.mu.Lock()
+
+	c.schema = s
+	for _, item := range c.items {
+		item.Fix(s)
+		item.SKU = item.GetSKU(s)
+	}
+
+	c.mu.Unlock()
 }
 
 // GetMaxSlots returns the maximum slot capacity of the backpack.
@@ -760,6 +793,7 @@ func (c *SOCache) processObject(typeID int32, data []byte, isBulk bool, events *
 
 		item := c.protoToItem(econItem)
 		if c.schema != nil {
+			item.Fix(c.schema)
 			item.SKU = item.GetSKU(c.schema)
 		}
 

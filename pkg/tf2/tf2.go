@@ -182,9 +182,10 @@ func (t *TF2) Init(init module.InitContext) error {
 		return err
 	}
 
-	t.cache = NewSOCache(t.gc, WithBus(t.Bus), WithLogger(t.Logger), WithSchema(t.schema.Get()))
+	sch := t.schema.Get()
+	t.cache = NewSOCache(t.gc, WithBus(t.Bus), WithLogger(t.Logger), WithSchema(sch))
 
-	sub := t.Bus.Subscribe(&gc.MessageEvent{})
+	sub := t.Bus.Subscribe(&gc.MessageEvent{}, &schema.ReadyEvent{}, &schema.UpdatedEvent{})
 	t.Go(func(ctx context.Context) {
 		t.messageLoop(ctx, sub)
 	})
@@ -475,10 +476,17 @@ func (t *TF2) messageLoop(ctx context.Context, sub *bus.Subscription) {
 				return
 			}
 
-			if msg, ok := ev.(*gc.MessageEvent); ok {
-				if msg.Packet.AppID == AppID {
-					t.routePacket(ctx, msg.Packet)
+			switch e := ev.(type) {
+			case *gc.MessageEvent:
+				if e.Packet.AppID == AppID {
+					t.routePacket(ctx, e.Packet)
 				}
+			case *schema.ReadyEvent:
+				t.Logger.Info("TF2 Schema is ready, updating SOCache schema")
+				t.cache.UpdateSchema(t.schema.Get())
+			case *schema.UpdatedEvent:
+				t.Logger.Info("TF2 Schema is updated, updating SOCache schema")
+				t.cache.UpdateSchema(t.schema.Get())
 			}
 		}
 	}
