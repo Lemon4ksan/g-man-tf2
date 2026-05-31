@@ -39,6 +39,7 @@ func (m *mockItemCache) GetItem(id uint64) (*tf2.Item, bool) {
 			return it, true
 		}
 	}
+
 	return nil, false
 }
 
@@ -55,12 +56,13 @@ func (m *mockSchemaProvider) Get() *schema.Schema {
 }
 
 type mockBackpackProvider struct {
-	stock      map[string]int
-	items      map[string][]uint64
-	pureStock  currency.PureStock
-	cache      backpack.ItemCache
-	schemaProv backpack.SchemaProvider
-	deleted    []uint64
+	stock         map[string]int
+	items         map[string][]uint64
+	pureStock     currency.PureStock
+	cache         backpack.ItemCache
+	schemaProv    backpack.SchemaProvider
+	deleted       []uint64
+	layoutApplied bool
 }
 
 func (m *mockBackpackProvider) GetStock(sku string) int {
@@ -79,6 +81,7 @@ func (m *mockBackpackProvider) Cache() backpack.ItemCache {
 	if m.cache == nil {
 		return &mockItemCache{}
 	}
+
 	return m.cache
 }
 
@@ -86,11 +89,17 @@ func (m *mockBackpackProvider) Schema() backpack.SchemaProvider {
 	if m.schemaProv == nil {
 		return &mockSchemaProvider{}
 	}
+
 	return m.schemaProv
 }
 
 func (m *mockBackpackProvider) DeleteItem(ctx context.Context, itemID uint64) error {
 	m.deleted = append(m.deleted, itemID)
+	return nil
+}
+
+func (m *mockBackpackProvider) ApplyLayout(ctx context.Context, layout backpack.Layout) error {
+	m.layoutApplied = true
 	return nil
 }
 
@@ -186,6 +195,7 @@ func (m *mockConfigProvider) GetConfig() trading.Config {
 		PPUMinProfitScrap:            m.cfg.PPUMinProfitScrap,
 		AutoResetToAutopriceOnceSold: m.cfg.AutoResetToAutopriceOnceSold,
 		EnableSmartTrashCleanup:      m.cfg.EnableSmartTrashCleanup,
+		EnableAutoSorting:            m.cfg.EnableAutoSorting,
 		Items:                        copiedItems,
 	}
 }
@@ -790,5 +800,78 @@ func TestStockStrategist_AutoResetToAutoprice(t *testing.T) {
 
 		// Assertions: no items should be deleted since it is disabled
 		assert.Empty(t, bp.deleted)
+	})
+
+	t.Run("autoSortBackpack applies layout when enabled", func(t *testing.T) {
+		t.Parallel()
+
+		bp := &mockBackpackProvider{}
+		priceMgr := &mockPriceProvider{}
+		cfgMgr := &mockConfigProvider{
+			cfg: trading.Config{
+				EnableAutoSorting: true,
+			},
+		}
+
+		cost := &mockCostBasisProvider{}
+		craft := &mockCraftingProvider{}
+		cfg := Config{}
+
+		strategist := New(bp, priceMgr, cfgMgr, cost, craft, eventBus, logger, cfg)
+
+		ctx := context.Background()
+		strategist.autoSortBackpack(ctx)
+
+		assert.True(t, bp.layoutApplied)
+	})
+
+	t.Run("autoSortBackpack does nothing when disabled", func(t *testing.T) {
+		t.Parallel()
+
+		bp := &mockBackpackProvider{}
+		priceMgr := &mockPriceProvider{}
+		cfgMgr := &mockConfigProvider{
+			cfg: trading.Config{
+				EnableAutoSorting: false,
+			},
+		}
+
+		cost := &mockCostBasisProvider{}
+		craft := &mockCraftingProvider{}
+		cfg := Config{}
+
+		strategist := New(bp, priceMgr, cfgMgr, cost, craft, eventBus, logger, cfg)
+
+		ctx := context.Background()
+		strategist.autoSortBackpack(ctx)
+
+		assert.False(t, bp.layoutApplied)
+	})
+
+	t.Run("autoSortBackpack applies custom layout sections when configured", func(t *testing.T) {
+		t.Parallel()
+
+		bp := &mockBackpackProvider{}
+		priceMgr := &mockPriceProvider{}
+		cfgMgr := &mockConfigProvider{
+			cfg: trading.Config{
+				EnableAutoSorting: true,
+				BackpackSortingSections: []trading.BackpackSectionConfig{
+					{Name: "My Currency", Category: "currency", StartPage: 1, EndPage: 2},
+					{Name: "My Weapons", Category: "weapons", StartPage: 3, EndPage: 5},
+				},
+			},
+		}
+
+		cost := &mockCostBasisProvider{}
+		craft := &mockCraftingProvider{}
+		cfg := Config{}
+
+		strategist := New(bp, priceMgr, cfgMgr, cost, craft, eventBus, logger, cfg)
+
+		ctx := context.Background()
+		strategist.autoSortBackpack(ctx)
+
+		assert.True(t, bp.layoutApplied)
 	})
 }

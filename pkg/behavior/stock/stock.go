@@ -76,6 +76,8 @@ type BackpackProvider interface {
 	Schema() backpack.SchemaProvider
 	// DeleteItem requests the Game Coordinator to permanently delete the specified item.
 	DeleteItem(ctx context.Context, itemID uint64) error
+	// ApplyLayout requests the Game Coordinator to rearrange backpack positions based on the layout rules.
+	ApplyLayout(ctx context.Context, layout backpack.Layout) error
 }
 
 // PriceProvider defines the subset of pricedb methods required for pricing calculations.
@@ -349,6 +351,7 @@ func (s *Strategist) runAudit(ctx context.Context) {
 	s.syncWatchlist()
 	s.checkAndResetAutoPrices()
 	s.smartTrashCleanup(ctx)
+	s.autoSortBackpack(ctx)
 	s.discountStagnantItems()
 	s.coordinateCrafting(ctx)
 
@@ -559,6 +562,7 @@ func (s *Strategist) smartTrashCleanup(ctx context.Context) {
 	s.logger.Info("Running smart trash cleanup...")
 
 	items := s.bp.Cache().GetItems()
+
 	var trashIDs []uint64
 
 	for _, item := range items {
@@ -578,6 +582,7 @@ func (s *Strategist) smartTrashCleanup(ctx context.Context) {
 		}
 
 		nameLower := strings.ToLower(itemSch.ItemName)
+
 		internalLower := strings.ToLower(itemSch.Name)
 		if strings.Contains(nameLower, "noise maker") || strings.Contains(internalLower, "noise_maker") {
 			isJunk = true
@@ -602,10 +607,94 @@ func (s *Strategist) smartTrashCleanup(ctx context.Context) {
 
 	for _, id := range trashIDs {
 		s.logger.Info("Deleting untradable junk item", log.Uint64("id", id))
+
 		if err := s.bp.DeleteItem(ctx, id); err != nil {
 			s.logger.Error("Failed to delete untradable junk item", log.Uint64("id", id), log.Err(err))
 		} else {
 			s.logger.Info("Successfully sent delete request for untradable junk item", log.Uint64("id", id))
 		}
+	}
+}
+
+func (s *Strategist) autoSortBackpack(ctx context.Context) {
+	cfg := s.cfgMgr.GetConfig()
+	if !cfg.EnableAutoSorting {
+		return
+	}
+
+	s.logger.Info("Running automatic backpack sorting...")
+
+	layout := buildCustomLayout(cfg.BackpackSortingSections)
+	if err := s.bp.ApplyLayout(ctx, layout); err != nil {
+		s.logger.Error("Failed to apply automatic backpack sorting layout", log.Err(err))
+	} else {
+		s.logger.Info("Automatic backpack sorting completed successfully")
+	}
+}
+
+func buildCustomLayout(sections []trading.BackpackSectionConfig) backpack.Layout {
+	if len(sections) == 0 {
+		return backpack.DefaultLayout()
+	}
+
+	var backpackSections []backpack.SectionLayout
+	for _, sec := range sections {
+		var (
+			filters []backpack.Filter
+			orderBy backpack.LessFunc
+		)
+
+		switch sec.Category {
+		case "currency":
+			filters = []backpack.Filter{backpack.And(backpack.IsTradable(), backpack.IsPure())}
+			orderBy = backpack.CurrencySorter
+		case "weapons":
+			filters = []backpack.Filter{backpack.And(backpack.IsTradable(), backpack.IsWeapon())}
+			orderBy = backpack.WeaponsSorter
+		case "cosmetics":
+			filters = []backpack.Filter{backpack.And(backpack.IsTradable(), backpack.IsCosmetic())}
+			orderBy = backpack.CosmeticsSorter
+		case "taunts":
+			filters = []backpack.Filter{backpack.And(backpack.IsTradable(), backpack.IsTaunt())}
+			orderBy = backpack.DefindexSorter
+		case "tools_actions":
+			filters = []backpack.Filter{
+				backpack.And(backpack.IsTradable(), backpack.Or(backpack.IsTool(), backpack.IsAction())),
+			}
+			orderBy = backpack.DefindexSorter
+		case "crates":
+			filters = []backpack.Filter{backpack.And(backpack.IsTradable(), backpack.IsCrate())}
+			orderBy = backpack.DefindexSorter
+		case "untradable_currency":
+			filters = []backpack.Filter{backpack.And(backpack.Not(backpack.IsTradable()), backpack.IsPure())}
+			orderBy = backpack.CurrencySorter
+		case "untradable_weapons":
+			filters = []backpack.Filter{backpack.And(backpack.Not(backpack.IsTradable()), backpack.IsWeapon())}
+			orderBy = backpack.WeaponsSorter
+		case "untradable_cosmetics":
+			filters = []backpack.Filter{backpack.And(backpack.Not(backpack.IsTradable()), backpack.IsCosmetic())}
+			orderBy = backpack.CosmeticsSorter
+		case "untradable_misc":
+			filters = []backpack.Filter{backpack.Not(backpack.IsTradable())}
+			orderBy = backpack.DefindexSorter
+		default:
+			continue
+		}
+
+		backpackSections = append(backpackSections, backpack.SectionLayout{
+			Name:      sec.Name,
+			Filters:   filters,
+			OrderBy:   orderBy,
+			StartPage: sec.StartPage,
+			EndPage:   sec.EndPage,
+		})
+	}
+
+	if len(backpackSections) == 0 {
+		return backpack.DefaultLayout()
+	}
+
+	return backpack.Layout{
+		Sections: backpackSections,
 	}
 }

@@ -7,6 +7,7 @@ package trading
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -79,6 +80,8 @@ type Config struct {
 	AutoResetToAutopriceOnceSold bool `json:"auto_reset_to_autoprice_once_sold"`
 	// EnableSmartTrashCleanup, if true, automatically deletes untradable junk items (empty crates/cases, noise makers, etc.) from the backpack.
 	EnableSmartTrashCleanup bool `json:"enable_smart_trash_cleanup"`
+	// EnableAutoSorting, if true, automatically sorts items in the backpack using optimal hierarchical layout.
+	EnableAutoSorting bool `json:"enable_auto_sorting"`
 	// PPUHoldDuration defines how long a cost basis entry remains valid for price protection (e.g. "24h").
 	PPUHoldDuration string `json:"ppu_hold_duration"`
 	// PPUGracePeriod defines how long price protection remains active after an item is sold out (e.g. "1h").
@@ -97,6 +100,16 @@ type Config struct {
 	CritCommandDescriptions map[string]string `json:"crit_command_descriptions,omitempty"`
 	// FallbackSpellPremiums maps spell names to their fallback premiums in refined metal (ref).
 	FallbackSpellPremiums map[string]float64 `json:"fallback_spell_premiums,omitempty"`
+	// BackpackSortingSections defines custom layout sections for inventory sorting.
+	BackpackSortingSections []BackpackSectionConfig `json:"backpack_sorting_sections,omitempty"`
+}
+
+// BackpackSectionConfig defines the custom layout properties for a single backpack category section.
+type BackpackSectionConfig struct {
+	Name      string `json:"name"`
+	Category  string `json:"category"`
+	StartPage int    `json:"start_page"`
+	EndPage   int    `json:"end_page"`
 }
 
 // GetPPUHoldDuration parses the [Config.PPUHoldDuration] string and returns a [time.Duration].
@@ -155,75 +168,78 @@ func (cm *ConfigManager) Load() error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	if _, err := os.Stat(cm.path); os.IsNotExist(err) {
-		cm.cfg = Config{
-			GlobalMaxStock:  3000,
-			DefaultMaxStock: 5,
-			ExcludedListingDescriptions: []string{
-				"spell", "spells", "spelled", "exorcism", "pumpkin bombs", "chromatic",
-				"die job", "spectral spectrum", "putrescent pigmentation", "sinister staining",
-			},
-			PriceSwingLimits: PriceSwingLimits{
-				MaxBuyIncrease: 0.10,
-			},
-			Items:                        make(map[string]ItemConfig),
-			PPUHoldDuration:              "24h",
-			PPUGracePeriod:               "1h",
-			PPUMaxStockLimit:             1,
-			PPUMinProfitScrap:            1,
-			UseSeparateKeyRates:          false,
-			FilterCantAfford:             true,
-			AutoResetToAutopriceOnceSold: true,
-			EnableSmartTrashCleanup:      false,
-			PPUExcludeSKUs:               []string{},
-			PPURemoveMaxRestriction:      false,
-			PPUMaxProtectedUnits:         -1,
-			FallbackSpellPremiums: map[string]float64{
-				"Exorcism":                  3.0,
-				"Voices from Below":         5.0,
-				"Pumpkin Bombs":             10.0,
-				"Gourd Grenades":            10.0,
-				"Squash Rockets":            10.0,
-				"Sentry Quad-Pumpkins":      10.0,
-				"Halloween Fire":            15.0,
-				"Spectral Flame":            15.0,
-				"Die Job":                   10.0,
-				"Chromatic Corruption":      10.0,
-				"Putrescent Pigmentation":   10.0,
-				"Spectral Spectrum":         10.0,
-				"Sinister Staining":         10.0,
-				"Team Spirit Footprints":    40.0,
-				"Headless Horseshoes":       40.0,
-				"Gangreen Footprints":       40.0,
-				"Corpse Gray Footprints":    40.0,
-				"Violent Violet Footprints": 40.0,
-				"Rotten Orange Footprints":  40.0,
-				"Bruised Purple Footprints": 40.0,
-			},
-		}
-
-		if err := os.MkdirAll(filepath.Dir(cm.path), 0o755); err != nil {
-			return err
-		}
-
-		data, err := json.MarshalIndent(cm.cfg, "", "  ")
-		if err != nil {
-			return err
-		}
-
-		if err := os.WriteFile(cm.path, data, 0o644); err != nil {
-			return err
-		}
-
-		if info, err := os.Stat(cm.path); err == nil {
-			cm.lastModified = info.ModTime()
-		}
-
-		return nil
-	}
-
 	data, err := os.ReadFile(cm.path)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			cm.cfg = Config{
+				GlobalMaxStock:  3000,
+				DefaultMaxStock: 5,
+				ExcludedListingDescriptions: []string{
+					"spell", "spells", "spelled", "exorcism", "pumpkin bombs", "chromatic",
+					"die job", "spectral spectrum", "putrescent pigmentation", "sinister staining",
+				},
+				PriceSwingLimits: PriceSwingLimits{
+					MaxBuyIncrease: 0.10,
+				},
+				Items:                        make(map[string]ItemConfig),
+				PPUHoldDuration:              "24h",
+				PPUGracePeriod:               "1h",
+				PPUMaxStockLimit:             1,
+				PPUMinProfitScrap:            1,
+				UseSeparateKeyRates:          false,
+				FilterCantAfford:             true,
+				AutoResetToAutopriceOnceSold: true,
+				EnableSmartTrashCleanup:      false,
+				EnableAutoSorting:            false,
+				BackpackSortingSections:      []BackpackSectionConfig{},
+
+				PPUExcludeSKUs:          []string{},
+				PPURemoveMaxRestriction: false,
+				PPUMaxProtectedUnits:    -1,
+				FallbackSpellPremiums: map[string]float64{
+					"Exorcism":                  3.0,
+					"Voices from Below":         5.0,
+					"Pumpkin Bombs":             10.0,
+					"Gourd Grenades":            10.0,
+					"Squash Rockets":            10.0,
+					"Sentry Quad-Pumpkins":      10.0,
+					"Halloween Fire":            15.0,
+					"Spectral Flame":            15.0,
+					"Die Job":                   10.0,
+					"Chromatic Corruption":      10.0,
+					"Putrescent Pigmentation":   10.0,
+					"Spectral Spectrum":         10.0,
+					"Sinister Staining":         10.0,
+					"Team Spirit Footprints":    40.0,
+					"Headless Horseshoes":       40.0,
+					"Gangreen Footprints":       40.0,
+					"Corpse Gray Footprints":    40.0,
+					"Violent Violet Footprints": 40.0,
+					"Rotten Orange Footprints":  40.0,
+					"Bruised Purple Footprints": 40.0,
+				},
+			}
+
+			if err := os.MkdirAll(filepath.Dir(cm.path), 0o755); err != nil {
+				return err
+			}
+
+			data, err := json.MarshalIndent(cm.cfg, "", "  ")
+			if err != nil {
+				return err
+			}
+
+			if err := os.WriteFile(cm.path, data, 0o644); err != nil {
+				return err
+			}
+
+			if info, err := os.Stat(cm.path); err == nil {
+				cm.lastModified = info.ModTime()
+			}
+
+			return nil
+		}
+
 		return err
 	}
 
@@ -234,6 +250,10 @@ func (cm *ConfigManager) Load() error {
 
 	if cfg.Items == nil {
 		cfg.Items = make(map[string]ItemConfig)
+	}
+
+	if cfg.BackpackSortingSections == nil {
+		cfg.BackpackSortingSections = []BackpackSectionConfig{}
 	}
 
 	if cfg.PPUHoldDuration == "" {

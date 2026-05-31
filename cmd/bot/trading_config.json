@@ -1,6 +1,17 @@
 {
   "global_max_stock": 3000,
   "default_max_stock": 5,
+  "filter_cant_afford": true,
+  "enable_smart_trash_cleanup": false,
+  "auto_reset_to_autoprice_once_sold": true,
+  "use_separate_key_rates": false,
+  "ppu_hold_duration": "24h",
+  "ppu_grace_period": "1h",
+  "ppu_max_stock_limit": 1,
+  "ppu_min_profit_scrap": 1,
+  "ppu_exclude_skus": [],
+  "ppu_remove_max_restriction": false,
+  "ppu_max_protected_units": -1,
   "listing_comment_template": "⚡ G-man | %name% for %price% | Stock: %current_stock%/%max_stock% | My Crit Store: %crittf_store%",
   "excluded_listing_descriptions": [
     "spell",
@@ -18,6 +29,33 @@
     "max_buy_increase": 0.1,
     "max_sell_decrease": 0.1
   },
+  "enable_auto_sorting": true,
+  "backpack_sorting_sections": [
+    {
+      "name": "Pure",
+      "category": "currency",
+      "start_page": 1,
+      "end_page": 2
+    },
+    {
+      "name": "Weapons",
+      "category": "weapons",
+      "start_page": 3,
+      "end_page": 4
+    },
+    {
+      "name": "Hats",
+      "category": "cosmetics",
+      "start_page": 5,
+      "end_page": 8
+    },
+    {
+      "name": "Junk",
+      "category": "untradable_misc",
+      "start_page": 10,
+      "end_page": 10
+    }
+  ],
   "items": {
     "sku_12345": {
       "sku": "sku_12345",
@@ -44,17 +82,6 @@
       }
     }
   },
-  "filter_cant_afford": true,
-  "enable_smart_trash_cleanup": false,
-  "auto_reset_to_autoprice_once_sold": true,
-  "use_separate_key_rates": false,
-  "ppu_hold_duration": "24h",
-  "ppu_grace_period": "1h",
-  "ppu_max_stock_limit": 1,
-  "ppu_min_profit_scrap": 1,
-  "ppu_exclude_skus": [],
-  "ppu_remove_max_restriction": false,
-  "ppu_max_protected_units": -1,
   "fallback_spell_premiums": {
     "Exorcism": 3.0,
     "Voices from Below": 5.0,

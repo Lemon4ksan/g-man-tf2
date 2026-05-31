@@ -27,6 +27,7 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/crafting"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
+	"github.com/lemon4ksan/g-man-tf2/pkg/trading"
 )
 
 func main() {
@@ -402,337 +403,86 @@ func SortInventoryByComplexRules(ctx context.Context, client *steam.Client, logg
 		return errors.New("TF2 modules are not ready or not connected to GC")
 	}
 
-	// Declare the layout using logical page-separated section boundaries
-	presentationLayout := backpack.Layout{
-		Sections: []backpack.SectionLayout{
-			{
-				Name: "Currency",
-				Filters: []backpack.Filter{
-					backpack.And(backpack.IsTradable(), backpack.IsPure()),
-				},
-				OrderBy: currencySorter,
-			},
-			{
-				Name: "Weapons",
-				Filters: []backpack.Filter{
-					backpack.And(backpack.IsTradable(), backpack.IsWeapon()),
-				},
-				OrderBy: weaponsSorter,
-			},
-			{
-				Name: "Cosmetics",
-				Filters: []backpack.Filter{
-					backpack.And(backpack.IsTradable(), backpack.IsCosmetic()),
-				},
-				OrderBy: cosmeticsSorter,
-			},
-			{
-				Name: "Taunts",
-				Filters: []backpack.Filter{
-					backpack.And(backpack.IsTradable(), backpack.IsTaunt()),
-				},
-				OrderBy: defindexSorter,
-			},
-			{
-				Name: "Tools & Actions",
-				Filters: []backpack.Filter{
-					backpack.And(backpack.IsTradable(), backpack.Or(backpack.IsTool(), backpack.IsAction())),
-				},
-				OrderBy: defindexSorter,
-			},
-			{
-				Name: "Crates & Cases",
-				Filters: []backpack.Filter{
-					backpack.And(backpack.IsTradable(), backpack.IsCrate()),
-				},
-				OrderBy: defindexSorter,
-			},
-			{
-				Name: "Untradable Metal",
-				Filters: []backpack.Filter{
-					backpack.And(backpack.Not(backpack.IsTradable()), backpack.IsPure()),
-				},
-				OrderBy: currencySorter,
-			},
-			{
-				Name: "Untradable Weapons",
-				Filters: []backpack.Filter{
-					backpack.And(backpack.Not(backpack.IsTradable()), backpack.IsWeapon()),
-				},
-				OrderBy: weaponsSorter,
-			},
-			{
-				Name: "Untradable Cosmetics",
-				Filters: []backpack.Filter{
-					backpack.And(backpack.Not(backpack.IsTradable()), backpack.IsCosmetic()),
-				},
-				OrderBy: cosmeticsSorter,
-			},
-			{
-				Name: "Untradable Misc",
-				Filters: []backpack.Filter{
-					backpack.Not(backpack.IsTradable()),
-				},
-				OrderBy: defindexSorter,
-			},
-		},
+	var layout backpack.Layout
+
+	configPath := "trading_config.json"
+
+	cfgMgr, err := trading.NewConfigManager(configPath)
+	if err == nil {
+		cfg := cfgMgr.GetConfig()
+		if len(cfg.BackpackSortingSections) > 0 {
+			logger.InfoContext(ctx, "Loading custom sorting layout from config file...", log.String("path", configPath))
+
+			layout = buildCustomLayout(cfg.BackpackSortingSections)
+
+			logger.InfoContext(ctx, "Custom sorting layout successfully loaded")
+		}
 	}
 
-	return bpMod.ApplyLayout(ctx, presentationLayout)
+	if len(layout.Sections) == 0 {
+		logger.InfoContext(ctx, "Applying default optimal sorting layout...")
+
+		layout = backpack.DefaultLayout()
+	}
+
+	return bpMod.ApplyLayout(ctx, layout)
 }
 
-// currencySorter sorts Keys first, then Ref, Rec, and Scrap.
-func currencySorter(a, b *tf2.Item, s *schema.Schema) int {
-	aPri := getPurePriority(a.DefIndex, s)
+func buildCustomLayout(sections []trading.BackpackSectionConfig) backpack.Layout {
+	backpackSections := make([]backpack.SectionLayout, 0, len(sections))
+	for _, sec := range sections {
+		var (
+			filters []backpack.Filter
+			orderBy backpack.LessFunc
+		)
 
-	bPri := getPurePriority(b.DefIndex, s)
-	if aPri != bPri {
-		return aPri - bPri
+		switch sec.Category {
+		case "currency":
+			filters = []backpack.Filter{backpack.And(backpack.IsTradable(), backpack.IsPure())}
+			orderBy = backpack.CurrencySorter
+		case "weapons":
+			filters = []backpack.Filter{backpack.And(backpack.IsTradable(), backpack.IsWeapon())}
+			orderBy = backpack.WeaponsSorter
+		case "cosmetics":
+			filters = []backpack.Filter{backpack.And(backpack.IsTradable(), backpack.IsCosmetic())}
+			orderBy = backpack.CosmeticsSorter
+		case "taunts":
+			filters = []backpack.Filter{backpack.And(backpack.IsTradable(), backpack.IsTaunt())}
+			orderBy = backpack.DefindexSorter
+		case "tools_actions":
+			filters = []backpack.Filter{
+				backpack.And(backpack.IsTradable(), backpack.Or(backpack.IsTool(), backpack.IsAction())),
+			}
+			orderBy = backpack.DefindexSorter
+		case "crates":
+			filters = []backpack.Filter{backpack.And(backpack.IsTradable(), backpack.IsCrate())}
+			orderBy = backpack.DefindexSorter
+		case "untradable_currency":
+			filters = []backpack.Filter{backpack.And(backpack.Not(backpack.IsTradable()), backpack.IsPure())}
+			orderBy = backpack.CurrencySorter
+		case "untradable_weapons":
+			filters = []backpack.Filter{backpack.And(backpack.Not(backpack.IsTradable()), backpack.IsWeapon())}
+			orderBy = backpack.WeaponsSorter
+		case "untradable_cosmetics":
+			filters = []backpack.Filter{backpack.And(backpack.Not(backpack.IsTradable()), backpack.IsCosmetic())}
+			orderBy = backpack.CosmeticsSorter
+		case "untradable_misc":
+			filters = []backpack.Filter{backpack.Not(backpack.IsTradable())}
+			orderBy = backpack.DefindexSorter
+		default:
+			continue
+		}
+
+		backpackSections = append(backpackSections, backpack.SectionLayout{
+			Name:      sec.Name,
+			Filters:   filters,
+			OrderBy:   orderBy,
+			StartPage: sec.StartPage,
+			EndPage:   sec.EndPage,
+		})
 	}
 
-	if a.DefIndex != b.DefIndex {
-		return int(a.DefIndex) - int(b.DefIndex)
+	return backpack.Layout{
+		Sections: backpackSections,
 	}
-
-	if a.ID < b.ID {
-		return -1
-	}
-
-	return 1
-}
-
-// weaponsSorter groups weapons by quality (Unique first, others second), then by class (Scout -> Spy -> Multiclass), slot (Primary -> Melee), and defindex.
-func weaponsSorter(a, b *tf2.Item, s *schema.Schema) int {
-	aQualPri := getQualityPriority(a.Quality)
-
-	bQualPri := getQualityPriority(b.Quality)
-	if aQualPri != bQualPri {
-		return aQualPri - bQualPri
-	}
-
-	aClassPri := getClassPriority(a, s)
-
-	bClassPri := getClassPriority(b, s)
-	if aClassPri != bClassPri {
-		return aClassPri - bClassPri
-	}
-
-	aSlotPri := getSlotPriority(a, s)
-
-	bSlotPri := getSlotPriority(b, s)
-	if aSlotPri != bSlotPri {
-		return aSlotPri - bSlotPri
-	}
-
-	if a.DefIndex != b.DefIndex {
-		return int(a.DefIndex) - int(b.DefIndex)
-	}
-
-	if a.Quality != b.Quality {
-		return int(a.Quality) - int(b.Quality)
-	}
-
-	if a.ID < b.ID {
-		return -1
-	}
-
-	return 1
-}
-
-// cosmeticsSorter groups cosmetics by quality (Unique first, others second), then by class and defindex.
-func cosmeticsSorter(a, b *tf2.Item, s *schema.Schema) int {
-	aQualPri := getQualityPriority(a.Quality)
-
-	bQualPri := getQualityPriority(b.Quality)
-	if aQualPri != bQualPri {
-		return aQualPri - bQualPri
-	}
-
-	aClassPri := getClassPriority(a, s)
-
-	bClassPri := getClassPriority(b, s)
-	if aClassPri != bClassPri {
-		return aClassPri - bClassPri
-	}
-
-	if a.DefIndex != b.DefIndex {
-		return int(a.DefIndex) - int(b.DefIndex)
-	}
-
-	if a.Quality != b.Quality {
-		return int(a.Quality) - int(b.Quality)
-	}
-
-	if a.ID < b.ID {
-		return -1
-	}
-
-	return 1
-}
-
-// defindexSorter groups identical items side-by-side with Unique first.
-func defindexSorter(a, b *tf2.Item, s *schema.Schema) int {
-	if a.DefIndex != b.DefIndex {
-		return int(a.DefIndex) - int(b.DefIndex)
-	}
-
-	aQualPri := getQualityPriority(a.Quality)
-
-	bQualPri := getQualityPriority(b.Quality)
-	if aQualPri != bQualPri {
-		return aQualPri - bQualPri
-	}
-
-	if a.Quality != b.Quality {
-		return int(a.Quality) - int(b.Quality)
-	}
-
-	if a.ID < b.ID {
-		return -1
-	}
-
-	return 1
-}
-
-// getPurePriority maps DefIndexes to currency priorities.
-func getPurePriority(defIndex uint32, s *schema.Schema) int {
-	norm := s.NormalizeDefindex(int(defIndex))
-	switch norm {
-	case schema.DefKey:
-		return 1
-	case schema.DefRefined:
-		return 2
-	case schema.DefReclaimed:
-		return 3
-	case schema.DefScrap:
-		return 4
-	default:
-		return 5
-	}
-}
-
-// getClassPriority groups by TF2 classes (Scout -> Spy -> Multiclass -> All-Class).
-func getClassPriority(item *tf2.Item, s *schema.Schema) int {
-	sch := s.ItemByDef(int(item.DefIndex))
-	if sch == nil || len(sch.UsedByClasses) == 0 {
-		return 12 // Misc/All-Class
-	}
-
-	if len(sch.UsedByClasses) > 1 {
-		return 10 // Multiclass
-	}
-
-	switch sch.UsedByClasses[0] {
-	case "Scout":
-		return 1
-	case "Soldier":
-		return 2
-	case "Pyro":
-		return 3
-	case "Demoman":
-		return 4
-	case "Heavy":
-		return 5
-	case "Engineer":
-		return 6
-	case "Medic":
-		return 7
-	case "Sniper":
-		return 8
-	case "Spy":
-		return 9
-	default:
-		return 11
-	}
-}
-
-// getSlotPriority resolves weapon slots using comprehensive prefix-matching.
-func getSlotPriority(item *tf2.Item, s *schema.Schema) int {
-	sch := s.ItemByDef(int(item.DefIndex))
-	if sch == nil {
-		return 5
-	}
-
-	isWeapon := sch.CraftClass == "weapon" || sch.ItemClass == "weapon" ||
-		strings.HasPrefix(sch.ItemClass, "tf_weapon_")
-	if !isWeapon {
-		return 5
-	}
-
-	cls := sch.ItemClass
-	def := item.DefIndex
-
-	// 1. Primary Weapons
-	// Check known primary defindexes for classes where Shotgun/Parachute might overlap
-	if def == 9 || def == 141 || def == 527 || def == 588 || def == 997 || def == 1153 {
-		return 1 // Primary Shotguns for Engineer
-	}
-
-	if strings.Contains(cls, "scattergun") ||
-		strings.Contains(cls, "rocketlauncher") ||
-		strings.Contains(cls, "flamethrower") ||
-		strings.Contains(cls, "grenadelauncher") ||
-		strings.Contains(cls, "minigun") ||
-		strings.Contains(cls, "syringegun") ||
-		strings.Contains(cls, "sniperrifle") ||
-		strings.Contains(cls, "revolver") ||
-		strings.Contains(cls, "crossbow") ||
-		strings.Contains(cls, "compound_bow") ||
-		strings.Contains(cls, "particle_cannon") ||
-		strings.Contains(cls, "soda_popper") ||
-		strings.Contains(cls, "handgun_scout_primary") ||
-		def == 1178 { // Dragon's Fury
-		return 1
-	}
-
-	// 2. Secondary Weapons
-	if strings.Contains(cls, "pistol") ||
-		strings.Contains(cls, "pipebomblauncher") ||
-		strings.Contains(cls, "smg") ||
-		strings.Contains(cls, "medigun") ||
-		strings.Contains(cls, "buff_item") ||
-		strings.Contains(cls, "parachute") ||
-		strings.Contains(cls, "lunchbox") ||
-		strings.Contains(cls, "jar") ||
-		strings.Contains(cls, "laser_pointer") || // Wrangler
-		strings.Contains(cls, "shotgun") || // pyro/soldier/heavy shotguns
-		strings.Contains(cls, "handgun_scout_secondary") ||
-		strings.Contains(cls, "raygun") ||
-		def == 131 || def == 406 || def == 1101 { // Shields (Targe, Screen, Tide Turner)
-		return 2
-	}
-
-	// 3. Melee Weapons
-	if strings.Contains(cls, "bat") ||
-		strings.Contains(cls, "shovel") ||
-		strings.Contains(cls, "fireaxe") ||
-		strings.Contains(cls, "club") ||
-		strings.Contains(cls, "bonesaw") ||
-		strings.Contains(cls, "fists") ||
-		strings.Contains(cls, "wrench") ||
-		strings.Contains(cls, "knife") ||
-		strings.Contains(cls, "sword") ||
-		strings.Contains(cls, "sledgehammer") ||
-		strings.Contains(cls, "mechanical_arm") || // Gunslinger
-		strings.Contains(cls, "stick") {
-		return 3
-	}
-
-	// 4. PDA / Action / Builder
-	if strings.Contains(cls, "pda") ||
-		strings.Contains(cls, "builder") ||
-		strings.Contains(cls, "spellbook") {
-		return 4
-	}
-
-	return 5
-}
-
-// getQualityPriority returns priority for Unique quality.
-func getQualityPriority(quality uint32) int {
-	if quality == schema.QualityUnique {
-		return 1
-	}
-
-	return 2
 }
