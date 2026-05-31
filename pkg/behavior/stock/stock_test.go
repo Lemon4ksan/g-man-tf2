@@ -15,17 +15,52 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 	"github.com/lemon4ksan/g-man-tf2/pkg/behavior/listingsync"
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
+	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 	"github.com/lemon4ksan/g-man-tf2/pkg/storage"
+	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 	"github.com/lemon4ksan/g-man-tf2/pkg/trading"
 )
 
+type mockItemCache struct {
+	items []*tf2.Item
+}
+
+func (m *mockItemCache) GetItems() []*tf2.Item {
+	return m.items
+}
+
+func (m *mockItemCache) GetItem(id uint64) (*tf2.Item, bool) {
+	for _, it := range m.items {
+		if it.ID == id {
+			return it, true
+		}
+	}
+	return nil, false
+}
+
+func (m *mockItemCache) GetMaxSlots() int {
+	return 3000
+}
+
+type mockSchemaProvider struct {
+	sch *schema.Schema
+}
+
+func (m *mockSchemaProvider) Get() *schema.Schema {
+	return m.sch
+}
+
 type mockBackpackProvider struct {
-	stock     map[string]int
-	items     map[string][]uint64
-	pureStock currency.PureStock
+	stock      map[string]int
+	items      map[string][]uint64
+	pureStock  currency.PureStock
+	cache      backpack.ItemCache
+	schemaProv backpack.SchemaProvider
+	deleted    []uint64
 }
 
 func (m *mockBackpackProvider) GetStock(sku string) int {
@@ -38,6 +73,25 @@ func (m *mockBackpackProvider) GetItemsBySKU(targetSKU string) []uint64 {
 
 func (m *mockBackpackProvider) GetPureStock() currency.PureStock {
 	return m.pureStock
+}
+
+func (m *mockBackpackProvider) Cache() backpack.ItemCache {
+	if m.cache == nil {
+		return &mockItemCache{}
+	}
+	return m.cache
+}
+
+func (m *mockBackpackProvider) Schema() backpack.SchemaProvider {
+	if m.schemaProv == nil {
+		return &mockSchemaProvider{}
+	}
+	return m.schemaProv
+}
+
+func (m *mockBackpackProvider) DeleteItem(ctx context.Context, itemID uint64) error {
+	m.deleted = append(m.deleted, itemID)
+	return nil
 }
 
 type mockPriceProvider struct {
@@ -131,6 +185,7 @@ func (m *mockConfigProvider) GetConfig() trading.Config {
 		DefaultMaxStock:              m.cfg.DefaultMaxStock,
 		PPUMinProfitScrap:            m.cfg.PPUMinProfitScrap,
 		AutoResetToAutopriceOnceSold: m.cfg.AutoResetToAutopriceOnceSold,
+		EnableSmartTrashCleanup:      m.cfg.EnableSmartTrashCleanup,
 		Items:                        copiedItems,
 	}
 }
@@ -626,5 +681,114 @@ func TestStockStrategist_AutoResetToAutoprice(t *testing.T) {
 		p := priceMgr.prices["5021;6"]
 		assert.Equal(t, "Manual", p.Source)
 		priceMgr.mu.Unlock()
+	})
+
+	t.Run("Smart Trash Cleanup deletes untradable junk items when enabled", func(t *testing.T) {
+		t.Parallel()
+
+		// Construct mock schema
+		raw := &schema.Raw{}
+		raw.Schema.Items = []*schema.Item{
+			{
+				Defindex:  5021,
+				ItemName:  "Mann Co. Supply Crate",
+				ItemClass: "supply_crate",
+			},
+			{
+				Defindex:  280,
+				ItemName:  "Noise Maker - Witch",
+				ItemClass: "action",
+			},
+			{
+				Defindex:  5826,
+				ItemName:  "Soul Gargoyle",
+				ItemClass: "action",
+			},
+			{
+				Defindex:  1,
+				ItemName:  "Unusual Hat",
+				ItemClass: "tf_wearable",
+			},
+		}
+		sCustom := schema.New(raw)
+
+		items := []*tf2.Item{
+			// Untradable crate -> should be deleted
+			{ID: 100, DefIndex: 5021, IsTradable: false},
+			// Tradable crate -> should NOT be deleted
+			{ID: 101, DefIndex: 5021, IsTradable: true},
+			// Untradable Noise Maker -> should be deleted
+			{ID: 102, DefIndex: 280, IsTradable: false},
+			// Untradable Soul Gargoyle -> should be deleted
+			{ID: 103, DefIndex: 5826, IsTradable: false},
+			// Untradable Hat -> should NOT be deleted
+			{ID: 104, DefIndex: 1, IsTradable: false},
+		}
+
+		bp := &mockBackpackProvider{
+			cache:      &mockItemCache{items: items},
+			schemaProv: &mockSchemaProvider{sch: sCustom},
+		}
+
+		priceMgr := &mockPriceProvider{}
+		cfgMgr := &mockConfigProvider{
+			cfg: trading.Config{
+				EnableSmartTrashCleanup: true,
+			},
+		}
+
+		cost := &mockCostBasisProvider{}
+		craft := &mockCraftingProvider{}
+		cfg := Config{}
+
+		strategist := New(bp, priceMgr, cfgMgr, cost, craft, eventBus, logger, cfg)
+
+		ctx := context.Background()
+		strategist.smartTrashCleanup(ctx)
+
+		// Assertions: only IDs 100, 102, 103 should be deleted
+		assert.ElementsMatch(t, []uint64{100, 102, 103}, bp.deleted)
+	})
+
+	t.Run("Smart Trash Cleanup does nothing when disabled", func(t *testing.T) {
+		t.Parallel()
+
+		raw := &schema.Raw{}
+		raw.Schema.Items = []*schema.Item{
+			{
+				Defindex:  5021,
+				ItemName:  "Mann Co. Supply Crate",
+				ItemClass: "supply_crate",
+			},
+		}
+		sCustom := schema.New(raw)
+
+		items := []*tf2.Item{
+			{ID: 100, DefIndex: 5021, IsTradable: false},
+		}
+
+		bp := &mockBackpackProvider{
+			cache:      &mockItemCache{items: items},
+			schemaProv: &mockSchemaProvider{sch: sCustom},
+		}
+
+		priceMgr := &mockPriceProvider{}
+		cfgMgr := &mockConfigProvider{
+			cfg: trading.Config{
+				EnableSmartTrashCleanup: false,
+			},
+		}
+
+		cost := &mockCostBasisProvider{}
+		craft := &mockCraftingProvider{}
+		cfg := Config{}
+
+		strategist := New(bp, priceMgr, cfgMgr, cost, craft, eventBus, logger, cfg)
+
+		ctx := context.Background()
+		strategist.smartTrashCleanup(ctx)
+
+		// Assertions: no items should be deleted since it is disabled
+		assert.Empty(t, bp.deleted)
 	})
 }

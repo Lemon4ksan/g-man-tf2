@@ -193,6 +193,12 @@ func (m *Backpack) GetItem(id uint64) (*tf2.Item, bool) {
 	return m.cache.GetItem(id)
 }
 
+// DeleteItem requests the Game Coordinator to permanently delete the specified item.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
+func (m *Backpack) DeleteItem(ctx context.Context, itemID uint64) error {
+	return m.tf2.DeleteItem(ctx, itemID)
+}
+
 // GetItemsBySKU returns all item IDs matching the specified target SKU.
 // Returns nil if targetSKU is empty or the schema is not loaded.
 func (m *Backpack) GetItemsBySKU(targetSKU string) []uint64 {

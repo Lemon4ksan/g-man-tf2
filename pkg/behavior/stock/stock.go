@@ -8,6 +8,7 @@ package stock
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/bus"
 	"github.com/lemon4ksan/g-man/pkg/log"
 
+	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 	"github.com/lemon4ksan/g-man-tf2/pkg/behavior/listingsync"
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
@@ -68,6 +70,12 @@ type BackpackProvider interface {
 	GetItemsBySKU(targetSKU string) []uint64
 	// GetPureStock retrieves the current keys and metal stock.
 	GetPureStock() currency.PureStock
+	// Cache returns the underlying ItemCache interface.
+	Cache() backpack.ItemCache
+	// Schema returns the configured SchemaProvider interface.
+	Schema() backpack.SchemaProvider
+	// DeleteItem requests the Game Coordinator to permanently delete the specified item.
+	DeleteItem(ctx context.Context, itemID uint64) error
 }
 
 // PriceProvider defines the subset of pricedb methods required for pricing calculations.
@@ -340,6 +348,7 @@ func (s *Strategist) checkForConfigUpdates() {
 func (s *Strategist) runAudit(ctx context.Context) {
 	s.syncWatchlist()
 	s.checkAndResetAutoPrices()
+	s.smartTrashCleanup(ctx)
 	s.discountStagnantItems()
 	s.coordinateCrafting(ctx)
 
@@ -531,6 +540,72 @@ func (s *Strategist) coordinateCrafting(ctx context.Context) {
 			s.logger.Info("Low-grade metals successfully condensed", log.Int("crafts", crafts))
 		} else if err != nil {
 			s.logger.Error("Failed to condense low-grade metal", log.Err(err))
+		}
+	}
+}
+
+func (s *Strategist) smartTrashCleanup(ctx context.Context) {
+	cfg := s.cfgMgr.GetConfig()
+	if !cfg.EnableSmartTrashCleanup {
+		return
+	}
+
+	sch := s.bp.Schema().Get()
+	if sch == nil {
+		s.logger.Warn("Schema is not ready, skipping smart trash cleanup")
+		return
+	}
+
+	s.logger.Info("Running smart trash cleanup...")
+
+	items := s.bp.Cache().GetItems()
+	var trashIDs []uint64
+
+	for _, item := range items {
+		if item.IsTradable {
+			continue
+		}
+
+		itemSch := item.GetSchema(sch)
+		if itemSch == nil {
+			continue
+		}
+
+		isJunk := false
+
+		if itemSch.ItemClass == "supply_crate" {
+			isJunk = true
+		}
+
+		nameLower := strings.ToLower(itemSch.ItemName)
+		internalLower := strings.ToLower(itemSch.Name)
+		if strings.Contains(nameLower, "noise maker") || strings.Contains(internalLower, "noise_maker") {
+			isJunk = true
+		}
+
+		switch item.DefIndex {
+		case 537, 655, 5826:
+			isJunk = true
+		}
+
+		if isJunk {
+			trashIDs = append(trashIDs, item.ID)
+		}
+	}
+
+	if len(trashIDs) == 0 {
+		s.logger.Info("No untradable junk items found in the backpack")
+		return
+	}
+
+	s.logger.Info("Found untradable junk items to delete", log.Int("count", len(trashIDs)))
+
+	for _, id := range trashIDs {
+		s.logger.Info("Deleting untradable junk item", log.Uint64("id", id))
+		if err := s.bp.DeleteItem(ctx, id); err != nil {
+			s.logger.Error("Failed to delete untradable junk item", log.Uint64("id", id), log.Err(err))
+		} else {
+			s.logger.Info("Successfully sent delete request for untradable junk item", log.Uint64("id", id))
 		}
 	}
 }

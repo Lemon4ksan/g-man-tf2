@@ -77,6 +77,8 @@ type Config struct {
 	FilterCantAfford bool `json:"filter_cant_afford"`
 	// AutoResetToAutopriceOnceSold, if true, automatically resets manually priced items back to autoprice once sold out.
 	AutoResetToAutopriceOnceSold bool `json:"auto_reset_to_autoprice_once_sold"`
+	// EnableSmartTrashCleanup, if true, automatically deletes untradable junk items (empty crates/cases, noise makers, etc.) from the backpack.
+	EnableSmartTrashCleanup bool `json:"enable_smart_trash_cleanup"`
 	// PPUHoldDuration defines how long a cost basis entry remains valid for price protection (e.g. "24h").
 	PPUHoldDuration string `json:"ppu_hold_duration"`
 	// PPUGracePeriod defines how long price protection remains active after an item is sold out (e.g. "1h").
@@ -172,6 +174,7 @@ func (cm *ConfigManager) Load() error {
 			UseSeparateKeyRates:          false,
 			FilterCantAfford:             true,
 			AutoResetToAutopriceOnceSold: true,
+			EnableSmartTrashCleanup:      false,
 			PPUExcludeSKUs:               []string{},
 			PPURemoveMaxRestriction:      false,
 			PPUMaxProtectedUnits:         -1,
