@@ -206,6 +206,7 @@ func (s *Strategist) Run(ctx context.Context) error {
 		&tf2.BackpackLoadedEvent{},
 		&tf2.ConnectedEvent{},
 		&tf2.DisconnectedEvent{},
+		&tf2.ItemRemovedEvent{},
 	)
 	defer sub.Unsubscribe()
 
@@ -252,6 +253,10 @@ func (s *Strategist) Run(ctx context.Context) error {
 				s.mu.Lock()
 				s.gcConnected = false
 				s.mu.Unlock()
+
+			case *tf2.ItemRemovedEvent:
+				s.logger.Debug("ItemRemovedEvent received, checking if auto-reset is needed")
+				s.checkAndResetAutoPrices()
 			}
 
 		case <-configCheckTicker.C:
@@ -334,6 +339,7 @@ func (s *Strategist) checkForConfigUpdates() {
 
 func (s *Strategist) runAudit(ctx context.Context) {
 	s.syncWatchlist()
+	s.checkAndResetAutoPrices()
 	s.discountStagnantItems()
 	s.coordinateCrafting(ctx)
 
@@ -347,6 +353,26 @@ func (s *Strategist) runAudit(ctx context.Context) {
 	skus = append(skus, currency.SKUKey)
 
 	s.bus.Publish(&listingsync.AuditRequestedEvent{SKUs: skus})
+}
+
+func (s *Strategist) checkAndResetAutoPrices() {
+	cfg := s.cfgMgr.GetConfig()
+	if !cfg.AutoResetToAutopriceOnceSold {
+		return
+	}
+
+	for sku := range cfg.Items {
+		if s.bp.GetStock(sku) == 0 {
+			p, ok := s.priceMgr.GetPrice(sku)
+			if ok && p.Source == string(pricedb.PricelistChangedSourceManual) {
+				s.logger.Info(
+					"Stock reached 0 for manually priced item, resetting to autoprice",
+					log.String("sku", sku),
+				)
+				s.priceMgr.SetPrice(sku, p.Buy, p.Sell, pricedb.PricelistChangedSourcePriceDB)
+			}
+		}
+	}
 }
 
 func (s *Strategist) discountStagnantItems() {

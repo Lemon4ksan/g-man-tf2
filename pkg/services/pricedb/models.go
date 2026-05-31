@@ -7,8 +7,12 @@ package pricedb
 // PricelistChangedSource specifies the origin of pricelist modifications.
 type PricelistChangedSource string
 
-// PricelistChangedSourceManual is the source for pricelist modifications made manually.
-const PricelistChangedSourceManual PricelistChangedSource = "Manual"
+const (
+	// PricelistChangedSourceManual is the source for pricelist modifications made manually.
+	PricelistChangedSourceManual PricelistChangedSource = "Manual"
+	// PricelistChangedSourcePriceDB is the source for automatic pricing from the price database.
+	PricelistChangedSourcePriceDB PricelistChangedSource = "PriceDB"
+)
 
 // Currencies represents the price in TF2 currency.
 type Currencies struct {

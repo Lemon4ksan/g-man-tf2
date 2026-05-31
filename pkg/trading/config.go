@@ -71,7 +71,8 @@ type Config struct {
 	UseSeparateKeyRates bool `json:"use_separate_key_rates"`
 	// FilterCantAfford, if true, automatically hides or does not publish buy listings on backpack.tf if the bot lacks sufficient pure currency to pay for them.
 	FilterCantAfford bool `json:"filter_cant_afford"`
-
+	// AutoResetToAutopriceOnceSold, if true, automatically resets manually priced items back to autoprice once sold out.
+	AutoResetToAutopriceOnceSold bool `json:"auto_reset_to_autoprice_once_sold"`
 	// PPUHoldDuration defines how long a cost basis entry remains valid for price protection (e.g. "24h").
 	PPUHoldDuration string `json:"ppu_hold_duration"`
 	// PPUGracePeriod defines how long price protection remains active after an item is sold out (e.g. "1h").
@@ -159,16 +160,17 @@ func (cm *ConfigManager) Load() error {
 			PriceSwingLimits: PriceSwingLimits{
 				MaxBuyIncrease: 0.10,
 			},
-			Items:                   make(map[string]ItemConfig),
-			PPUHoldDuration:         "24h",
-			PPUGracePeriod:          "1h",
-			PPUMaxStockLimit:        1,
-			PPUMinProfitScrap:       1,
-			UseSeparateKeyRates:     false,
-			FilterCantAfford:        true,
-			PPUExcludeSKUs:          []string{},
-			PPURemoveMaxRestriction: false,
-			PPUMaxProtectedUnits:    -1,
+			Items:                        make(map[string]ItemConfig),
+			PPUHoldDuration:              "24h",
+			PPUGracePeriod:               "1h",
+			PPUMaxStockLimit:             1,
+			PPUMinProfitScrap:            1,
+			UseSeparateKeyRates:          false,
+			FilterCantAfford:             true,
+			AutoResetToAutopriceOnceSold: true,
+			PPUExcludeSKUs:               []string{},
+			PPURemoveMaxRestriction:      false,
+			PPUMaxProtectedUnits:         -1,
 			FallbackSpellPremiums: map[string]float64{
 				"Exorcism":                  3.0,
 				"Voices from Below":         5.0,

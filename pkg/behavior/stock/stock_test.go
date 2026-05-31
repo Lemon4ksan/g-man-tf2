@@ -68,11 +68,13 @@ func (m *mockPriceProvider) SetPrice(sku string, buy, sell pricedb.Currencies, s
 	if p, ok := m.prices[sku]; ok {
 		p.Buy = buy
 		p.Sell = sell
+		p.Source = string(source)
 	} else {
 		m.prices[sku] = &pricedb.Price{
-			SKU:  sku,
-			Buy:  buy,
-			Sell: sell,
+			SKU:    sku,
+			Buy:    buy,
+			Sell:   sell,
+			Source: string(source),
 		}
 	}
 }
@@ -125,10 +127,11 @@ func (m *mockConfigProvider) GetConfig() trading.Config {
 	}
 
 	return trading.Config{
-		GlobalMaxStock:    m.cfg.GlobalMaxStock,
-		DefaultMaxStock:   m.cfg.DefaultMaxStock,
-		PPUMinProfitScrap: m.cfg.PPUMinProfitScrap,
-		Items:             copiedItems,
+		GlobalMaxStock:               m.cfg.GlobalMaxStock,
+		DefaultMaxStock:              m.cfg.DefaultMaxStock,
+		PPUMinProfitScrap:            m.cfg.PPUMinProfitScrap,
+		AutoResetToAutopriceOnceSold: m.cfg.AutoResetToAutopriceOnceSold,
+		Items:                        copiedItems,
 	}
 }
 
@@ -488,4 +491,140 @@ func TestStockStrategist_Audit_FreshFIFO_RestoresBasePrice(t *testing.T) {
 	priceMgr.mu.Lock()
 	assert.Equal(t, 60.0, priceMgr.sets["5021;6"].Metal)
 	priceMgr.mu.Unlock()
+}
+
+func TestStockStrategist_AutoResetToAutoprice(t *testing.T) {
+	t.Parallel()
+
+	logger := log.New(log.DefaultConfig(log.LevelError))
+	eventBus := bus.New()
+
+	t.Run("Resets manually priced item to autoprice when stock reaches 0", func(t *testing.T) {
+		t.Parallel()
+
+		bp := &mockBackpackProvider{
+			stock: map[string]int{
+				"5021;6": 0,
+			},
+		}
+
+		priceMgr := &mockPriceProvider{
+			prices: map[string]*pricedb.Price{
+				"5021;6": {
+					SKU:    "5021;6",
+					Buy:    pricedb.Currencies{Metal: 60.0},
+					Sell:   pricedb.Currencies{Metal: 60.0},
+					Source: "Manual",
+				},
+			},
+		}
+
+		cfgMgr := &mockConfigProvider{
+			cfg: trading.Config{
+				AutoResetToAutopriceOnceSold: true,
+				Items: map[string]trading.ItemConfig{
+					"5021;6": {SKU: "5021;6"},
+				},
+			},
+		}
+
+		cost := &mockCostBasisProvider{}
+		craft := &mockCraftingProvider{}
+		cfg := Config{}
+
+		strategist := New(bp, priceMgr, cfgMgr, cost, craft, eventBus, logger, cfg)
+
+		strategist.checkAndResetAutoPrices()
+
+		priceMgr.mu.Lock()
+		p := priceMgr.prices["5021;6"]
+		assert.Equal(t, "PriceDB", p.Source)
+		priceMgr.mu.Unlock()
+	})
+
+	t.Run("Does not reset manual price when stock is greater than 0", func(t *testing.T) {
+		t.Parallel()
+
+		bp := &mockBackpackProvider{
+			stock: map[string]int{
+				"5021;6": 2,
+			},
+		}
+
+		priceMgr := &mockPriceProvider{
+			prices: map[string]*pricedb.Price{
+				"5021;6": {
+					SKU:    "5021;6",
+					Buy:    pricedb.Currencies{Metal: 60.0},
+					Sell:   pricedb.Currencies{Metal: 60.0},
+					Source: "Manual",
+				},
+			},
+		}
+
+		cfgMgr := &mockConfigProvider{
+			cfg: trading.Config{
+				AutoResetToAutopriceOnceSold: true,
+				Items: map[string]trading.ItemConfig{
+					"5021;6": {SKU: "5021;6"},
+				},
+			},
+		}
+
+		cost := &mockCostBasisProvider{}
+		craft := &mockCraftingProvider{}
+		cfg := Config{}
+
+		strategist := New(bp, priceMgr, cfgMgr, cost, craft, eventBus, logger, cfg)
+
+		strategist.checkAndResetAutoPrices()
+
+		priceMgr.mu.Lock()
+		p := priceMgr.prices["5021;6"]
+		assert.Equal(t, "Manual", p.Source)
+		priceMgr.mu.Unlock()
+	})
+
+	t.Run("Does not reset manual price when feature is disabled", func(t *testing.T) {
+		t.Parallel()
+
+		bp := &mockBackpackProvider{
+			stock: map[string]int{
+				"5021;6": 0,
+			},
+		}
+
+		priceMgr := &mockPriceProvider{
+			prices: map[string]*pricedb.Price{
+				"5021;6": {
+					SKU:    "5021;6",
+					Buy:    pricedb.Currencies{Metal: 60.0},
+					Sell:   pricedb.Currencies{Metal: 60.0},
+					Source: "Manual",
+				},
+			},
+		}
+
+		cfgMgr := &mockConfigProvider{
+			cfg: trading.Config{
+				AutoResetToAutopriceOnceSold: false,
+				Items: map[string]trading.ItemConfig{
+					"5021;6": {SKU: "5021;6"},
+				},
+			},
+		}
+
+		cost := &mockCostBasisProvider{}
+		craft := &mockCraftingProvider{}
+		cfg := Config{}
+
+		strategist := New(bp, priceMgr, cfgMgr, cost, craft, eventBus, logger, cfg)
+
+		strategist.checkAndResetAutoPrices()
+
+		priceMgr.mu.Lock()
+		p := priceMgr.prices["5021;6"]
+		assert.Equal(t, "Manual", p.Source)
+		priceMgr.mu.Unlock()
+	})
 }

@@ -45,6 +45,7 @@
     }
   },
   "filter_cant_afford": true,
+  "auto_reset_to_autoprice_once_sold": true,
   "use_separate_key_rates": false,
   "ppu_hold_duration": "24h",
   "ppu_grace_period": "1h",
