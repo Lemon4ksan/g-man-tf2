@@ -14,6 +14,8 @@ const (
 	PricelistChangedSourceManual PricelistChangedSource = pricing.SourceManual
 	// PricelistChangedSourcePriceDB is the source for automatic pricing from the price database.
 	PricelistChangedSourcePriceDB PricelistChangedSource = "PriceDB"
+	// PricelistChangedSourcePaintMarkup is the source for automatic markup on painted items.
+	PricelistChangedSourcePaintMarkup PricelistChangedSource = "PaintMarkup"
 )
 
 // Currencies represents the price in TF2 currency.

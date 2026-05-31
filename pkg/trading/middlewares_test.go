@@ -1269,3 +1269,51 @@ func TestFindPartnerCurrency_WithWeapons(t *testing.T) {
 		assert.False(t, ok)
 	})
 }
+
+func TestPricerMiddleware_PaintedItemFallback(t *testing.T) {
+	t.Parallel()
+
+	mgr := new(mockPriceProvider)
+	offer := &trading.TradeOffer{
+		ItemsToReceive: []*trading.Item{
+			{SKU: "211;6;p5027"}, // Painted item not explicitly in pricelist
+		},
+	}
+
+	ctx := engine.NewTradeContext(t.Context(), offer)
+
+	// PricerMiddleware will:
+	// 1. Check price for "211;6;p5027" -> not found
+	// 2. Fetch price for "211;6;p5027" -> empty
+	// 3. Fall back to "211;6" (base SKU) -> found!
+	mgr.On("GetPrice", "211;6;p5027").Return(nil, false)
+	mgr.On("Watch", "211;6;p5027").Return()
+	mgr.On("Fetch", mock.Anything, []string{"211;6;p5027"}).Return(map[string]*pricedb.Price{}, nil)
+
+	// Base item is priced in pricedb
+	mgr.On("GetPrice", "211;6").Return(&pricedb.Price{
+		SKU:  "211;6",
+		Name: "Cosmetic",
+		Buy:  pricedb.Currencies{Metal: 1.11},
+		Sell: pricedb.Currencies{Metal: 1.22},
+	}, true)
+
+	mw := PricerMiddleware(mgr, func() *schema.Schema { return nil }, log.Discard)
+	handler := mw(func(c *engine.TradeContext) error {
+		return nil
+	})
+
+	err := handler(ctx)
+	assert.NoError(t, err)
+
+	// Verify that context contains prices mapped with the base price!
+	pricesRaw, ok := ctx.Get("prices")
+	assert.True(t, ok)
+
+	priceMap := pricesRaw.(map[string]*pricedb.Price)
+	p, ok := priceMap["211;6;p5027"]
+	assert.True(t, ok)
+	assert.Equal(t, 1.11, p.Buy.Metal)
+	assert.Equal(t, 1.22, p.Sell.Metal)
+	assert.Contains(t, p.Name, "Painted")
+}

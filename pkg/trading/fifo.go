@@ -16,7 +16,9 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/trading/web"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
+	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
+	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 	"github.com/lemon4ksan/g-man-tf2/pkg/storage"
 )
 
@@ -89,6 +91,53 @@ func (s *FIFOSubscriber) Wait() {
 }
 
 func (s *FIFOSubscriber) handleAcceptedOffer(offer *trading.TradeOffer) {
+	for _, item := range offer.ItemsToReceive {
+		if itObj, err := sku.FromString(item.SKU); err == nil && itObj.Paint != 0 {
+			origPaint := itObj.Paint
+			itObj.Paint = 0
+
+			baseSKU := sku.FromObject(itObj)
+			if basePrice, ok := s.priceMgr.GetPrice(baseSKU); ok {
+				buyPrice := basePrice.Buy
+				sellPrice := basePrice.Sell
+
+				// Default premium of 0.5 ref if not found in options
+				premium := PaintPremium{Keys: 0, Metal: 0.5}
+				if pName := schema.GetPaintName(uint32(origPaint)); pName != "" {
+					if prem, ok := PaintPremiums[pName]; ok {
+						premium = prem
+					}
+				}
+
+				// Apply markup to sell price
+				sellPrice.Keys += premium.Keys
+				sellPrice.Metal += premium.Metal
+
+				// Normalize metal to keys if metal exceeds key price
+				keyPriceRef := s.getKeyPriceRef()
+				if sellPrice.Metal >= keyPriceRef && keyPriceRef > 0 {
+					truncKeys := int(sellPrice.Metal / keyPriceRef)
+					sellPrice.Keys += truncKeys
+					sellPrice.Metal -= float64(truncKeys) * keyPriceRef
+				}
+
+				buyPrice.Keys = 0
+				buyPrice.Metal = 0.11
+
+				s.priceMgr.SetPrice(item.SKU, buyPrice, sellPrice, pricedb.PricelistChangedSourcePaintMarkup)
+				s.logger.Info("Auto-pricing painted item with markup",
+					log.String("painted_sku", item.SKU),
+					log.String("base_sku", baseSKU),
+					log.String("paint_name", schema.GetPaintName(uint32(origPaint))),
+					log.Float64("markup_ref", premium.Metal),
+					log.Int("markup_keys", premium.Keys),
+					log.Int("sell_keys", sellPrice.Keys),
+					log.Float64("sell_metal", sellPrice.Metal),
+				)
+			}
+		}
+	}
+
 	tradeIDStr := strconv.FormatUint(offer.ID, 10)
 	keyPriceScrap := s.getKeyPriceScrap()
 
@@ -301,4 +350,56 @@ func (s *FIFOSubscriber) getKeyPriceScrap() currency.Scrap {
 	}
 
 	return currency.ToScrap(keyPriceRef)
+}
+
+func (s *FIFOSubscriber) getKeyPriceRef() float64 {
+	var keyPriceRef float64
+	if kp, ok := s.priceMgr.GetPrice(currency.SKUKey); ok {
+		keyPriceRef = kp.Buy.Metal
+	}
+
+	if keyPriceRef <= 0 {
+		keyPriceRef = 50.0
+	}
+
+	return keyPriceRef
+}
+
+// PaintPremium represents the markup price addition in keys and refined metal.
+type PaintPremium struct {
+	Keys  int
+	Metal float64
+}
+
+// PaintPremiums defines the default markups applied to items with TF2 paints.
+var PaintPremiums = map[string]PaintPremium{
+	"Pink as Hell":                               {Keys: 1, Metal: 10.0},
+	"A Distinctive Lack of Hue":                  {Keys: 1, Metal: 10.0},
+	"The Bitter Taste of Defeat and Lime":        {Keys: 1, Metal: 10.0},
+	"Team Spirit":                                {Keys: 1, Metal: 10.0},
+	"After Eight":                                {Keys: 1, Metal: 5.0},
+	"An Extraordinary Abundance of Tinge":        {Keys: 1, Metal: 5.0},
+	"An Air of Debonair":                         {Keys: 0, Metal: 30.0},
+	"A Mann's Mint":                              {Keys: 0, Metal: 15.0},
+	"Dark Salmon Injustice":                      {Keys: 0, Metal: 15.0},
+	"Australium Gold":                            {Keys: 0, Metal: 15.0},
+	"Balaclavas Are Forever":                     {Keys: 0, Metal: 15.0},
+	"Cream Spirit":                               {Keys: 0, Metal: 15.0},
+	"Operator's Overalls":                        {Keys: 0, Metal: 15.0},
+	"The Value of Teamwork":                      {Keys: 0, Metal: 15.0},
+	"Waterlogged Lab Coat":                       {Keys: 0, Metal: 15.0},
+	"A Deep Commitment to Purple":                {Keys: 0, Metal: 7.0},
+	"Color No. 216-190-216":                      {Keys: 0, Metal: 7.0},
+	"Noble Hatter's Violet":                      {Keys: 0, Metal: 7.0},
+	"Mann Co. Orange":                            {Keys: 0, Metal: 6.0},
+	"Aged Moustache Grey":                        {Keys: 0, Metal: 5.0},
+	"Drably Olive":                               {Keys: 0, Metal: 5.0},
+	"Indubitably Green":                          {Keys: 0, Metal: 5.0},
+	"The Color of a Gentlemann's Business Pants": {Keys: 0, Metal: 5.0},
+	"A Color Similar to Slate":                   {Keys: 0, Metal: 5.0},
+	"Zepheniah's Greed":                          {Keys: 0, Metal: 4.0},
+	"Peculiarly Drab Tincture":                   {Keys: 0, Metal: 3.0},
+	"Radigan Conagher Brown":                     {Keys: 0, Metal: 2.0},
+	"Muskelmannbraun":                            {Keys: 0, Metal: 2.0},
+	"Ye Olde Rustic Colour":                      {Keys: 0, Metal: 2.0},
 }

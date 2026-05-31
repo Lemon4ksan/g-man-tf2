@@ -201,6 +201,12 @@ func (b *Bot) Run(ctx context.Context) error {
 		b.costBasis.Start(ctx)
 	})
 
+	// Start FIFO subscriber for trade accounting and auto-pricing of painted items
+	fifoSub := tf2trading.NewFIFOSubscriber(b.costBasis, nil, b.pdbManager, b.client.Bus(), b.logger)
+	b.wg.Go(func() {
+		fifoSub.Start(ctx)
+	})
+
 	// Start config hot-reloader
 	b.tradeCfgManager.StartWatching(ctx, 10*time.Second, b.logger)
 

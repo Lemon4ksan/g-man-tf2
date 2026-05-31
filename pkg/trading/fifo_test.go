@@ -498,3 +498,160 @@ func TestPPUMiddleware_AdvancedParams(t *testing.T) {
 		assert.Equal(t, 9.5, p.Sell.Metal)
 	})
 }
+
+func TestFIFOSubscriber_AutoPricing_PaintedItem(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "costBasis.json")
+	logger := log.Discard
+
+	cbStore, err := jsonfile.NewCostBasisStore(filePath, logger)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	go cbStore.Start(ctx)
+
+	pdbClient := pricedb.NewClient(&http.Client{})
+	priceMgr := pricedb.NewManager(pdbClient, logger)
+
+	// Set base item price (e.g. 211;6) in pricedb
+	priceMgr.Watch("211;6")
+	setUnexportedField(priceMgr, "cache", map[string]*pricedb.Price{
+		"211;6": {
+			SKU:  "211;6",
+			Buy:  pricedb.Currencies{Keys: 0, Metal: 10.0},
+			Sell: pricedb.Currencies{Keys: 0, Metal: 12.0},
+		},
+		currency.SKUKey: {
+			SKU:  currency.SKUKey,
+			Buy:  pricedb.Currencies{Keys: 0, Metal: 50.0},
+			Sell: pricedb.Currencies{Keys: 0, Metal: 50.0},
+		},
+	})
+
+	eventBus := bus.New()
+	sub := NewFIFOSubscriber(cbStore, nil, priceMgr, eventBus, logger)
+	sub.Start(ctx)
+	t.Cleanup(func() {
+		sub.Wait()
+	})
+
+	// Process INTAKE of a painted item (e.g. 211;6;p5027)
+	offer := &trading.TradeOffer{
+		ID:    9999,
+		State: trading.OfferStateAccepted,
+		ItemsToGive: []*trading.Item{
+			{SKU: currency.SKURefined, MarketHashName: "Refined Metal"},
+			{SKU: currency.SKURefined, MarketHashName: "Refined Metal"},
+		},
+		ItemsToReceive: []*trading.Item{
+			{SKU: "211;6;p5027", MarketHashName: "Painted Cosmetic"},
+		},
+	}
+
+	eventBus.Publish(&web.OfferChangedEvent{
+		Offer:    offer,
+		OldState: trading.OfferStateActive,
+	})
+
+	// Wait for processing to complete by polling pricedb for the newly added painted item SKU
+	var p *pricedb.Price
+	assert.Eventually(t, func() bool {
+		var ok bool
+
+		p, ok = priceMgr.GetPrice("211;6;p5027")
+
+		return ok
+	}, 1*time.Second, 10*time.Millisecond)
+
+	// Assertions:
+	// Buy price should be 1 scrap (0.11 ref) for safety - we never auto-buy painted at a premium
+	assert.Equal(t, 0.11, p.Buy.Metal)
+	assert.Equal(t, 0, p.Buy.Keys)
+	// Sell price should be base sell price (12.0) + 0.5 ref default markup = 12.5 ref (p5027 is an unknown paint)
+	assert.Equal(t, 12.5, p.Sell.Metal)
+	assert.Equal(t, "PaintMarkup", p.Source)
+
+	cancel()
+	time.Sleep(25 * time.Millisecond)
+}
+
+func TestFIFOSubscriber_AutoPricing_HighValuePaintedItem(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "costBasis.json")
+	logger := log.Discard
+
+	cbStore, err := jsonfile.NewCostBasisStore(filePath, logger)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	go cbStore.Start(ctx)
+
+	pdbClient := pricedb.NewClient(&http.Client{})
+	priceMgr := pricedb.NewManager(pdbClient, logger)
+
+	// Set base item price (e.g. 211;6) in pricedb
+	priceMgr.Watch("211;6")
+	setUnexportedField(priceMgr, "cache", map[string]*pricedb.Price{
+		"211;6": {
+			SKU:  "211;6",
+			Buy:  pricedb.Currencies{Keys: 0, Metal: 10.0},
+			Sell: pricedb.Currencies{Keys: 0, Metal: 30.0}, // Base sell price is 30 ref
+		},
+		currency.SKUKey: {
+			SKU:  currency.SKUKey,
+			Buy:  pricedb.Currencies{Keys: 0, Metal: 50.0}, // Key price is 50 ref
+			Sell: pricedb.Currencies{Keys: 0, Metal: 50.0},
+		},
+	})
+
+	eventBus := bus.New()
+	sub := NewFIFOSubscriber(cbStore, nil, priceMgr, eventBus, logger)
+	sub.Start(ctx)
+	t.Cleanup(func() {
+		sub.Wait()
+	})
+
+	// Process INTAKE of a high-value painted item (e.g. An Air of Debonair: hex 0x28394D = 2636109 in decimal)
+	// Base sell (30 ref) + Premium (30 ref) = 60 ref.
+	// Normalized at key price (50 ref) => Keys: 1, Metal: 10.0 ref.
+	offer := &trading.TradeOffer{
+		ID:    9999,
+		State: trading.OfferStateAccepted,
+		ItemsToGive: []*trading.Item{
+			{SKU: currency.SKURefined, MarketHashName: "Refined Metal"},
+		},
+		ItemsToReceive: []*trading.Item{
+			{SKU: "211;6;p2636109", MarketHashName: "An Air of Debonair Cosmetic"},
+		},
+	}
+
+	eventBus.Publish(&web.OfferChangedEvent{
+		Offer:    offer,
+		OldState: trading.OfferStateActive,
+	})
+
+	var p *pricedb.Price
+	assert.Eventually(t, func() bool {
+		var ok bool
+
+		p, ok = priceMgr.GetPrice("211;6;p2636109")
+
+		return ok
+	}, 1*time.Second, 10*time.Millisecond)
+
+	// Buy price should be minimal 1 scrap (0.11 ref)
+	assert.Equal(t, 0.11, p.Buy.Metal)
+	assert.Equal(t, 0, p.Buy.Keys)
+
+	// Sell price should be base sell (30) + premium (30) = 60 ref. Normalized => 1 key and 10 ref
+	assert.Equal(t, 1, p.Sell.Keys)
+	assert.Equal(t, 10.0, p.Sell.Metal)
+	assert.Equal(t, "PaintMarkup", p.Source)
+
+	cancel()
+	time.Sleep(25 * time.Millisecond)
+}

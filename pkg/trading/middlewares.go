@@ -158,10 +158,38 @@ func PricerMiddleware(mgr PriceProvider, schemaProvider func() *schema.Schema, l
 				maps.Copy(priceMap, fetched)
 			}
 
+			// Fallback for painted items: if a painted item is not in priceMap,
+			// try to resolve the base SKU and map the base item's price to the painted SKU.
+			for _, item := range append(ctx.Offer.ItemsToGive, ctx.Offer.ItemsToReceive...) {
+				pricingSKU := GetPricingSKU(item.SKU)
+				if _, ok := priceMap[pricingSKU]; !ok {
+					if itObj, err := sku.FromString(pricingSKU); err == nil && itObj.Paint != 0 {
+						itObj.Paint = 0
+
+						baseSKU := sku.FromObject(itObj)
+						if basePrice, ok := mgr.GetPrice(baseSKU); ok {
+							priceMap[pricingSKU] = &pricedb.Price{
+								SKU:    pricingSKU,
+								Name:   basePrice.Name + " (Painted)",
+								Buy:    basePrice.Buy,
+								Sell:   basePrice.Sell,
+								Source: basePrice.Source,
+								Time:   basePrice.Time,
+							}
+							logger.Info("Using base item price as fallback for painted item",
+								log.String("painted_sku", pricingSKU),
+								log.String("base_sku", baseSKU),
+							)
+						}
+					}
+				}
+			}
+
 			ctx.Set("prices", priceMap)
 
 			for _, item := range append(ctx.Offer.ItemsToGive, ctx.Offer.ItemsToReceive...) {
-				if _, ok := priceMap[item.SKU]; !ok {
+				pricingSKU := GetPricingSKU(item.SKU)
+				if _, ok := priceMap[pricingSKU]; !ok {
 					if isUniqueWeapon(item.SKU, schemaProvider()) {
 						continue
 					}
