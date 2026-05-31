@@ -1,6 +1,7 @@
 {
   "global_max_stock": 3000,
   "default_max_stock": 5,
+  "listing_comment_template": "⚡ G-man | %name% for %price% | Stock: %current_stock%/%max_stock% | My Crit Store: %crittf_store%",
   "excluded_listing_descriptions": [
     "spell",
     "spells",

@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
+	"github.com/lemon4ksan/g-man-tf2/pkg/ecp"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/bptf"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/crit"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
@@ -96,6 +98,8 @@ type CritProvider interface {
 	UpdateListing(ctx context.Context, listingID string, currencies pricedb.Currencies) (*crit.Listing, error)
 	// DeleteListing deletes an active listing by its database ID.
 	DeleteListing(ctx context.Context, listingID string) error
+	// GetStorefrontURL thread-safely generates the showcase / storefront link.
+	GetStorefrontURL(ctx context.Context) string
 }
 
 // ListingsSynchronizer coordinates in-game stock, pricedb changes, and external marketplace listings.
@@ -110,6 +114,8 @@ type ListingsSynchronizer struct {
 	priceMgr PriceProvider
 	cfgMgr   ConfigProvider
 	crit     CritProvider
+
+	ecpEngine *ecp.EasyCopyPaste
 
 	mu          sync.Mutex
 	bptfQueue   chan string
@@ -164,6 +170,7 @@ func New(
 		priceMgr:    priceMgr,
 		cfgMgr:      cfgMgr,
 		crit:        crit,
+		ecpEngine:   ecp.New(),
 		bptfQueue:   make(chan string, 500),
 		bptfPending: make(map[string]bool),
 		critQueue:   make(chan string, 500),
@@ -494,7 +501,7 @@ func (s *ListingsSynchronizer) syncBptfBatch(ctx context.Context, skus []string)
 				Currencies: map[string]float64{
 					"metal": price.Buy.Metal,
 				},
-				Details: fmt.Sprintf("⚡ G-man | Buying %s | Stock: %d/%d", skuStr, stock, maxStock),
+				Details: s.generateListingComment(ctx, skuStr, "buy", price.Buy, stock, maxStock),
 			})
 		} else if existingBuy != nil {
 			deleteIDs = append(deleteIDs, existingBuy.ID)
@@ -508,7 +515,7 @@ func (s *ListingsSynchronizer) syncBptfBatch(ctx context.Context, skus []string)
 				Currencies: map[string]float64{
 					"metal": price.Sell.Metal,
 				},
-				Details: fmt.Sprintf("⚡ G-man | Selling %s | Stock: %d/%d", skuStr, stock, maxStock),
+				Details: s.generateListingComment(ctx, skuStr, "sell", price.Sell, stock, maxStock),
 			})
 		} else if existingSell != nil {
 			deleteIDs = append(deleteIDs, existingSell.ID)
@@ -540,4 +547,98 @@ func (s *ListingsSynchronizer) syncBptfBatch(ctx context.Context, skus []string)
 			}
 		}
 	}
+}
+
+func formatPrice(currencies pricedb.Currencies) string {
+	keys := currencies.Keys
+	metal := currencies.Metal
+
+	switch {
+	case keys > 0 && metal > 0:
+		keyStr := "key"
+		if keys > 1 {
+			keyStr = "keys"
+		}
+
+		return fmt.Sprintf("%d %s, %g ref", keys, keyStr, metal)
+	case keys > 0:
+		keyStr := "key"
+		if keys > 1 {
+			keyStr = "keys"
+		}
+
+		return fmt.Sprintf("%d %s", keys, keyStr)
+	default:
+		return fmt.Sprintf("%g ref", metal)
+	}
+}
+
+func (s *ListingsSynchronizer) generateListingComment(
+	ctx context.Context,
+	skuStr string,
+	intent string,
+	price pricedb.Currencies,
+	stock int,
+	maxStock int,
+) string {
+	cfg := s.cfgMgr.GetConfig()
+	template := cfg.ListingCommentTemplate
+
+	// Standard fallback if template is empty
+	if template == "" {
+		if intent == "buy" {
+			return fmt.Sprintf("⚡ G-man | Buying %s | Stock: %d/%d", skuStr, stock, maxStock)
+		}
+
+		return fmt.Sprintf("⚡ G-man | Selling %s | Stock: %d/%d", skuStr, stock, maxStock)
+	}
+
+	// 1. %price%
+	formattedPrice := formatPrice(price)
+
+	// 2. %name%
+	itemName := skuStr
+	if itemCfg, exists := cfg.Items[skuStr]; exists && itemCfg.Name != "" {
+		itemName = itemCfg.Name
+	}
+
+	// 3. %ecp_item%
+	var ecpStr string
+	if s.ecpEngine != nil {
+		var err error
+
+		ecpStr, err = s.ecpEngine.ToEcpString(itemName, intent)
+		if err != nil {
+			s.logger.Warn("Failed to generate ECP string", log.String("sku", skuStr), log.Err(err))
+
+			ecpStr = ""
+		}
+	}
+
+	// 4. %current_stock% & %max_stock%
+	currentStockStr := strconv.Itoa(stock)
+	maxStockStr := strconv.Itoa(maxStock)
+
+	// 5. %crittf_store% & %crittf_item%
+	critStoreURL := ""
+
+	critItemURL := ""
+	if s.crit != nil {
+		critStoreURL = s.crit.GetStorefrontURL(ctx)
+		if critStoreURL != "" {
+			critItemURL = critStoreURL + "/item/" + skuStr
+		}
+	}
+
+	// Replacements
+	comment := template
+	comment = strings.ReplaceAll(comment, "%price%", formattedPrice)
+	comment = strings.ReplaceAll(comment, "%name%", itemName)
+	comment = strings.ReplaceAll(comment, "%ecp_item%", ecpStr)
+	comment = strings.ReplaceAll(comment, "%current_stock%", currentStockStr)
+	comment = strings.ReplaceAll(comment, "%max_stock%", maxStockStr)
+	comment = strings.ReplaceAll(comment, "%crittf_store%", critStoreURL)
+	comment = strings.ReplaceAll(comment, "%crittf_item%", critItemURL)
+
+	return comment
 }

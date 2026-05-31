@@ -161,6 +161,10 @@ func (m *mockCritProvider) DeleteListing(ctx context.Context, listingID string) 
 	return nil
 }
 
+func (m *mockCritProvider) GetStorefrontURL(ctx context.Context) string {
+	return "https://crit.tf/group/mock-store"
+}
+
 func TestListingsSynchronizer_Run_PriceUpdateEvent_UpdatesMarketplaces(t *testing.T) {
 	t.Parallel()
 
@@ -246,4 +250,98 @@ func TestListingsSynchronizer_Run_PriceUpdateEvent_UpdatesMarketplaces(t *testin
 
 		return critLen >= 5 && bptfLen >= 2
 	}, 3*time.Second, 100*time.Millisecond, "Expected listings to be created on crit.tf and backpack.tf")
+}
+
+func TestListingsSynchronizer_GenerateListingComment(t *testing.T) {
+	logger := log.New(log.DefaultConfig(log.LevelError))
+	eventBus := bus.New()
+
+	bp := &mockBackpackProvider{}
+	listingMgr := &mockListingProvider{}
+	priceMgr := &mockPriceProvider{}
+	critClient := &mockCritProvider{}
+
+	cfg := Config{}
+
+	t.Run("Standard fallback when template is empty", func(t *testing.T) {
+		cfgMgr := &mockConfigProvider{
+			cfg: trading.Config{
+				ListingCommentTemplate: "",
+			},
+		}
+
+		syncer := New(bp, listingMgr, priceMgr, cfgMgr, critClient, eventBus, logger, cfg)
+
+		comment := syncer.generateListingComment(
+			context.Background(),
+			"5021;6",
+			"buy",
+			pricedb.Currencies{Keys: 1, Metal: 12.33},
+			5,
+			10,
+		)
+		assert.Equal(t, "⚡ G-man | Buying 5021;6 | Stock: 5/10", comment)
+
+		commentSell := syncer.generateListingComment(
+			context.Background(),
+			"5021;6",
+			"sell",
+			pricedb.Currencies{Keys: 1, Metal: 12.33},
+			5,
+			10,
+		)
+		assert.Equal(t, "⚡ G-man | Selling 5021;6 | Stock: 5/10", commentSell)
+	})
+
+	t.Run("Template placeholder replacement", func(t *testing.T) {
+		cfgMgr := &mockConfigProvider{
+			cfg: trading.Config{
+				ListingCommentTemplate: "Price: %price% | Name: %name% | ECP: %ecp_item% | Stock: %current_stock%/%max_stock% | Crit Store: %crittf_store% | Crit Item: %crittf_item%",
+				Items: map[string]trading.ItemConfig{
+					"5021;6": {
+						SKU:  "5021;6",
+						Name: "Mann Co. Supply Crate Key",
+					},
+				},
+			},
+		}
+
+		syncer := New(bp, listingMgr, priceMgr, cfgMgr, critClient, eventBus, logger, cfg)
+
+		// 1. Buy intent (client perspective: sell)
+		commentBuy := syncer.generateListingComment(
+			context.Background(),
+			"5021;6",
+			"buy",
+			pricedb.Currencies{Keys: 2, Metal: 3.55},
+			2,
+			5,
+		)
+
+		assert.Contains(t, commentBuy, "Price: 2 keys, 3.55 ref")
+		assert.Contains(t, commentBuy, "Name: Mann Co. Supply Crate Key")
+		// ECP: bot "buy" intent -> client "sell" ECP -> "sell_Mann_Co_Supply_Crate_Key"
+		assert.Contains(t, commentBuy, "ECP: sell_Mann_Co_Supply_Crate_Key")
+		assert.Contains(t, commentBuy, "Stock: 2/5")
+		assert.Contains(t, commentBuy, "Crit Store: https://crit.tf/group/mock-store")
+		assert.Contains(t, commentBuy, "Crit Item: https://crit.tf/group/mock-store/item/5021;6")
+
+		// 2. Sell intent (client perspective: buy)
+		commentSell := syncer.generateListingComment(
+			context.Background(),
+			"5021;6",
+			"sell",
+			pricedb.Currencies{Keys: 0, Metal: 15.0},
+			4,
+			5,
+		)
+
+		assert.Contains(t, commentSell, "Price: 15 ref")
+		assert.Contains(t, commentSell, "Name: Mann Co. Supply Crate Key")
+		// ECP: bot "sell" intent -> client "buy" ECP -> "buy_Mann_Co_Supply_Crate_Key"
+		assert.Contains(t, commentSell, "ECP: buy_Mann_Co_Supply_Crate_Key")
+		assert.Contains(t, commentSell, "Stock: 4/5")
+		assert.Contains(t, commentSell, "Crit Store: https://crit.tf/group/mock-store")
+		assert.Contains(t, commentSell, "Crit Item: https://crit.tf/group/mock-store/item/5021;6")
+	})
 }
