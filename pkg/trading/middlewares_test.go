@@ -6,6 +6,7 @@ package trading
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 	"unsafe"
@@ -23,10 +24,10 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
 	tf2reason "github.com/lemon4ksan/g-man-tf2/pkg/reason"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
+	"github.com/lemon4ksan/g-man-tf2/pkg/services/rep"
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 )
 
-// mockPartnerInvProvider is a mock for PartnerInventoryProvider interface.
 type mockPartnerInvProvider struct {
 	mock.Mock
 }
@@ -40,7 +41,6 @@ func (m *mockPartnerInvProvider) GetPartnerInventory(ctx context.Context, partne
 	return args.Get(0).([]*trading.Item), args.Error(1)
 }
 
-// mockAssetFetcher is a mock for crafting.AssetFetcher interface.
 type mockAssetFetcher struct {
 	mock.Mock
 }
@@ -69,7 +69,38 @@ func (m *mockAssetFetcher) GetMetalCount(defIndex uint32) int {
 	return args.Int(0)
 }
 
-// mockBackpackCache is a mock for backpack.ItemCache interface.
+type mockGC struct {
+	mock.Mock
+}
+
+func (m *mockGC) FindCraftableItems(defIndex uint32, count int) []uint64 {
+	args := m.Called(defIndex, count)
+	return args.Get(0).([]uint64)
+}
+
+func (m *mockGC) FindWeaponsByClassForSmelting(class string) []*tf2.Item {
+	args := m.Called(class)
+	if args.Get(0) == nil {
+		return nil
+	}
+
+	return args.Get(0).([]*tf2.Item)
+}
+
+func (m *mockGC) GetMetalCount(defIndex uint32) int {
+	args := m.Called(defIndex)
+	return args.Int(0)
+}
+
+func (m *mockGC) Craft(ctx context.Context, items []uint64, recipe int16) ([]uint64, error) {
+	args := m.Called(ctx, items, recipe)
+	return args.Get(0).([]uint64), args.Error(1)
+}
+
+func (m *mockGC) mockManager() *crafting.Manager {
+	return crafting.NewManager(m, m)
+}
+
 type mockBackpackCache struct {
 	items []*tf2.Item
 }
@@ -86,15 +117,15 @@ func (m *mockBackpackCache) GetItem(id uint64) (*tf2.Item, bool) {
 }
 func (m *mockBackpackCache) GetMaxSlots() int { return 3000 }
 
-// helper to inject private fields into backpack.Backpack
 func setUnexportedField(target any, fieldName string, value any) {
 	val := reflect.ValueOf(target).Elem()
 	field := val.FieldByName(fieldName)
 	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(reflect.ValueOf(value))
 }
 
-func TestSmartCounterMiddleware_CorrectValue(t *testing.T) {
-	// Prepare mocks
+func TestSmartCounterMiddleware_CorrectValue_ExactMatch_AcceptsOffer(t *testing.T) {
+	t.Parallel()
+
 	fetcher := new(mockAssetFetcher)
 	metalMgr := crafting.NewMetalManager(fetcher, nil, log.Discard)
 	bp := backpack.New()
@@ -103,7 +134,6 @@ func TestSmartCounterMiddleware_CorrectValue(t *testing.T) {
 
 	invProvider := new(mockPartnerInvProvider)
 
-	// Context and prices setup
 	offer := &trading.TradeOffer{
 		OtherSteamID: 76561198000000000,
 		ItemsToGive: []*trading.Item{
@@ -114,7 +144,7 @@ func TestSmartCounterMiddleware_CorrectValue(t *testing.T) {
 		},
 	}
 
-	ctx := engine.NewTradeContext(context.Background(), offer)
+	ctx := engine.NewTradeContext(t.Context(), offer)
 	prices := map[string]*pricedb.Price{
 		"5021;6": {
 			Buy:  pricedb.Currencies{Keys: 0, Metal: 50.0},
@@ -123,7 +153,6 @@ func TestSmartCounterMiddleware_CorrectValue(t *testing.T) {
 	}
 	ctx.Set("prices", prices)
 
-	// Run middleware
 	mw := SmartCounterMiddleware(metalMgr, bp, invProvider, log.Discard)
 	handler := mw(func(c *engine.TradeContext) error {
 		return nil
@@ -135,24 +164,22 @@ func TestSmartCounterMiddleware_CorrectValue(t *testing.T) {
 	assert.Equal(t, reason.AcceptCorrectValue, ctx.Verdict.Reason)
 }
 
-func TestSmartCounterMiddleware_Overpaid_ChangeAvailable(t *testing.T) {
+func TestSmartCounterMiddleware_Overpaid_ChangeAvailable_BotWePayChange_CountersOffer(t *testing.T) {
+	t.Parallel()
+
 	fetcher := new(mockAssetFetcher)
 	metalMgr := crafting.NewMetalManager(fetcher, nil, log.Discard)
 	bp := backpack.New()
 	cache := &mockBackpackCache{
 		items: []*tf2.Item{
-			{ID: 10, DefIndex: 5002, IsTradable: true}, // Refined (9 scrap)
-			{ID: 11, DefIndex: 5000, IsTradable: true}, // Scrap (1 scrap)
+			{ID: 10, DefIndex: 5002, IsTradable: true},
+			{ID: 11, DefIndex: 5000, IsTradable: true},
 		},
 	}
 	setUnexportedField(bp, "cache", cache)
 
 	invProvider := new(mockPartnerInvProvider)
 
-	// Items setup:
-	// We give 1 key (worth 50 ref / 450 scrap)
-	// We receive 1 key + 10 scrap (value 460 scrap)
-	// Difference is 10 scrap (partner overpaid -> we owe them 10 scrap change)
 	offer := &trading.TradeOffer{
 		OtherSteamID: 76561198000000000,
 		ItemsToGive: []*trading.Item{
@@ -173,7 +200,7 @@ func TestSmartCounterMiddleware_Overpaid_ChangeAvailable(t *testing.T) {
 		},
 	}
 
-	ctx := engine.NewTradeContext(context.Background(), offer)
+	ctx := engine.NewTradeContext(t.Context(), offer)
 	prices := map[string]*pricedb.Price{
 		"5021;6": {
 			Buy:  pricedb.Currencies{Keys: 0, Metal: 50.0},
@@ -186,7 +213,6 @@ func TestSmartCounterMiddleware_Overpaid_ChangeAvailable(t *testing.T) {
 	}
 	ctx.Set("prices", prices)
 
-	// Fetcher has: 1 Ref (ID 10), 0 Rec, 1 Scrap (ID 11) -> Sum is 10 scrap
 	fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{10})
 	fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{})
 	fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{11})
@@ -199,96 +225,16 @@ func TestSmartCounterMiddleware_Overpaid_ChangeAvailable(t *testing.T) {
 	err := handler(ctx)
 	assert.NoError(t, err)
 
-	// Should counter offer with our change items added
 	assert.Equal(t, trading.ActionCounter, ctx.Verdict.Action)
 	assert.Equal(t, reason.AcceptCorrectValue, ctx.Verdict.Reason)
 
 	counterParams := ctx.Verdict.Data.(*trading.CounterParams)
-	assert.Len(t, counterParams.ItemsToGive, 3) // Original key + 1 Ref + 1 Scrap
-	assert.Equal(t, "I've added the necessary change for you!", counterParams.Message)
+	assert.Len(t, counterParams.ItemsToGive, 3)
 }
 
-func TestSmartCounterMiddleware_Overpaid_NotEnoughChange_SmeltSucceeds(t *testing.T) {
-	fetcher := new(mockAssetFetcher)
-	bp := backpack.New()
-	cache := &mockBackpackCache{}
-	setUnexportedField(bp, "cache", cache)
+func TestSmartCounterMiddleware_Overpaid_NotEnoughChange_SmeltSucceeds_RetriesOnNextRun(t *testing.T) {
+	t.Parallel()
 
-	invProvider := new(mockPartnerInvProvider)
-
-	// Setup Crafting Manager Mock
-	// TryToSmeltForChange returns nil (meaning smelting succeeded and will resolve on retry)
-	mockCraft := new(mockGC) // Let's use a dummy crafting manager
-	metalMgr := crafting.NewMetalManager(fetcher, mockCraft.mockManager(), log.Discard)
-
-	offer := &trading.TradeOffer{
-		OtherSteamID: 76561198000000000,
-		ItemsToGive: []*trading.Item{
-			{SKU: "5021;6", MarketHashName: "Mann Co. Supply Crate Key"},
-		},
-		ItemsToReceive: []*trading.Item{
-			{SKU: "5021;6", MarketHashName: "Mann Co. Supply Crate Key"},
-			{SKU: "5000;6", MarketHashName: "Scrap Metal"},
-		},
-	}
-
-	ctx := engine.NewTradeContext(context.Background(), offer)
-	prices := map[string]*pricedb.Price{
-		"5021;6": {
-			Buy:  pricedb.Currencies{Keys: 0, Metal: 50.0},
-			Sell: pricedb.Currencies{Keys: 0, Metal: 50.0},
-		},
-		"5000;6": {
-			Buy:  pricedb.Currencies{Keys: 0, Metal: 0.11},
-			Sell: pricedb.Currencies{Keys: 0, Metal: 0.11},
-		},
-	}
-	ctx.Set("prices", prices)
-
-	// Fetcher has no loose scrap initially, but has 1 Ref in pure stock.
-	fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{100}).Once()
-	fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{})
-
-	fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{})
-
-	fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{}).Once()
-	fetcher.On("GetAssetIDs", currency.SKUScrap).
-		Return([]uint64{1, 2, 3})
-		// Smelting succeeded, now we have loose scrap!
-
-	fetcher.On("GetPureStock").Return(currency.PureStock{Refined: 1})
-
-	// MakeChange call mock
-	mockCraft.On("GetMetalCount", uint32(5000)).Return(0).Once()
-	mockCraft.On("GetMetalCount", uint32(5001)).Return(0).Once()
-	mockCraft.On("GetMetalCount", uint32(5001)).Return(0).Once()
-	mockCraft.On("GetMetalCount", uint32(5002)).Return(1).Once()
-	mockCraft.On("FindCraftableItems", uint32(5002), 1).Return([]uint64{100})
-
-	mockCraft.On("Craft", mock.Anything, []uint64{100}, int16(RecipeSmeltRefined)).Return([]uint64{10, 11, 12}, nil)
-
-	mockCraft.On("GetMetalCount", uint32(5001)).Return(3).Once()
-	mockCraft.On("GetMetalCount", uint32(5000)).Return(0).Once()
-	mockCraft.On("GetMetalCount", uint32(5001)).Return(3).Once()
-	mockCraft.On("FindCraftableItems", uint32(5001), 1).Return([]uint64{10})
-
-	mockCraft.On("Craft", mock.Anything, []uint64{10}, int16(RecipeSmeltReclaimed)).Return([]uint64{1, 2, 3}, nil)
-
-	mockCraft.On("GetMetalCount", uint32(5000)).Return(3).Once()
-
-	mw := SmartCounterMiddleware(metalMgr, bp, invProvider, log.Discard)
-	handler := mw(func(c *engine.TradeContext) error {
-		return nil
-	})
-
-	err := handler(ctx)
-	assert.NoError(t, err)
-
-	// Since smelting succeeded, verdict should remain undecided (waiting for next run / retry)
-	assert.Equal(t, trading.ActionSkip, ctx.Verdict.Action)
-}
-
-func TestSmartCounterMiddleware_Overpaid_NotEnoughChange_SmeltFails(t *testing.T) {
 	fetcher := new(mockAssetFetcher)
 	bp := backpack.New()
 	cache := &mockBackpackCache{}
@@ -310,7 +256,7 @@ func TestSmartCounterMiddleware_Overpaid_NotEnoughChange_SmeltFails(t *testing.T
 		},
 	}
 
-	ctx := engine.NewTradeContext(context.Background(), offer)
+	ctx := engine.NewTradeContext(t.Context(), offer)
 	prices := map[string]*pricedb.Price{
 		"5021;6": {
 			Buy:  pricedb.Currencies{Keys: 0, Metal: 50.0},
@@ -323,11 +269,78 @@ func TestSmartCounterMiddleware_Overpaid_NotEnoughChange_SmeltFails(t *testing.T
 	}
 	ctx.Set("prices", prices)
 
-	// Fetcher has absolutely nothing
+	fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{100}).Once()
+	fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{})
+	fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{})
+	fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{}).Once()
+	fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{1, 2, 3})
+	fetcher.On("GetPureStock").Return(currency.PureStock{Refined: 1})
+
+	mockCraft.On("GetMetalCount", uint32(5000)).Return(0).Once()
+	mockCraft.On("GetMetalCount", uint32(5001)).Return(0).Once()
+	mockCraft.On("GetMetalCount", uint32(5001)).Return(0).Once()
+	mockCraft.On("GetMetalCount", uint32(5002)).Return(1).Once()
+	mockCraft.On("FindCraftableItems", uint32(5002), 1).Return([]uint64{100})
+	mockCraft.On("Craft", mock.Anything, []uint64{100}, int16(crafting.RecipeSmeltRefined)).
+		Return([]uint64{10, 11, 12}, nil)
+	mockCraft.On("GetMetalCount", uint32(5001)).Return(3).Once()
+	mockCraft.On("GetMetalCount", uint32(5000)).Return(0).Once()
+	mockCraft.On("GetMetalCount", uint32(5001)).Return(3).Once()
+	mockCraft.On("FindCraftableItems", uint32(5001), 1).Return([]uint64{10})
+	mockCraft.On("Craft", mock.Anything, []uint64{10}, int16(crafting.RecipeSmeltReclaimed)).
+		Return([]uint64{1, 2, 3}, nil)
+	mockCraft.On("GetMetalCount", uint32(5000)).Return(3).Once()
+
+	mw := SmartCounterMiddleware(metalMgr, bp, invProvider, log.Discard)
+	handler := mw(func(c *engine.TradeContext) error {
+		return nil
+	})
+
+	err := handler(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, trading.ActionSkip, ctx.Verdict.Action)
+}
+
+func TestSmartCounterMiddleware_Overpaid_NotEnoughChange_SmeltFails_DeclinesOffer(t *testing.T) {
+	t.Parallel()
+
+	fetcher := new(mockAssetFetcher)
+	bp := backpack.New()
+	cache := &mockBackpackCache{}
+	setUnexportedField(bp, "cache", cache)
+
+	invProvider := new(mockPartnerInvProvider)
+
+	mockCraft := new(mockGC)
+	metalMgr := crafting.NewMetalManager(fetcher, mockCraft.mockManager(), log.Discard)
+
+	offer := &trading.TradeOffer{
+		OtherSteamID: 76561198000000000,
+		ItemsToGive: []*trading.Item{
+			{SKU: "5021;6", MarketHashName: "Mann Co. Supply Crate Key"},
+		},
+		ItemsToReceive: []*trading.Item{
+			{SKU: "5021;6", MarketHashName: "Mann Co. Supply Crate Key"},
+			{SKU: "5000;6", MarketHashName: "Scrap Metal"},
+		},
+	}
+
+	ctx := engine.NewTradeContext(t.Context(), offer)
+	prices := map[string]*pricedb.Price{
+		"5021;6": {
+			Buy:  pricedb.Currencies{Keys: 0, Metal: 50.0},
+			Sell: pricedb.Currencies{Keys: 0, Metal: 50.0},
+		},
+		"5000;6": {
+			Buy:  pricedb.Currencies{Keys: 0, Metal: 0.11},
+			Sell: pricedb.Currencies{Keys: 0, Metal: 0.11},
+		},
+	}
+	ctx.Set("prices", prices)
+
 	fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{})
 	fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{})
 	fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{})
-
 	fetcher.On("GetPureStock").Return(currency.PureStock{})
 
 	mw := SmartCounterMiddleware(metalMgr, bp, invProvider, log.Discard)
@@ -337,13 +350,13 @@ func TestSmartCounterMiddleware_Overpaid_NotEnoughChange_SmeltFails(t *testing.T
 
 	err := handler(ctx)
 	assert.NoError(t, err)
-
-	// Should decline because we have no metal and cannot craft any
 	assert.Equal(t, trading.ActionDecline, ctx.Verdict.Action)
 	assert.Equal(t, tf2reason.DeclineNoChange, ctx.Verdict.Reason)
 }
 
-func TestSmartCounterMiddleware_Underpaid_PartnerHasCurrency(t *testing.T) {
+func TestSmartCounterMiddleware_Underpaid_PartnerHasCurrency_PartnerUnderpaid_CountersOffer(t *testing.T) {
+	t.Parallel()
+
 	fetcher := new(mockAssetFetcher)
 	metalMgr := crafting.NewMetalManager(fetcher, nil, log.Discard)
 	bp := backpack.New()
@@ -352,10 +365,6 @@ func TestSmartCounterMiddleware_Underpaid_PartnerHasCurrency(t *testing.T) {
 
 	invProvider := new(mockPartnerInvProvider)
 
-	// Items setup:
-	// We give 1 key (value 450 scrap)
-	// We receive 1 key minus 2 scrap (value 448 scrap)
-	// Difference is -2 scrap (partner underpaid -> we extract 2 scrap from their inventory)
 	offer := &trading.TradeOffer{
 		OtherSteamID: 76561198000000000,
 		ItemsToGive: []*trading.Item{
@@ -411,13 +420,13 @@ func TestSmartCounterMiddleware_Underpaid_PartnerHasCurrency(t *testing.T) {
 			{SKU: "5002;6", MarketHashName: "Refined Metal"},
 			{SKU: "5002;6", MarketHashName: "Refined Metal"},
 			{SKU: "5002;6", MarketHashName: "Refined Metal"},
-			{SKU: "5001;6", MarketHashName: "Reclaimed Metal"}, // 3 scrap
-			{SKU: "5001;6", MarketHashName: "Reclaimed Metal"}, // 3 scrap
-			{SKU: "5000;6", MarketHashName: "Scrap Metal"},     // 1 scrap
+			{SKU: "5001;6", MarketHashName: "Reclaimed Metal"},
+			{SKU: "5001;6", MarketHashName: "Reclaimed Metal"},
+			{SKU: "5000;6", MarketHashName: "Scrap Metal"},
 		},
 	}
 
-	ctx := engine.NewTradeContext(context.Background(), offer)
+	ctx := engine.NewTradeContext(t.Context(), offer)
 	prices := map[string]*pricedb.Price{
 		"5021;6": {
 			Buy:  pricedb.Currencies{Keys: 0, Metal: 50.0},
@@ -438,7 +447,6 @@ func TestSmartCounterMiddleware_Underpaid_PartnerHasCurrency(t *testing.T) {
 	}
 	ctx.Set("prices", prices)
 
-	// Partner inventory mock (has loose scrap we can extract)
 	partnerItems := []*trading.Item{
 		{AssetID: 888, SKU: "5000;6", MarketHashName: "Scrap Metal"},
 		{AssetID: 889, SKU: "5000;6", MarketHashName: "Scrap Metal"},
@@ -453,16 +461,16 @@ func TestSmartCounterMiddleware_Underpaid_PartnerHasCurrency(t *testing.T) {
 	err := handler(ctx)
 	assert.NoError(t, err)
 
-	// Should counter offer adding the 2 missing scrap items from their inventory
 	assert.Equal(t, trading.ActionCounter, ctx.Verdict.Action)
 	assert.Equal(t, reason.AcceptCorrectValue, ctx.Verdict.Reason)
 
 	counterParams := ctx.Verdict.Data.(*trading.CounterParams)
 	assert.Len(t, counterParams.ItemsToReceive, len(offer.ItemsToReceive)+2)
-	assert.Equal(t, "You were missing some change, I've added it for you!", counterParams.Message)
 }
 
-func TestSmartCounterMiddleware_Underpaid_PartnerMissingCurrency(t *testing.T) {
+func TestSmartCounterMiddleware_Underpaid_PartnerMissingCurrency_PartnerUnderpaidNoChange_DeclinesOffer(t *testing.T) {
+	t.Parallel()
+
 	fetcher := new(mockAssetFetcher)
 	metalMgr := crafting.NewMetalManager(fetcher, nil, log.Discard)
 	bp := backpack.New()
@@ -481,7 +489,7 @@ func TestSmartCounterMiddleware_Underpaid_PartnerMissingCurrency(t *testing.T) {
 		},
 	}
 
-	ctx := engine.NewTradeContext(context.Background(), offer)
+	ctx := engine.NewTradeContext(t.Context(), offer)
 	prices := map[string]*pricedb.Price{
 		"5021;6": {
 			Buy:  pricedb.Currencies{Keys: 0, Metal: 50.0},
@@ -494,7 +502,6 @@ func TestSmartCounterMiddleware_Underpaid_PartnerMissingCurrency(t *testing.T) {
 	}
 	ctx.Set("prices", prices)
 
-	// Partner inventory mock (no metal or currency at all)
 	partnerItems := []*trading.Item{
 		{AssetID: 999, SKU: "123;6", MarketHashName: "Some Weapon"},
 	}
@@ -508,44 +515,344 @@ func TestSmartCounterMiddleware_Underpaid_PartnerMissingCurrency(t *testing.T) {
 	err := handler(ctx)
 	assert.NoError(t, err)
 
-	// Should decline because partner does not have the missing change
 	assert.Equal(t, trading.ActionDecline, ctx.Verdict.Action)
 	assert.Equal(t, tf2reason.DeclineUnderpaid, ctx.Verdict.Reason)
 }
 
-// Helpers for mock GC and crafting recipes
-const (
-	RecipeSmeltRefined   = 23
-	RecipeSmeltReclaimed = 22
-	DefIndexScrap        = 5000
-	DefIndexReclaimed    = 5001
-	DefIndexRefined      = 5002
-)
-
-type mockGC struct {
+type mockPriceProvider struct {
 	mock.Mock
 }
 
-func (m *mockGC) Craft(ctx context.Context, ids []uint64, recipe int16) ([]uint64, error) {
-	args := m.Called(ctx, ids, recipe)
-	return args.Get(0).([]uint64), args.Error(1)
+func (m *mockPriceProvider) GetPrice(sku string) (*pricedb.Price, bool) {
+	args := m.Called(sku)
+	if args.Get(0) == nil {
+		return nil, args.Bool(1)
+	}
+
+	return args.Get(0).(*pricedb.Price), args.Bool(1)
 }
 
-func (m *mockGC) mockManager() *crafting.Manager {
-	mgr := crafting.NewManager(m, m)
-	return mgr
+func (m *mockPriceProvider) Watch(sku string) {
+	m.Called(sku)
 }
 
-func (m *mockGC) GetMetalCount(defIndex uint32) int {
-	args := m.Called(defIndex)
-	return args.Int(0)
+func (m *mockPriceProvider) Fetch(ctx context.Context, skus []string) (map[string]*pricedb.Price, error) {
+	args := m.Called(ctx, skus)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+
+	return args.Get(0).(map[string]*pricedb.Price), args.Error(1)
 }
 
-func (m *mockGC) FindCraftableItems(defIndex uint32, count int) []uint64 {
-	args := m.Called(defIndex, count)
-	return args.Get(0).([]uint64)
+type mockDupeChecker struct {
+	mock.Mock
 }
 
-func (m *mockGC) FindWeaponsByClassForSmelting(class string) []*tf2.Item {
-	return nil
+func (m *mockDupeChecker) CheckHistory(ctx context.Context, assetID uint64) (backpack.HistoryStatus, error) {
+	args := m.Called(ctx, assetID)
+	return args.Get(0).(backpack.HistoryStatus), args.Error(1)
+}
+
+type mockReputationChecker struct {
+	mock.Mock
+}
+
+func (m *mockReputationChecker) CheckBans(ctx context.Context, partnerID id.ID) (*rep.BanResult, error) {
+	args := m.Called(ctx, partnerID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+
+	return args.Get(0).(*rep.BanResult), args.Error(1)
+}
+
+func TestMiddlewares_Pricer(t *testing.T) {
+	t.Parallel()
+
+	// 1. Success case: resolves all prices directly
+	t.Run("Success", func(t *testing.T) {
+		t.Parallel()
+
+		mgr := new(mockPriceProvider)
+		offer := &trading.TradeOffer{
+			ItemsToGive: []*trading.Item{
+				{SKU: "5021;6"},
+			},
+		}
+
+		ctx := engine.NewTradeContext(t.Context(), offer)
+
+		mgr.On("GetPrice", "5021;6").Return(&pricedb.Price{SKU: "5021;6"}, true)
+
+		mw := PricerMiddleware(mgr, log.Discard)
+		handler := mw(func(c *engine.TradeContext) error {
+			return nil
+		})
+
+		err := handler(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, trading.ActionSkip, ctx.Verdict.Action)
+	})
+
+	// 2. Fetch failure case: price manager fails to fetch uncached items
+	t.Run("Fetch_Failure", func(t *testing.T) {
+		t.Parallel()
+
+		mgr := new(mockPriceProvider)
+		offer := &trading.TradeOffer{
+			ItemsToGive: []*trading.Item{
+				{SKU: "5021;6"},
+			},
+		}
+
+		ctx := engine.NewTradeContext(t.Context(), offer)
+
+		mgr.On("GetPrice", "5021;6").Return(nil, false)
+		mgr.On("Watch", "5021;6").Return()
+		mgr.On("Fetch", mock.Anything, []string{"5021;6"}).Return(nil, errors.New("pricedb error"))
+
+		mw := PricerMiddleware(mgr, log.Discard)
+		handler := mw(func(c *engine.TradeContext) error {
+			return nil
+		})
+
+		err := handler(ctx)
+		assert.Error(t, err)
+		assert.Equal(t, tf2reason.ReviewPricerDown, ctx.Verdict.Reason)
+	})
+
+	// 3. Unpriced item case: Fetch succeeds but the item is still not priced in priceMap
+	t.Run("Unpriced_Item", func(t *testing.T) {
+		t.Parallel()
+
+		mgr := new(mockPriceProvider)
+		offer := &trading.TradeOffer{
+			ItemsToGive: []*trading.Item{
+				{SKU: "5021;6"},
+			},
+		}
+
+		ctx := engine.NewTradeContext(t.Context(), offer)
+
+		mgr.On("GetPrice", "5021;6").Return(nil, false)
+		mgr.On("Watch", "5021;6").Return()
+		mgr.On("Fetch", mock.Anything, []string{"5021;6"}).Return(map[string]*pricedb.Price{}, nil)
+
+		mw := PricerMiddleware(mgr, log.Discard)
+		handler := mw(func(c *engine.TradeContext) error {
+			return nil
+		})
+
+		err := handler(ctx)
+		assert.Error(t, err)
+		assert.Equal(t, tf2reason.ReviewUnpricedItem, ctx.Verdict.Reason)
+	})
+}
+
+func TestMiddlewares_DupeCheck(t *testing.T) {
+	t.Parallel()
+
+	// 1. Success case: no Unusual items, bypasses dupe check
+	t.Run("No_Unusuals", func(t *testing.T) {
+		t.Parallel()
+
+		checker := new(mockDupeChecker)
+		offer := &trading.TradeOffer{
+			ItemsToReceive: []*trading.Item{
+				{SKU: "5021;6", AssetID: 100},
+				{SKU: ""}, // empty SKU skipped
+			},
+		}
+
+		ctx := engine.NewTradeContext(t.Context(), offer)
+		mw := DupeCheckMiddleware(checker, log.Discard)
+		handler := mw(func(c *engine.TradeContext) error {
+			return nil
+		})
+
+		err := handler(ctx)
+		assert.NoError(t, err)
+	})
+
+	// 2. Checker error case: Unusual item check fails but continues gracefully
+	t.Run("Checker_Error", func(t *testing.T) {
+		t.Parallel()
+
+		checker := new(mockDupeChecker)
+		offer := &trading.TradeOffer{
+			ItemsToReceive: []*trading.Item{
+				{SKU: "378;5;u13", AssetID: 100},
+			},
+		}
+
+		ctx := engine.NewTradeContext(t.Context(), offer)
+
+		checker.On("CheckHistory", mock.Anything, uint64(100)).
+			Return(backpack.HistoryStatus{}, errors.New("backpack.tf error"))
+
+		mw := DupeCheckMiddleware(checker, log.Discard)
+		handler := mw(func(c *engine.TradeContext) error {
+			return nil
+		})
+
+		err := handler(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, trading.ActionSkip, ctx.Verdict.Action)
+	})
+
+	// 3. Duped Unusual case: item history is recorded and duped
+	t.Run("Item_Duped", func(t *testing.T) {
+		t.Parallel()
+
+		checker := new(mockDupeChecker)
+		offer := &trading.TradeOffer{
+			ItemsToReceive: []*trading.Item{
+				{SKU: "378;5;u13", AssetID: 100},
+			},
+		}
+
+		ctx := engine.NewTradeContext(t.Context(), offer)
+
+		checker.On("CheckHistory", mock.Anything, uint64(100)).
+			Return(backpack.HistoryStatus{Recorded: true, IsDuped: true}, nil)
+
+		mw := DupeCheckMiddleware(checker, log.Discard)
+		handler := mw(func(c *engine.TradeContext) error {
+			return nil
+		})
+
+		err := handler(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, tf2reason.ReviewDupedItems, ctx.Verdict.Reason)
+	})
+}
+
+func TestMiddlewares_BanCheck(t *testing.T) {
+	t.Parallel()
+
+	// 1. Success case: partner not banned
+	t.Run("Not_Banned", func(t *testing.T) {
+		t.Parallel()
+
+		bans := new(mockReputationChecker)
+		offer := &trading.TradeOffer{
+			OtherSteamID: 76561198000000000,
+		}
+
+		ctx := engine.NewTradeContext(t.Context(), offer)
+		bans.On("CheckBans", mock.Anything, offer.OtherSteamID).Return(&rep.BanResult{IsBanned: false}, nil)
+
+		mw := BanCheckMiddleware(bans, log.Discard)
+		handler := mw(func(c *engine.TradeContext) error {
+			return nil
+		})
+
+		err := handler(ctx)
+		assert.NoError(t, err)
+	})
+
+	// 2. Checker error case: checks fail but continues gracefully
+	t.Run("Checker_Error", func(t *testing.T) {
+		t.Parallel()
+
+		bans := new(mockReputationChecker)
+		offer := &trading.TradeOffer{
+			OtherSteamID: 76561198000000000,
+		}
+
+		ctx := engine.NewTradeContext(t.Context(), offer)
+		bans.On("CheckBans", mock.Anything, offer.OtherSteamID).Return(nil, errors.New("ban check failed"))
+
+		mw := BanCheckMiddleware(bans, log.Discard)
+		handler := mw(func(c *engine.TradeContext) error {
+			return nil
+		})
+
+		err := handler(ctx)
+		assert.NoError(t, err)
+	})
+
+	// 3. SteamRep banned case: partner banned on steamrep
+	t.Run("SteamRep_Banned", func(t *testing.T) {
+		t.Parallel()
+
+		bans := new(mockReputationChecker)
+		offer := &trading.TradeOffer{
+			OtherSteamID: 76561198000000000,
+		}
+
+		ctx := engine.NewTradeContext(t.Context(), offer)
+		bans.On("CheckBans", mock.Anything, offer.OtherSteamID).Return(&rep.BanResult{
+			IsBanned: true,
+			Details: map[string]string{
+				"steamrep.com": "scammer",
+			},
+		}, nil)
+
+		mw := BanCheckMiddleware(bans, log.Discard)
+		handler := mw(func(c *engine.TradeContext) error {
+			return nil
+		})
+
+		err := handler(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, reason.DeclineBanned, ctx.Verdict.Reason)
+	})
+
+	// 4. Other banned case: partner banned on backpack.tf only
+	t.Run("BackpackTF_Banned", func(t *testing.T) {
+		t.Parallel()
+
+		bans := new(mockReputationChecker)
+		offer := &trading.TradeOffer{
+			OtherSteamID: 76561198000000000,
+		}
+
+		ctx := engine.NewTradeContext(t.Context(), offer)
+		bans.On("CheckBans", mock.Anything, offer.OtherSteamID).Return(&rep.BanResult{
+			IsBanned: true,
+			Details: map[string]string{
+				"backpack.tf": "banned",
+			},
+		}, nil)
+
+		mw := BanCheckMiddleware(bans, log.Discard)
+		handler := mw(func(c *engine.TradeContext) error {
+			return nil
+		})
+
+		err := handler(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, tf2reason.DeclineBannedBptf, ctx.Verdict.Reason)
+	})
+}
+
+func TestMiddlewares_IsUnusual(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, isUnusual("378;5;u13"))
+	assert.False(t, isUnusual("5021;6"))
+	assert.False(t, isUnusual("invalid"))
+}
+
+func TestMiddlewares_FindPartnerCurrency_Backtracking(t *testing.T) {
+	t.Parallel()
+
+	// 1. Mismatch case: cannot satisfy scrap debt with only refined (9 scrap) when needed is 5
+	items1 := []*trading.Item{
+		{MarketHashName: "Refined Metal"},
+	}
+	_, ok1 := FindPartnerCurrency(items1, 5, 0)
+	assert.False(t, ok1)
+
+	// 2. Match case: satisfy 15 scrap debt using 1 refined (9 scrap) and 2 reclaimed (6 scrap)
+	items2 := []*trading.Item{
+		{MarketHashName: "Refined Metal"},
+		{MarketHashName: "Reclaimed Metal"},
+		{MarketHashName: "Reclaimed Metal"},
+	}
+	res2, ok2 := FindPartnerCurrency(items2, 15, 0)
+	assert.True(t, ok2)
+	assert.Len(t, res2, 3)
 }

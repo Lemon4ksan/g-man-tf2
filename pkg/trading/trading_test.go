@@ -2,13 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package trading_test
+package trading
 
 import (
 	"context"
-	"reflect"
 	"testing"
-	"unsafe"
 
 	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/trading"
@@ -19,11 +17,13 @@ import (
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 	tf2schema "github.com/lemon4ksan/g-man-tf2/pkg/schema"
-	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
-	tf2trading "github.com/lemon4ksan/g-man-tf2/pkg/trading"
+	tf2 "github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 )
 
-// mockEscrowChecker implements trading.EscrowChecker
+type complexTestSchemaProvider struct{}
+
+func (m *complexTestSchemaProvider) Get() *tf2schema.Schema { return nil }
+
 type mockEscrowChecker struct {
 	hasEscrow bool
 }
@@ -32,40 +32,11 @@ func (m *mockEscrowChecker) CheckEscrow(ctx context.Context, offer *trading.Trad
 	return m.hasEscrow, nil
 }
 
-// mockBackpackCache is a mock for backpack.ItemCache interface.
-type mockBackpackCache struct {
-	items []*tf2.Item
-}
+func TestComplexTrades_VariousScenarios_ReturnsExpectedVerdicts(t *testing.T) {
+	t.Parallel()
 
-func (m *mockBackpackCache) GetItems() []*tf2.Item { return m.items }
-func (m *mockBackpackCache) GetItem(id uint64) (*tf2.Item, bool) {
-	for _, it := range m.items {
-		if it.ID == id {
-			return it, true
-		}
-	}
-
-	return nil, false
-}
-func (m *mockBackpackCache) GetMaxSlots() int { return 3000 }
-
-// mockSchemaProvider returns a nil schema to gracefully mock Backpack SKU fetching.
-type mockSchemaProvider struct{}
-
-func (m *mockSchemaProvider) Get() *tf2schema.Schema { return nil }
-
-// helper to inject private fields into backpack.Backpack
-func setUnexportedField(target any, fieldName string, value any) {
-	val := reflect.ValueOf(target).Elem()
-	field := val.FieldByName(fieldName)
-	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(reflect.ValueOf(value))
-}
-
-func TestComplexTrades(t *testing.T) {
 	logger := log.Discard
 
-	// Value checking mock middleware to simulate SmartCounter or Value checker.
-	// It accepts if total received value >= total given value.
 	valueChecker := func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
 			giveValue := 0
@@ -96,19 +67,21 @@ func TestComplexTrades(t *testing.T) {
 		}
 	}
 
-	t.Run("Clean Trade - Accepted", func(t *testing.T) {
+	t.Run("clean_trade_accepted", func(t *testing.T) {
+		t.Parallel()
+
 		bp := backpack.New()
 		cache := &mockBackpackCache{items: []*tf2.Item{}}
 		setUnexportedField(bp, "cache", cache)
-		setUnexportedField(bp, "manager", &mockSchemaProvider{})
+		setUnexportedField(bp, "manager", &complexTestSchemaProvider{})
 
-		tester := tf2trading.NewTF2TradeTester().
+		tester := NewTF2TradeTester().
 			WithPrices(map[string]int{
 				"Key": 60,
 				"Ref": 1,
 			}).
-			AddMiddleware(tf2trading.EscrowMiddleware(&mockEscrowChecker{hasEscrow: false}, logger)).
-			AddMiddleware(tf2trading.StockLimitMiddleware(bp, tf2trading.StockConfig{MaxTotal: 100, DefaultMax: 100}, logger)).
+			AddMiddleware(EscrowMiddleware(&mockEscrowChecker{hasEscrow: false}, logger)).
+			AddMiddleware(StockLimitMiddleware(bp, StockConfig{MaxTotal: 100, DefaultMax: 100}, logger)).
 			AddMiddleware(valueChecker)
 
 		offer := tradingtest.NewOfferBuilder().
@@ -116,24 +89,26 @@ func TestComplexTrades(t *testing.T) {
 			AddReceiveItem("Ref", 60).
 			Build()
 
-		verdict, err := tester.Run(context.Background(), offer)
+		verdict, err := tester.Run(t.Context(), offer)
 		assert.NoError(t, err)
 		assert.Equal(t, trading.ActionAccept, verdict.Action)
 	})
 
-	t.Run("Escrow Trade - Declined", func(t *testing.T) {
+	t.Run("escrow_trade_declined", func(t *testing.T) {
+		t.Parallel()
+
 		bp := backpack.New()
 		cache := &mockBackpackCache{items: []*tf2.Item{}}
 		setUnexportedField(bp, "cache", cache)
-		setUnexportedField(bp, "manager", &mockSchemaProvider{})
+		setUnexportedField(bp, "manager", &complexTestSchemaProvider{})
 
-		tester := tf2trading.NewTF2TradeTester().
+		tester := NewTF2TradeTester().
 			WithPrices(map[string]int{
 				"Key": 60,
 				"Ref": 1,
 			}).
-			AddMiddleware(tf2trading.EscrowMiddleware(&mockEscrowChecker{hasEscrow: true}, logger)).
-			AddMiddleware(tf2trading.StockLimitMiddleware(bp, tf2trading.StockConfig{MaxTotal: 100, DefaultMax: 100}, logger)).
+			AddMiddleware(EscrowMiddleware(&mockEscrowChecker{hasEscrow: true}, logger)).
+			AddMiddleware(StockLimitMiddleware(bp, StockConfig{MaxTotal: 100, DefaultMax: 100}, logger)).
 			AddMiddleware(valueChecker)
 
 		offer := tradingtest.NewOfferBuilder().
@@ -141,60 +116,62 @@ func TestComplexTrades(t *testing.T) {
 			AddReceiveItem("Ref", 60).
 			Build()
 
-		verdict, err := tester.Run(context.Background(), offer)
+		verdict, err := tester.Run(t.Context(), offer)
 		assert.NoError(t, err)
 		assert.Equal(t, trading.ActionDecline, verdict.Action)
 		assert.Equal(t, reason.DeclineEscrow, verdict.Reason)
 	})
 
-	t.Run("Overstock Trade - Declined by Global Limit", func(t *testing.T) {
+	t.Run("overstock_trade_declined_by_global_limit", func(t *testing.T) {
+		t.Parallel()
+
 		bp := backpack.New()
 		cache := &mockBackpackCache{items: []*tf2.Item{}}
 		setUnexportedField(bp, "cache", cache)
-		setUnexportedField(bp, "manager", &mockSchemaProvider{})
+		setUnexportedField(bp, "manager", &complexTestSchemaProvider{})
 
-		tester := tf2trading.NewTF2TradeTester().
+		tester := NewTF2TradeTester().
 			WithPrices(map[string]int{
 				"Key": 60,
 				"Ref": 1,
 			}).
-			AddMiddleware(tf2trading.EscrowMiddleware(&mockEscrowChecker{hasEscrow: false}, logger)).
-			// Max total is 5, but we receive 6 items.
-			AddMiddleware(tf2trading.StockLimitMiddleware(bp, tf2trading.StockConfig{MaxTotal: 5, DefaultMax: 10}, logger)).
+			AddMiddleware(EscrowMiddleware(&mockEscrowChecker{hasEscrow: false}, logger)).
+			AddMiddleware(StockLimitMiddleware(bp, StockConfig{MaxTotal: 5, DefaultMax: 10}, logger)).
 			AddMiddleware(valueChecker)
 
 		offer := tradingtest.NewOfferBuilder().
 			AddReceiveItem("Ref", 6).
 			Build()
 
-		verdict, err := tester.Run(context.Background(), offer)
+		verdict, err := tester.Run(t.Context(), offer)
 		assert.NoError(t, err)
 		assert.Equal(t, trading.ActionDecline, verdict.Action)
 		assert.Equal(t, reason.ReviewOverstocked, verdict.Reason)
 	})
 
-	t.Run("Underpaid Trade - Declined by Value Checker", func(t *testing.T) {
+	t.Run("underpaid_trade_declined_by_value_checker", func(t *testing.T) {
+		t.Parallel()
+
 		bp := backpack.New()
 		cache := &mockBackpackCache{items: []*tf2.Item{}}
 		setUnexportedField(bp, "cache", cache)
-		setUnexportedField(bp, "manager", &mockSchemaProvider{})
+		setUnexportedField(bp, "manager", &complexTestSchemaProvider{})
 
-		tester := tf2trading.NewTF2TradeTester().
+		tester := NewTF2TradeTester().
 			WithPrices(map[string]int{
 				"Key": 60,
 				"Ref": 1,
 			}).
-			AddMiddleware(tf2trading.EscrowMiddleware(&mockEscrowChecker{hasEscrow: false}, logger)).
-			AddMiddleware(tf2trading.StockLimitMiddleware(bp, tf2trading.StockConfig{MaxTotal: 100, DefaultMax: 100}, logger)).
+			AddMiddleware(EscrowMiddleware(&mockEscrowChecker{hasEscrow: false}, logger)).
+			AddMiddleware(StockLimitMiddleware(bp, StockConfig{MaxTotal: 100, DefaultMax: 100}, logger)).
 			AddMiddleware(valueChecker)
 
-		// Give 1 Key (60), receive 50 Ref (50). Loss of 10.
 		offer := tradingtest.NewOfferBuilder().
 			AddGiveItem("Key", 1).
 			AddReceiveItem("Ref", 50).
 			Build()
 
-		verdict, err := tester.Run(context.Background(), offer)
+		verdict, err := tester.Run(t.Context(), offer)
 		assert.NoError(t, err)
 		assert.Equal(t, trading.ActionDecline, verdict.Action)
 		assert.Equal(t, reason.TradeReason("low_value"), verdict.Reason)

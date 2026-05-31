@@ -3,50 +3,35 @@
 // license that can be found in the LICENSE file.
 
 /*
-Package trading provides a specialized implementation of the generic trading engine (pkg/trading) for Team Fortress 2.
-It defines the TF2-specific business logic, price valuation strategies, and safety protocols for automated trading.
+Package trading defines the Team Fortress 2 automated trading, valuation, and security logic.
 
-# Decision Algorithm
+The package coordinates stock boundaries, price checks, escrow verification, and smart change calculations.
+It extends the generic trading handler and translates business decisions into automated trade counter-offers.
 
-The bot uses a strict, deterministic middleware pipeline to process incoming trade offers:
+Key Types:
+  - [ConfigManager] handles strategy boundaries, trading limits, and dynamic hot-reloads.
+  - [FIFOSubscriber] monitors completed trades to log purchase cost basis records.
+  - [TF2TradeTester] provides an isolated mock context for verifying middleware chains.
 
- 1. Inventory & Stock Limits (StockManager):
-    Ensures that accepting the trade won't exceed global inventory capacity or specific SKU limits.
-    Integrates with 'backpack.tf' listings to automatically balance stock by creating or
-    adjusting buy/sell orders in real-time.
+Basic Example:
 
- 2. Price Authority (PriceDB):
-    Enriches the context with market data. PriceDB is the exclusive source of truth.
-    If an item is missing from the pricelist, the trade is flagged for manual review to prevent
-    accidental loss of high-value items.
+	package main
 
- 3. Safety & Reputation (BPTF/Rep):
-    Checks the partner's reputation across multiple platforms (SteamRep, backpack.tf, Rep.tf).
-    Verified scammers or banned users are automatically declined.
+	import (
+		"context"
+		"fmt"
+		"github.com/lemon4ksan/g-man-tf2/pkg/trading"
+	)
 
- 4. Duplication Check (History):
-    For high-value items (Unusuals, Australiums, etc.), the bot queries item history via
-    the 'backpack' package to identify duplicates (duped items).
+	func main() {
+		// Load trade configuration boundaries
+		cm, err := trading.NewConfigManager("config/trading.json")
+		if err != nil {
+			return
+		}
 
- 5. Value Calculation & Smart Counter-offers:
-    The bot calculates the total value of items given vs. items received using Scrap metal units.
-    - Underpaid: Automatically attempts to counter-offer by retrieving missing currency (keys/ref/reclaimed/scrap)
-    from the partner's inventory to fulfill the price requirement.
-    - Overpaid: Automatically adds the correct change from the bot's own inventory.
-
-# Price Aggregation & Real-Time Reactivity
-
-G-man relies on the PriceDB microservice, which aggregates data from backpack.tf,
-marketplace.tf, and other markets. This allows the bot to:
-  - Eliminate redundant traffic to external APIs.
-  - Rely on a single, validated, and normalized price feed.
-  - React instantly to market volatility via Socket.IO notifications, triggering
-    re-evaluation of active listings and pending trades.
-
-# Safety Philosophy
-
-The bot follows the "Strict Price Authority" principle: a trade is only accepted automatically
-if every item is accurately priced in the internal database. When in doubt, the bot defaults
-to "Review" rather than taking a risky trade based on stale or global fallback prices.
+		cfg := cm.GetConfig()
+		fmt.Printf("Global inventory limit: %d slots\n", cfg.GlobalMaxStock)
+	}
 */
 package trading

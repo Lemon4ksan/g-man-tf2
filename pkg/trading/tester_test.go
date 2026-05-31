@@ -2,22 +2,20 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package trading_test
+package trading
 
 import (
-	"context"
 	"testing"
 
 	"github.com/lemon4ksan/g-man/pkg/trading"
 	"github.com/lemon4ksan/g-man/pkg/trading/engine"
 	tradingTest "github.com/lemon4ksan/g-man/test/trading"
 	"github.com/stretchr/testify/assert"
-
-	tf2trading "github.com/lemon4ksan/g-man-tf2/pkg/trading"
 )
 
-func TestTF2TradeTester(t *testing.T) {
-	// A simple mock middleware that declines if any received item price is below 10
+func TestTF2TradeTester_WithPricesAndMiddleware_ProcessesTradeSuccessfully(t *testing.T) {
+	t.Parallel()
+
 	mockMiddleware := func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
 			for _, item := range ctx.Offer.ItemsToReceive {
@@ -35,34 +33,36 @@ func TestTF2TradeTester(t *testing.T) {
 		}
 	}
 
-	tester := tf2trading.NewTF2TradeTester().
+	tester := NewTF2TradeTester().
 		WithPrices(map[string]int{
 			"LowValueSKU":  5,
 			"HighValueSKU": 50,
 		}).
 		AddMiddleware(mockMiddleware)
 
-	t.Run("Declines when condition met", func(t *testing.T) {
+	t.Run("declines_when_condition_met", func(t *testing.T) {
+		t.Parallel()
+
 		offer := tradingTest.NewOfferBuilder().
 			AddReceiveItem("LowValueSKU", 1).
 			Build()
 
-		verdict, err := tester.Run(context.Background(), offer)
+		verdict, err := tester.Run(t.Context(), offer)
 
 		assert.NoError(t, err)
 		assert.Equal(t, trading.ActionDecline, verdict.Action)
 	})
 
-	t.Run("Passes through when condition not met", func(t *testing.T) {
+	t.Run("passes_through_when_condition_not_met", func(t *testing.T) {
+		t.Parallel()
+
 		offer := tradingTest.NewOfferBuilder().
 			AddReceiveItem("HighValueSKU", 1).
 			Build()
 
-		verdict, err := tester.Run(context.Background(), offer)
+		verdict, err := tester.Run(t.Context(), offer)
 
 		assert.NoError(t, err)
-		// Since no middleware explicitly accepts, the default verdict behavior depends on the engine implementation.
-		// Assuming the default is ActionSkip when nothing is hit.
 		assert.Equal(t, trading.ActionSkip, verdict.Action)
 	})
 }

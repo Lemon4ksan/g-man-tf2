@@ -14,8 +14,6 @@ import (
 )
 
 func init() {
-	// Register TF2 specific notification templates.
-	// This keeps the core trading package game-agnostic.
 	notifications.RegisterDefaultTemplate(
 		"decline."+tf2reason.DeclineNonTF2.String(),
 		"/pre ❌ This bot only trades TF2 items. Your offer was declined.",
@@ -41,7 +39,6 @@ func init() {
 		"/pre ❌ You have underpaid for the items. Please check the prices and try again.",
 	)
 
-	// Register TF2 specific review reasons.
 	review.RegisterReason(
 		tf2reason.ReviewDupedItems,
 		"Items appeared to be duped.",

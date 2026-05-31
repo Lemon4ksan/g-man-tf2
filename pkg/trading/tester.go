@@ -12,13 +12,13 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/trading/engine"
 )
 
-// TF2TradeTester provides a fluent API for testing TF2 trade middlewares.
+// TF2TradeTester provides a fluent, isolated mock context for executing and auditing middleware pipelines.
 type TF2TradeTester struct {
 	engine *engine.Engine
 	logger log.Logger
 }
 
-// NewTF2TradeTester creates a new testing harness.
+// NewTF2TradeTester constructs a new [TF2TradeTester] with discarded logging and an empty middleware chain.
 func NewTF2TradeTester() *TF2TradeTester {
 	return &TF2TradeTester{
 		engine: engine.New(),
@@ -26,12 +26,12 @@ func NewTF2TradeTester() *TF2TradeTester {
 	}
 }
 
-// WithPrices sets up a mock pricer middleware.
+// WithPrices sets up a mock pricer middleware injecting static prices into the execution context.
 func (t *TF2TradeTester) WithPrices(prices map[string]int) *TF2TradeTester {
 	t.engine.Use(func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
 			for sku, price := range prices {
-				ctx.Set("price_"+sku, price) // Mocking the internal context state
+				ctx.Set("price_"+sku, price)
 			}
 
 			return next(ctx)
@@ -41,13 +41,14 @@ func (t *TF2TradeTester) WithPrices(prices map[string]int) *TF2TradeTester {
 	return t
 }
 
-// AddMiddleware allows injecting custom middlewares for testing specific segments.
+// AddMiddleware appends a custom middleware stage to the testing execution chain.
 func (t *TF2TradeTester) AddMiddleware(m engine.Middleware) *TF2TradeTester {
 	t.engine.Use(m)
 	return t
 }
 
-// Run executes the trade offer through the configured middleware chain.
+// Run processes the trade offer through the configured middleware pipeline.
+// Returns the resulting [engine.Verdict] or an error if any of the pipeline stages fail.
 func (t *TF2TradeTester) Run(ctx context.Context, offer *trading.TradeOffer) (engine.Verdict, error) {
 	verdict, err := t.engine.Process(ctx, offer)
 	if err != nil {

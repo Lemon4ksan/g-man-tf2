@@ -5,7 +5,6 @@
 package trading
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -17,28 +16,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestConfigManager_LoadAndWatch(t *testing.T) {
-	// Setup a temporary directory for the config file
-	tmpDir, err := os.MkdirTemp("", "g-man-config-test")
-	require.NoError(t, err)
+func TestConfigManager_LoadAndWatch_FileUpdated_HotReloadsConfig(t *testing.T) {
+	t.Parallel()
 
-	defer os.RemoveAll(tmpDir)
-
+	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "trading_config.json")
 
-	// Check default skeleton file creation
+	// Pre-create the file and backdate its timestamp to guarantee reload detection instantly
+	initialCfg := Config{
+		GlobalMaxStock:  3000,
+		DefaultMaxStock: 5,
+	}
+	data, err := json.MarshalIndent(initialCfg, "", "  ")
+	require.NoError(t, err)
+	err = os.WriteFile(configPath, data, 0o644)
+	require.NoError(t, err)
+
+	backdateTime := time.Now().Add(-10 * time.Second)
+	err = os.Chtimes(configPath, backdateTime, backdateTime)
+	require.NoError(t, err)
+
+	// Load configuration
 	cm, err := NewConfigManager(configPath)
 	require.NoError(t, err)
 	assert.Equal(t, 3000, cm.GetConfig().GlobalMaxStock)
 	assert.Equal(t, 5, cm.GetConfig().DefaultMaxStock)
 
-	// Start watching in the background
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// Start background watcher on t.Context()
+	cm.StartWatching(t.Context(), 10*time.Millisecond, log.Discard)
 
-	cm.StartWatching(ctx, 10*time.Millisecond, log.Discard)
-
-	// Update the config on disk
+	// Prepare updated config
 	updatedConfig := Config{
 		GlobalMaxStock:  5000,
 		DefaultMaxStock: 10,
@@ -54,21 +61,17 @@ func TestConfigManager_LoadAndWatch(t *testing.T) {
 		},
 	}
 
-	data, err := json.MarshalIndent(updatedConfig, "", "  ")
+	data, err = json.MarshalIndent(updatedConfig, "", "  ")
 	require.NoError(t, err)
-
-	// Sleep slightly to guarantee mod time difference if the OS filesystem timestamp precision is low
-	time.Sleep(100 * time.Millisecond)
 
 	err = os.WriteFile(configPath, data, 0o644)
 	require.NoError(t, err)
 
-	// Wait for the reloader to pick up the change
+	// Wait for the reloader to dynamically capture changes
 	assert.Eventually(t, func() bool {
 		return cm.GetConfig().GlobalMaxStock == 5000
 	}, 1*time.Second, 10*time.Millisecond)
 
-	// Verify the updated values
 	assert.Equal(t, 10, cm.GetConfig().DefaultMaxStock)
 	assert.Equal(t, 0.15, cm.GetConfig().PriceSwingLimits.MaxBuyIncrease)
 

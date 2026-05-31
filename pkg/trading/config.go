@@ -17,45 +17,71 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
 )
 
-// ItemConfig holds configuration for buying/selling a specific item SKU.
+// ItemConfig defines the trading limits, stock rules, and price thresholds for a specific item SKU.
 type ItemConfig struct {
-	SKU          string            `json:"sku"`
-	Name         string            `json:"name,omitempty"`
-	MaxStock     int               `json:"max_stock"`
-	MinStock     int               `json:"min_stock"`
-	EnableBuy    bool              `json:"enable_buy"`
-	EnableSell   bool              `json:"enable_sell"`
-	MinBuyPrice  currency.Currency `json:"min_buy_price"`
-	MaxBuyPrice  currency.Currency `json:"max_buy_price"`
+	// SKU represents the canonical stock keeping unit identifier for the item.
+	SKU string `json:"sku"`
+	// Name represents the human-readable display name of the item.
+	Name string `json:"name,omitempty"`
+	// MaxStock represents the maximum number of copies of this item the bot is allowed to hold.
+	MaxStock int `json:"max_stock"`
+	// MinStock represents the minimum number of copies of this item the bot must keep before selling is enabled.
+	MinStock int `json:"min_stock"`
+	// EnableBuy indicates whether buying is enabled for this item.
+	EnableBuy bool `json:"enable_buy"`
+	// EnableSell indicates whether selling is enabled for this item.
+	EnableSell bool `json:"enable_sell"`
+	// MinBuyPrice represents the lowest buy price allowed for automatic trades.
+	MinBuyPrice currency.Currency `json:"min_buy_price"`
+	// MaxBuyPrice represents the highest buy price allowed for automatic trades.
+	MaxBuyPrice currency.Currency `json:"max_buy_price"`
+	// MinSellPrice represents the lowest sell price allowed for automatic trades.
 	MinSellPrice currency.Currency `json:"min_sell_price"`
+	// MaxSellPrice represents the highest sell price allowed for automatic trades.
 	MaxSellPrice currency.Currency `json:"max_sell_price"`
 }
 
-// PriceSwingLimits defines the maximum percentage changes allowed in a single update.
+// PriceSwingLimits defines the maximum percentage changes allowed in a single price update.
 type PriceSwingLimits struct {
-	MaxBuyIncrease  float64 `json:"max_buy_increase"`
+	// MaxBuyIncrease represents the maximum percentage increase allowed for buying.
+	MaxBuyIncrease float64 `json:"max_buy_increase"`
+	// MaxSellDecrease represents the maximum percentage decrease allowed for selling.
 	MaxSellDecrease float64 `json:"max_sell_decrease"`
 }
 
-// Config is the top-level configuration loaded from a JSON file.
+// Config holds the top-level trading strategy and inventory configuration rules.
 type Config struct {
-	GlobalMaxStock              int                   `json:"global_max_stock"`
-	DefaultMaxStock             int                   `json:"default_max_stock"`
-	ListingCommentTemplate      string                `json:"listing_comment_template,omitempty"`
-	ExcludedSteamIDs            []string              `json:"excluded_steam_ids,omitempty"`
-	TrustedSteamIDs             []string              `json:"trusted_steam_ids,omitempty"`
-	ExcludedListingDescriptions []string              `json:"excluded_listing_descriptions,omitempty"`
-	PriceSwingLimits            PriceSwingLimits      `json:"price_swing_limits"`
-	Items                       map[string]ItemConfig `json:"items"`
+	// GlobalMaxStock represents the absolute maximum capacity of the bot's inventory across all items.
+	GlobalMaxStock int `json:"global_max_stock"`
+	// DefaultMaxStock represents the fallback limit applied to items without an explicit SKU configuration.
+	DefaultMaxStock int `json:"default_max_stock"`
+	// ListingCommentTemplate represents the message template appended to generated marketplace listings.
+	ListingCommentTemplate string `json:"listing_comment_template,omitempty"`
+	// ExcludedSteamIDs contains the list of player IDs that the bot will refuse to trade with.
+	ExcludedSteamIDs []string `json:"excluded_steam_ids,omitempty"`
+	// TrustedSteamIDs contains the list of administrator or authorized player IDs.
+	TrustedSteamIDs []string `json:"trusted_steam_ids,omitempty"`
+	// ExcludedListingDescriptions contains keywords used to identify and filter out special items (e.g. spells).
+	ExcludedListingDescriptions []string `json:"excluded_listing_descriptions,omitempty"`
+	// PriceSwingLimits defines bounds on automatic price modifications.
+	PriceSwingLimits PriceSwingLimits `json:"price_swing_limits"`
+	// Items contains mapping from item SKUs to their respective trading configurations.
+	Items map[string]ItemConfig `json:"items"`
 
-	PPUHoldDuration         string            `json:"ppu_hold_duration"`
-	PPUGracePeriod          string            `json:"ppu_grace_period"`
-	PPUMaxStockLimit        int               `json:"ppu_max_stock_limit"`
-	PPUMinProfitScrap       int               `json:"ppu_min_profit_scrap"`
+	// PPUHoldDuration defines how long a cost basis entry remains valid for price protection (e.g. "24h").
+	PPUHoldDuration string `json:"ppu_hold_duration"`
+	// PPUGracePeriod defines how long price protection remains active after an item is sold out (e.g. "1h").
+	PPUGracePeriod string `json:"ppu_grace_period"`
+	// PPUMaxStockLimit represents the maximum stock level at which price protection remains active.
+	PPUMaxStockLimit int `json:"ppu_max_stock_limit"`
+	// PPUMinProfitScrap represents the minimum profit threshold added to the cost basis during PPU calculations.
+	PPUMinProfitScrap int `json:"ppu_min_profit_scrap"`
+	// CritCommandDescriptions overrides default command description strings in the chat interface.
 	CritCommandDescriptions map[string]string `json:"crit_command_descriptions,omitempty"`
 }
 
-// GetPPUHoldDuration parses and returns the hold duration. Defaults to 24h if invalid or empty.
+// GetPPUHoldDuration parses the [Config.PPUHoldDuration] string and returns a [time.Duration].
+// It defaults to 24 hours if the string is empty or invalid.
 func (c *Config) GetPPUHoldDuration() time.Duration {
 	if c.PPUHoldDuration == "" {
 		return 24 * time.Hour
@@ -69,7 +95,8 @@ func (c *Config) GetPPUHoldDuration() time.Duration {
 	return d
 }
 
-// GetPPUGracePeriod parses and returns the grace period. Defaults to 1h if invalid or empty.
+// GetPPUGracePeriod parses the [Config.PPUGracePeriod] string and returns a [time.Duration].
+// It defaults to 1 hour if the string is empty or invalid.
 func (c *Config) GetPPUGracePeriod() time.Duration {
 	if c.PPUGracePeriod == "" {
 		return 1 * time.Hour
@@ -83,7 +110,7 @@ func (c *Config) GetPPUGracePeriod() time.Duration {
 	return d
 }
 
-// ConfigManager handles thread-safe loading and querying of the trading configuration.
+// ConfigManager coordinates thread-safe loading, saving, and hot-reload polling of the [Config].
 type ConfigManager struct {
 	mu           sync.RWMutex
 	path         string
@@ -91,8 +118,9 @@ type ConfigManager struct {
 	lastModified time.Time
 }
 
-// NewConfigManager loads a config manager from the specified path.
-// If the file doesn't exist, it creates a default skeleton file.
+// NewConfigManager loads a [ConfigManager] from the specified JSON file.
+// It automatically initializes a default [Config] template file on disk if the path is missing.
+// Returns an error if the directory cannot be created or the file is unreadable.
 func NewConfigManager(path string) (*ConfigManager, error) {
 	cm := &ConfigManager{path: path}
 	if err := cm.Load(); err != nil {
@@ -102,12 +130,12 @@ func NewConfigManager(path string) (*ConfigManager, error) {
 	return cm, nil
 }
 
-// Load reads and parses the JSON configuration.
+// Load reads, parses, and validates the JSON configuration file from disk.
+// Returns an error if file access is restricted or the JSON is syntax-invalid.
 func (cm *ConfigManager) Load() error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	// If file doesn't exist, initialize and write a default template.
 	if _, err := os.Stat(cm.path); os.IsNotExist(err) {
 		cm.cfg = Config{
 			GlobalMaxStock:  3000,
@@ -117,8 +145,7 @@ func (cm *ConfigManager) Load() error {
 				"die job", "spectral spectrum", "putrescent pigmentation", "sinister staining",
 			},
 			PriceSwingLimits: PriceSwingLimits{
-				MaxBuyIncrease:  0.10, // 10%
-				MaxSellDecrease: 0.10, // 10%
+				MaxBuyIncrease: 0.10,
 			},
 			Items:             make(map[string]ItemConfig),
 			PPUHoldDuration:   "24h",
@@ -140,7 +167,6 @@ func (cm *ConfigManager) Load() error {
 			return err
 		}
 
-		// Update last modified timestamp
 		if info, err := os.Stat(cm.path); err == nil {
 			cm.lastModified = info.ModTime()
 		}
@@ -162,7 +188,6 @@ func (cm *ConfigManager) Load() error {
 		cfg.Items = make(map[string]ItemConfig)
 	}
 
-	// Apply robust PPU defaults for backward compatibility
 	if cfg.PPUHoldDuration == "" {
 		cfg.PPUHoldDuration = "24h"
 	}
@@ -181,7 +206,6 @@ func (cm *ConfigManager) Load() error {
 
 	cm.cfg = cfg
 
-	// Update last modified timestamp
 	if info, err := os.Stat(cm.path); err == nil {
 		cm.lastModified = info.ModTime()
 	}
@@ -189,8 +213,8 @@ func (cm *ConfigManager) Load() error {
 	return nil
 }
 
-// StartWatching starts a background goroutine to poll the config file for modifications.
-// It will automatically reload the config file when changes are detected.
+// StartWatching launches a background polling worker to detect file changes and trigger [ConfigManager.Load].
+// The hot-reload loop terminates automatically when the provided [context.Context] is cancelled.
 func (cm *ConfigManager) StartWatching(ctx context.Context, interval time.Duration, logger log.Logger) {
 	ticker := time.NewTicker(interval)
 	go func() {
@@ -203,7 +227,6 @@ func (cm *ConfigManager) StartWatching(ctx context.Context, interval time.Durati
 			case <-ticker.C:
 				info, err := os.Stat(cm.path)
 				if err != nil {
-					// File might be temporarily locked or deleted, just skip
 					continue
 				}
 

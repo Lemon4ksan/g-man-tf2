@@ -20,7 +20,8 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/storage"
 )
 
-// FIFOSubscriber handles the Intake (push) and Outtake (pop) FIFO accounting when trades are accepted.
+// FIFOSubscriber monitors accepted trade events on the bus to record cost basis and calculate transaction profits.
+// It registers with [bus.Bus] and writes records to the [storage.CostBasisStore].
 type FIFOSubscriber struct {
 	cbStore  storage.CostBasisStore
 	priceMgr *pricedb.Manager
@@ -29,7 +30,7 @@ type FIFOSubscriber struct {
 	wg       sync.WaitGroup
 }
 
-// NewFIFOSubscriber creates a new FIFOSubscriber instance.
+// NewFIFOSubscriber constructs a new [FIFOSubscriber] linked to the specified store, manager, and event bus.
 func NewFIFOSubscriber(
 	cbStore storage.CostBasisStore,
 	priceMgr *pricedb.Manager,
@@ -44,12 +45,16 @@ func NewFIFOSubscriber(
 	}
 }
 
-// Start listens for OfferChangedEvents on the event bus and handles accepted trades.
+// Start launches the background event loop listening for accepted trade event notifications.
+// The consumer loop terminates when the provided [context.Context] is cancelled.
 func (s *FIFOSubscriber) Start(ctx context.Context) {
 	sub := s.bus.Subscribe(&web.OfferChangedEvent{})
 	s.logger.Info("FIFO subscriber started listening for trade events")
 
-	s.wg.Go(func() {
+	s.wg.Add(1)
+
+	go func() {
+		defer s.wg.Done()
 		defer sub.Unsubscribe()
 
 		for {
@@ -75,15 +80,14 @@ func (s *FIFOSubscriber) Start(ctx context.Context) {
 				}
 			}
 		}
-	})
+	}()
 }
 
-// Wait blocks until the subscriber's background goroutines have completed.
+// Wait blocks until the subscriber background goroutines have successfully terminated.
 func (s *FIFOSubscriber) Wait() {
 	s.wg.Wait()
 }
 
-// handleAcceptedOffer performs Intake and Outtake calculations on a completed trade offer.
 func (s *FIFOSubscriber) handleAcceptedOffer(offer *trading.TradeOffer) {
 	tradeIDStr := strconv.FormatUint(offer.ID, 10)
 	keyPriceScrap := s.getKeyPriceScrap()
@@ -93,7 +97,6 @@ func (s *FIFOSubscriber) handleAcceptedOffer(offer *trading.TradeOffer) {
 		if val, isPure := getPureValueScrap(item.SKU, keyPriceScrap); isPure {
 			ourTotalScrap += val
 		} else {
-			// Regular item - lookup sell price in PriceDB
 			if p, ok := s.priceMgr.GetPrice(item.SKU); ok {
 				itemVal := currency.Scrap(p.Sell.Keys)*keyPriceScrap + currency.ToScrap(p.Sell.Metal)
 				ourTotalScrap += itemVal
@@ -116,10 +119,8 @@ func (s *FIFOSubscriber) handleAcceptedOffer(offer *trading.TradeOffer) {
 			theirBaseValueScrap += val
 		} else {
 			receivedRegularItems = append(receivedRegularItems, item)
-			// Regular item - lookup buy price in PriceDB
 			if p, ok := s.priceMgr.GetPrice(item.SKU); ok {
-				itemVal := currency.Scrap(p.Buy.Keys)*keyPriceScrap + currency.ToScrap(p.Buy.Metal)
-				theirBaseValueScrap += itemVal
+				theirBaseValueScrap += currency.Scrap(p.Buy.Keys)*keyPriceScrap + currency.ToScrap(p.Buy.Metal)
 			} else {
 				s.logger.Warn(
 					"Unpriced item received in accepted trade, skipping value calculation",
@@ -135,7 +136,6 @@ func (s *FIFOSubscriber) handleAcceptedOffer(offer *trading.TradeOffer) {
 		itemDiff = int(totalDiff) / regularItems
 	}
 
-	// --- FIFO Push (Intake) ---
 	for _, item := range receivedRegularItems {
 		var buyKeys, buyMetal float64
 
@@ -163,7 +163,6 @@ func (s *FIFOSubscriber) handleAcceptedOffer(offer *trading.TradeOffer) {
 		)
 	}
 
-	// --- FIFO Pop (Outtake & Profit calculations) ---
 	for _, item := range offer.ItemsToGive {
 		if _, isPure := getPureValueScrap(item.SKU, keyPriceScrap); isPure {
 			continue
@@ -180,7 +179,6 @@ func (s *FIFOSubscriber) handleAcceptedOffer(offer *trading.TradeOffer) {
 			netCostBasisScrap = baseBuyScrap + currency.Scrap(entry.Diff)
 			isEstimate = entry.IsEstimate
 		} else {
-			// Fallback if not found in database (Virtual estimate)
 			if p, ok := s.priceMgr.GetPrice(item.SKU); ok {
 				netCostBasisScrap = currency.Scrap(p.Buy.Keys)*keyPriceScrap + currency.ToScrap(p.Buy.Metal)
 			}
@@ -215,7 +213,6 @@ func (s *FIFOSubscriber) handleAcceptedOffer(offer *trading.TradeOffer) {
 	}
 }
 
-// getPureValueScrap translates TF2 metal and key SKUs to currency.Scrap.
 func getPureValueScrap(sku string, keyPriceScrap currency.Scrap) (currency.Scrap, bool) {
 	switch sku {
 	case currency.SKUKey:

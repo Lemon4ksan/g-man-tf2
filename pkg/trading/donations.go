@@ -10,20 +10,17 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 )
 
-// IsJunk returns true if the item is considered "junk" in TF2.
-// Junk items include crates/cases (unless they are rare/special)
-// and items without a valid SKU.
+// IsJunk returns true if the given [trading.Item] is a low-value commodity (such as standard supply crates).
+// Returns true if the item is nil or has an empty SKU.
 func IsJunk(it *trading.Item) bool {
-	if it.SKU == "" {
+	if it == nil || it.SKU == "" {
 		return true
 	}
 
-	// If it has spells, it's definitely not junk
 	if HasSpells(it) {
 		return false
 	}
 
-	// Check for crates/cases
 	for _, attr := range it.Attributes {
 		if attr.Defindex == schema.AttrCrateSeries {
 			return true
@@ -33,16 +30,19 @@ func IsJunk(it *trading.Item) bool {
 	return false
 }
 
-// HasSpells checks if an item has any Halloween spells attached.
+// HasSpells checks whether the [trading.Item] contains any active Halloween spells in its description or attributes.
+// Returns false if the item is nil.
 func HasSpells(it *trading.Item) bool {
-	// Check attributes for known Steam spell IDs (1004-1009)
+	if it == nil {
+		return false
+	}
+
 	for _, attr := range it.Attributes {
 		if attr.Defindex >= 1004 && attr.Defindex <= 1009 {
 			return true
 		}
 	}
 
-	// Fallback to description parsing (Steam API often lacks attribute data)
 	for _, desc := range it.Descriptions {
 		if _, ok := schema.IdentifySpell(desc.Value); ok {
 			return true
