@@ -154,6 +154,10 @@ func setupTF2(t *testing.T) (*TF2, *module.InitContext, *mockCoordinator) {
 		t.Fatalf("failed to init TF2: %v", err)
 	}
 
+	if err := tf.Start(t.Context()); err != nil {
+		t.Fatalf("failed to start TF2: %v", err)
+	}
+
 	return tf, ictx, mCoord
 }
 

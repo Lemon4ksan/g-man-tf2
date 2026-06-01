@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -185,6 +186,15 @@ func (t *TF2) Init(init module.InitContext) error {
 	sch := t.schema.Get()
 	t.cache = NewSOCache(t.gc, WithBus(t.Bus), WithLogger(t.Logger), WithSchema(sch))
 
+	return nil
+}
+
+// Start initializes the TF2 session, subscribes to bus events, and starts the hello loop.
+func (t *TF2) Start(ctx context.Context) error {
+	if err := t.Base.Start(ctx); err != nil {
+		return err
+	}
+
 	sub := t.Bus.Subscribe(&gc.MessageEvent{}, &schema.ReadyEvent{}, &schema.UpdatedEvent{})
 	t.Go(func(ctx context.Context) {
 		t.messageLoop(ctx, sub)
@@ -353,13 +363,7 @@ func (t *TF2) GetCurrentAchievements(ctx context.Context) (map[uint32]bool, erro
 func (t *TF2) PlayGames(ctx context.Context, appIDs []uint32) error {
 	err := t.apps.PlayGames(ctx, appIDs, false)
 	if err == nil {
-		hasTF2 := false
-		for _, id := range appIDs {
-			if id == AppID {
-				hasTF2 = true
-				break
-			}
-		}
+		hasTF2 := slices.Contains(appIDs, AppID)
 
 		if !hasTF2 {
 			oldState := t.state.Swap(int32(Disconnected))
