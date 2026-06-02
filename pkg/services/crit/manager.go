@@ -152,7 +152,7 @@ func (m *Manager) Init(init module.InitContext) error {
 	m.Logger.Info("Initializing crit.tf storefront manager...")
 
 	// Register commands if chat_commands module is present
-	if dispatcher, err := tf2.GetModule[commands.Registry](init, "chat_commands"); err == nil {
+	if dispatcher, err := module.Get[commands.Registry](init, "chat_commands"); err == nil {
 		m.commands = dispatcher
 
 		// Public / User commands

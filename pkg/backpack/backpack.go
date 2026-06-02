@@ -106,7 +106,7 @@ func (m *Backpack) Init(init module.InitContext) error {
 		return err
 	}
 
-	tf2Mod, err := tf2.GetModule[*tf2.TF2](init, tf2.ModuleName)
+	tf2Mod, err := module.Get[*tf2.TF2](init, tf2.ModuleName)
 	if err != nil {
 		return err
 	}
@@ -114,14 +114,14 @@ func (m *Backpack) Init(init module.InitContext) error {
 	m.tf2 = tf2Mod
 	m.cache = tf2Mod.Cache()
 
-	managerMod, err := tf2.GetModule[*schema.Manager](init, schema.ModuleName)
+	managerMod, err := module.Get[*schema.Manager](init, schema.ModuleName)
 	if err != nil {
 		return err
 	}
 
 	m.manager = managerMod
 
-	tradingMod, err := tf2.GetModule[TradingProvider](init, "trading")
+	tradingMod, err := module.Get[TradingProvider](init, "trading")
 	if err == nil {
 		m.trading = tradingMod
 	}

@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"slices"
 	"sync/atomic"
 	"time"
@@ -41,23 +40,6 @@ const (
 	// ModuleName is the unique registration name of the TF2 module.
 	ModuleName string = "tf2"
 )
-
-// GetModule is a generic helper to retrieve a typed module from the init context.
-func GetModule[T any](init module.InitContext, name string) (T, error) {
-	var zero T
-
-	mod := init.Module(name)
-	if mod == nil {
-		return zero, fmt.Errorf("module %q not registered", name)
-	}
-
-	typed, ok := mod.(T)
-	if !ok {
-		return zero, fmt.Errorf("module %q has invalid type %T (expected %T)", name, mod, zero)
-	}
-
-	return typed, nil
-}
 
 // WithModule returns an option that registers the [TF2] module with the client.
 func WithModule() steam.Option {
@@ -166,19 +148,19 @@ func (t *TF2) Init(init module.InitContext) error {
 
 	var err error
 
-	t.gc, err = GetModule[CoordinatorProvider](init, gc.ModuleName)
+	t.gc, err = module.Get[CoordinatorProvider](init, gc.ModuleName)
 	if err != nil {
 		return err
 	}
 
 	t.service = init.Service()
 
-	t.apps, err = GetModule[AppsProvider](init, apps.ModuleName)
+	t.apps, err = module.Get[AppsProvider](init, apps.ModuleName)
 	if err != nil {
 		return err
 	}
 
-	t.schema, err = GetModule[SchemaProvider](init, schema.ModuleName)
+	t.schema, err = module.Get[SchemaProvider](init, schema.ModuleName)
 	if err != nil {
 		return err
 	}
