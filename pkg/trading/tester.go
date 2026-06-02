@@ -1,59 +1,30 @@
-// Copyright (c) 2026 Lemon4ksan All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Copyright (c) 2026 vlhltf. All rights reserved.
+// Use of this source code is governed by a proprietary license.
 
 package trading
 
 import (
-	"context"
+	"github.com/lemon4ksan/g-man/test/trading"
 
-	"github.com/lemon4ksan/g-man/pkg/log"
-	"github.com/lemon4ksan/g-man/pkg/trading"
-	"github.com/lemon4ksan/g-man/pkg/trading/engine"
+	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 )
 
-// TF2TradeTester provides a fluent, isolated mock context for executing and auditing middleware pipelines.
+// TF2TradeTester is a specialized wrapper over the generic TradeTester from the core.
+// It defines the type T as a PriceDB price map (map[string]*priceb.Price), requiring
+// the Price, PPU, and Spell middleware in TF2 to work.
 type TF2TradeTester struct {
-	engine *engine.Engine
-	logger log.Logger
+	*trading.TradeTester[map[string]*pricedb.Price]
 }
 
-// NewTF2TradeTester constructs a new [TF2TradeTester] with discarded logging and an empty middleware chain.
+// NewTF2TradeTester initializes a new instance of TF2TradeTester.
 func NewTF2TradeTester() *TF2TradeTester {
 	return &TF2TradeTester{
-		engine: engine.New(),
-		logger: log.Discard,
+		TradeTester: trading.NewTradeTester[map[string]*pricedb.Price](),
 	}
 }
 
-// WithPrices sets up a mock pricer middleware injecting static prices into the execution context.
-func (t *TF2TradeTester) WithPrices(prices map[string]int) *TF2TradeTester {
-	t.engine.Use(func(next engine.Handler) engine.Handler {
-		return func(ctx *engine.TradeContext) error {
-			for sku, price := range prices {
-				ctx.Set("price_"+sku, price)
-			}
-
-			return next(ctx)
-		}
-	})
-
+// WithTF2Prices passes detailed PriceDB price models inside the generic test engine.
+func (t *TF2TradeTester) WithTF2Prices(priceModels map[string]*pricedb.Price) *TF2TradeTester {
+	t.WithPriceModels(priceModels)
 	return t
-}
-
-// AddMiddleware appends a custom middleware stage to the testing execution chain.
-func (t *TF2TradeTester) AddMiddleware(m engine.Middleware) *TF2TradeTester {
-	t.engine.Use(m)
-	return t
-}
-
-// Run processes the trade offer through the configured middleware pipeline.
-// Returns the resulting [engine.Verdict] or an error if any of the pipeline stages fail.
-func (t *TF2TradeTester) Run(ctx context.Context, offer *trading.TradeOffer) (engine.Verdict, error) {
-	verdict, err := t.engine.Process(ctx, offer)
-	if err != nil {
-		return engine.Verdict{}, err
-	}
-
-	return *verdict, nil
 }

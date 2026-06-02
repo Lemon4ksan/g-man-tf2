@@ -300,7 +300,7 @@ func TestSmartCounterMiddleware_Overpaid_NotEnoughChange_SmeltSucceeds_RetriesOn
 
 	err := handler(ctx)
 	assert.NoError(t, err)
-	assert.Equal(t, trading.ActionSkip, ctx.Verdict.Action)
+	assert.Equal(t, trading.ActionDecline, ctx.Verdict.Action)
 }
 
 func TestSmartCounterMiddleware_Overpaid_NotEnoughChange_SmeltFails_DeclinesOffer(t *testing.T) {
