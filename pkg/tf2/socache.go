@@ -568,6 +568,20 @@ func (c *SOCache) GetItem(id uint64) (*Item, bool) {
 	return item, ok
 }
 
+// GetItemByOriginalID returns the [Item] matching the specified original ID.
+func (c *SOCache) GetItemByOriginalID(originalID uint64) (*Item, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	for _, item := range c.items {
+		if item.OriginalID == originalID {
+			return item, true
+		}
+	}
+
+	return nil, false
+}
+
 // GetMetal returns up to count tradable metal item IDs matching the specified defIndex.
 func (c *SOCache) GetMetal(defIndex uint32, count int) []uint64 {
 	c.mu.RLock()
