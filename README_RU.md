@@ -37,7 +37,7 @@ pkg/
 ├── sku/              # Генераторы и парсеры SKU предметов (качество, эффект, краска)
 ├── currency/         # Безопасная целочисленная арифметика металлов и ключей
 ├── services/         # Интеграция со сторонними сервисами и платформами
-│   ├── pricedb/      # Локальное хранилище цен и адаптер WebSockets (Socket.IO) для PriceDB
+│   ├── pricedb/      # Автопрайсинг и адаптер WebSockets (Socket.IO) для PriceDB
 │   ├── bptf/         # Интеграция с backpack.tf (управление листингами, скрейпинг)
 │   ├── crit/         # Синхронизация витрины листингов Crit.tf
 │   └── rep/          # Утилиты проверки репутации и отзывов пользователей
@@ -86,9 +86,9 @@ func main() {
 	// 1. Инициализация клиента Steam с регистрацией TF2-плагинов
 	client, err := steam.NewClient(steam.Config{Storage: store},
 		steam.WithLogger(logger),
-		schema.WithModule(schema.DefaultConfig()), // Регистрация tf2_schema
-		tf2.WithModule(),                          // Регистрация tf2
-		backpack.WithModule(),                     // Регистрация tf2_backpack
+		schema.WithModule(schema.DefaultConfig()),
+		tf2.WithModule(),
+		backpack.WithModule(),
 	)
 	if err != nil {
 		panic(err)

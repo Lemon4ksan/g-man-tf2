@@ -35,7 +35,7 @@ pkg/
 ├── sku/              # Standardized item SKU parsers (quality, effect, paint, etc.)
 ├── currency/         # Float-safe metal arithmetic & Key-to-Scrap equations
 ├── services/         # Third-party platform services integrations
-│   ├── pricedb/      # Local pricing store adapters and PriceDB Socket.IO connection sync
+│   ├── pricedb/      # Pricing and PriceDB Socket.IO connection sync
 │   ├── bptf/         # backpack.tf integrations (listing management, snap scraper)
 │   ├── crit/         # Crit.tf storefront listing synchronizer
 │   └── rep/          # Trust, feedback, and user reputation lookup utilities
