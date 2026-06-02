@@ -10,9 +10,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
-	"slices"
 	"strings"
-	"time"
 
 	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
@@ -28,7 +26,6 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/rep"
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
-	"github.com/lemon4ksan/g-man-tf2/pkg/storage"
 )
 
 // StockConfig defines the inventory limit thresholds for the trading system.
@@ -573,180 +570,6 @@ func SmartCounterMiddleware(
 	}
 }
 
-// PPUMiddleware executes Price Protection Unit (PPU) calculations to lock pricing during price crashes.
-// It maps cost basis logs from [storage.CostBasisStore] and dynamically caps buy and sell rates inside [engine.TradeContext].
-func PPUMiddleware(
-	bp *backpack.Backpack,
-	cbStore storage.CostBasisStore,
-	cfgManager *ConfigManager,
-	logger log.Logger,
-) engine.Middleware {
-	return func(next engine.Handler) engine.Handler {
-		return func(ctx *engine.TradeContext) error {
-			pricesRaw, ok := ctx.Get("prices")
-			if !ok {
-				return next(ctx)
-			}
-
-			priceMap, ok := pricesRaw.(map[string]*pricedb.Price)
-			if !ok {
-				return next(ctx)
-			}
-
-			var keyPriceRef float64
-			if kp, ok := priceMap[currency.SKUKey]; ok {
-				keyPriceRef = kp.Buy.Metal
-			}
-
-			if keyPriceRef <= 0 {
-				keyPriceRef = 50.0
-			}
-
-			keyPriceScrap := currency.ToScrap(keyPriceRef)
-
-			cfg := cfgManager.GetConfig()
-			holdDuration := cfg.GetPPUHoldDuration()
-			gracePeriod := cfg.GetPPUGracePeriod()
-			maxStockLimit := cfg.PPUMaxStockLimit
-			minProfitScrap := cfg.PPUMinProfitScrap
-
-			uniqueSKUs := make(map[string]bool)
-			for _, item := range append(ctx.Offer.ItemsToGive, ctx.Offer.ItemsToReceive...) {
-				pricingSKU := GetPricingSKU(item.SKU)
-				if pricingSKU != "" &&
-					pricingSKU != currency.SKUKey &&
-					pricingSKU != currency.SKURefined &&
-					pricingSKU != currency.SKUReclaimed &&
-					pricingSKU != currency.SKUScrap {
-					uniqueSKUs[pricingSKU] = true
-				}
-			}
-
-			for sku := range uniqueSKUs {
-				stockCount := bp.GetStock(sku)
-
-				state, exists := cbStore.GetPPUState(sku)
-				if !exists {
-					state = storage.PPUState{SKU: sku}
-				}
-
-				if stockCount > 0 && state.LastInStockTime.IsZero() {
-					state.LastInStockTime = time.Now()
-					cbStore.SetPPUState(sku, state)
-					logger.Info("Stock self-diagnosis initialized timer", log.String("sku", sku))
-				}
-			}
-
-			cbStore.Prune(holdDuration)
-
-			for sku := range uniqueSKUs {
-				p, hasPrice := priceMap[sku]
-				if !hasPrice {
-					continue
-				}
-
-				state, exists := cbStore.GetPPUState(sku)
-				if !exists {
-					state = storage.PPUState{SKU: sku}
-				}
-
-				if slices.Contains(cfg.PPUExcludeSKUs, sku) {
-					if state.IsPartialPriced {
-						state.IsPartialPriced = false
-						state.ProtectionStarted = time.Time{}
-						cbStore.SetPPUState(sku, state)
-						logger.Info("PPU price protection deactivated because SKU was excluded", log.String("sku", sku))
-					}
-
-					continue
-				}
-
-				stockCount := bp.GetStock(sku)
-
-				isProtectedStock := false
-				if stockCount > 0 {
-					switch {
-					case cfg.PPURemoveMaxRestriction || cfg.PPUMaxProtectedUnits == -1:
-						isProtectedStock = true
-					case cfg.PPUMaxProtectedUnits > 0:
-						isProtectedStock = stockCount <= cfg.PPUMaxProtectedUnits
-					default:
-						isProtectedStock = stockCount <= maxStockLimit
-					}
-				}
-
-				inStock := isProtectedStock
-				inGrace := stockCount == 0 &&
-					!state.LastSoldTime.IsZero() &&
-					time.Since(state.LastSoldTime) < gracePeriod
-
-				if !inStock && !inGrace {
-					if state.IsPartialPriced {
-						state.IsPartialPriced = false
-						state.ProtectionStarted = time.Time{}
-						cbStore.SetPPUState(sku, state)
-						logger.Info("PPU price protection deactivated due to stock limits", log.String("sku", sku))
-					}
-
-					continue
-				}
-
-				entry, hasEntry := cbStore.GetOldestEntry(sku)
-				if !hasEntry {
-					continue
-				}
-
-				baseBuyScrap := currency.Scrap(entry.BuyKeys)*keyPriceScrap + currency.ToScrap(entry.BuyMetal)
-				netCostBasisScrap := baseBuyScrap + currency.Scrap(entry.Diff)
-
-				protectedSellPriceScrap := netCostBasisScrap + currency.Scrap(minProfitScrap)
-				marketSellPriceScrap := currency.Scrap(p.Sell.Keys)*keyPriceScrap + currency.ToScrap(p.Sell.Metal)
-
-				if marketSellPriceScrap < protectedSellPriceScrap {
-					protectedCurrencies := currency.ScrapToCurrencies(
-						currency.Scrap(protectedSellPriceScrap),
-						keyPriceRef,
-					)
-					p.Sell.Keys = int(protectedCurrencies.Keys)
-					p.Sell.Metal = protectedCurrencies.Metal
-
-					marketBuyPriceScrap := currency.Scrap(p.Buy.Keys)*keyPriceScrap + currency.ToScrap(p.Buy.Metal)
-					if marketBuyPriceScrap > netCostBasisScrap {
-						cappedBuyCurrencies := currency.ScrapToCurrencies(
-							currency.Scrap(netCostBasisScrap),
-							keyPriceRef,
-						)
-						p.Buy.Keys = int(cappedBuyCurrencies.Keys)
-						p.Buy.Metal = cappedBuyCurrencies.Metal
-					}
-
-					if !state.IsPartialPriced {
-						state.IsPartialPriced = true
-						state.ProtectionStarted = time.Now()
-						cbStore.SetPPUState(sku, state)
-
-						logger.Info("PPU price protection activated",
-							log.String("sku", sku),
-							log.Int("stock", stockCount),
-							log.Float64("protected_sell_ref", currency.ToRefined(protectedSellPriceScrap)),
-							log.Float64("net_cost_basis_ref", currency.ToRefined(netCostBasisScrap)),
-						)
-					}
-				} else if state.IsPartialPriced {
-					state.IsPartialPriced = false
-					state.ProtectionStarted = time.Time{}
-					cbStore.SetPPUState(sku, state)
-					logger.Info("PPU price protection deactivated, market recovered", log.String("sku", sku))
-				}
-			}
-
-			ctx.Set("prices", priceMap)
-
-			return next(ctx)
-		}
-	}
-}
-
 // FindPartnerCurrency searches partner items to assemble a combination of currencies covering the specified scrap debt.
 // Returns false if the partner's inventory cannot satisfy the required scrap value.
 func FindPartnerCurrency(
@@ -988,4 +811,46 @@ func isUniqueWeapon(skuStr string, s *schema.Schema) bool {
 
 	return sch != nil &&
 		(sch.CraftClass == "weapon" || sch.ItemClass == "weapon" || strings.HasPrefix(sch.ItemClass, "tf_weapon_"))
+}
+
+// IsJunk returns true if the given [trading.Item] is a low-value commodity (such as standard supply crates).
+// Returns true if the item is nil or has an empty SKU.
+func IsJunk(it *trading.Item) bool {
+	if it == nil || it.SKU == "" {
+		return true
+	}
+
+	if HasSpells(it) {
+		return false
+	}
+
+	for _, attr := range it.Attributes {
+		if attr.Defindex == schema.AttrCrateSeries {
+			return true
+		}
+	}
+
+	return false
+}
+
+// HasSpells checks whether the [trading.Item] contains any active Halloween spells in its description or attributes.
+// Returns false if the item is nil.
+func HasSpells(it *trading.Item) bool {
+	if it == nil {
+		return false
+	}
+
+	for _, attr := range it.Attributes {
+		if attr.Defindex >= 1004 && attr.Defindex <= 1009 {
+			return true
+		}
+	}
+
+	for _, desc := range it.Descriptions {
+		if _, ok := schema.IdentifySpell(desc.Value); ok {
+			return true
+		}
+	}
+
+	return false
 }

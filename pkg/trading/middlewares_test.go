@@ -1317,3 +1317,51 @@ func TestPricerMiddleware_PaintedItemFallback(t *testing.T) {
 	assert.Equal(t, 1.22, p.Sell.Metal)
 	assert.Contains(t, p.Name, "Painted")
 }
+
+func TestDonations_IsJunk_HasSpells(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, IsJunk(nil))
+	assert.True(t, IsJunk(&trading.Item{SKU: ""}))
+
+	itemWithSpells := &trading.Item{
+		SKU: "5021;6",
+		Attributes: []trading.Attribute{
+			{Defindex: 1004, Value: "0"},
+		},
+	}
+	assert.False(t, IsJunk(itemWithSpells))
+
+	crateItem := &trading.Item{
+		SKU: "5022;6;c1",
+		Attributes: []trading.Attribute{
+			{Defindex: schema.AttrCrateSeries, Value: "1"},
+		},
+	}
+	assert.True(t, IsJunk(crateItem))
+
+	standardItem := &trading.Item{
+		SKU: "5021;6",
+	}
+
+	assert.False(t, IsJunk(standardItem))
+	assert.False(t, HasSpells(nil))
+
+	itemSpellAttr := &trading.Item{
+		SKU: "5021;6",
+		Attributes: []trading.Attribute{
+			{Defindex: 1007, Value: "1"},
+		},
+	}
+	assert.True(t, HasSpells(itemSpellAttr))
+
+	itemSpellDesc := &trading.Item{
+		SKU: "5021;6",
+		Descriptions: []trading.Description{
+			{Value: "Halloween: Squash Rockets"},
+		},
+	}
+	
+	assert.True(t, HasSpells(itemSpellDesc))
+	assert.False(t, HasSpells(standardItem))
+}

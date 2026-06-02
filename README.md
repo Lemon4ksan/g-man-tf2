@@ -21,41 +21,6 @@
 go get github.com/lemon4ksan/g-man-tf2@latest
 ```
 
-## ⚡ Core Ecosystem Capabilities
-
-### 🪙 1. Advanced Currency & Pricing Mechanics (`tf2/currency`)
-Trading TF2 items demands zero-tolerance precision in **Keys** and **Refined Metal**. 
-* **Float-Safe Metal Arithmetic**: G-MAN TF2 handles all currency by internally converting metal units to base-level integers (`Scrap`), guaranteeing exact results (e.g., `AddRefined(1.55, 0.55)` returns exactly `2.11` without precision drift).
-* **Separate Key Rates**: Evaluates keys dynamically depending on trade direction (buy rate when receiving keys, sell rate when giving keys) to maximize arbitrage profit margin.
-* **Weapon as Currency**: Seamlessly integrates weapons (0.05 refined) into the base metal arithmetic, facilitating precise micro-transactions and change.
-
-### 🎒 2. Real-Time Inventory & Storage Optimization (`tf2/backpack`, `tf2/crafting`)
-Avoid heavy rate-limits from web inventory requests and keep storage organized.
-* **GC `SOCache` Synchronization**: Stays synced with the active **SOCache (Shared Object Cache)** in the Game Coordinator's memory space. Binary GC packets are parsed in O(1) time to patch the local inventory view instantly.
-* **Backpack Auto-Sorting**: Automatically packs and groups items cleanly (pure currency first, weapons, cosmetics, or custom page categories) using sequential `SetSingleItemPosition` Game Coordinator updates.
-* **Smart Trash Cleanup**: Automatically scans and permanently purges untradable junk items (empty crates/cases, noise makers, seasonal holiday garbage) to prevent backpack overflow and trading halts.
-* **Smelting & Crafting Engine**: Automatically constructs recipes, combines metal units (`Scrap` $\leftrightarrow$ `Reclaimed` $\leftrightarrow$ `Refined`), and melts duplicate weapons to manage storage dynamically and resolve exact change requirements.
-
-### 📈 3. PriceDB & Premium Item Valuation (`tf2/pricedb`)
-Retrieve and sync asset values without spamming HTTP request limits and capture premium item value.
-* **Real-Time PriceDB Sync**: Streams live pricing changes directly from the **PriceDB** service using a persistent Socket.IO connection.
-* **Premium Painted Items Valuation**: Automatically calculates added premiums for custom-painted weapons and gear.
-* **Halloween Spells Premium Valuation**: Recognizes spelled items (Pumpkin Bombs, Exorcism, footprints, vocal) and layers customizable pricing premiums above base rates dynamically.
-
-### 🧅 4. Onion-Trading Middlewares & Anti-Ghost Listings (`tf2/trading`)
-Secure your reputation and transactions with a decoupled onion-style middleware engine.
-* **Anti-Ghost Listings Filter**: Prevents posting listings on backpack.tf for buy orders if the bot doesn't have enough pure currency to fulfill them, preventing negative community reputation.
-* **Smart Countering & Change Maker**: Automatically counters imbalanced offers with exact change using the smelting engine.
-
-### 📊 5. Trade Accounting & Analytics Subsystem (`tf2/stats`)
-Monitor your business performance with real-time financial ledger tracking.
-* **FIFO Profit Accounting Ledger**: Calculates exact transaction profits in refined/keys and maintains active cost bases dynamically.
-
-### 🤖 6. Automation & Safety Systems
-* **Auto-Reset Manual Prices**: Re-evaluates manually priced items once they sell out, resetting them automatically to dynamic autotrading rates.
-* **Auto-Cancel Stale Sent Offers**: Automatically cancels sent offers pending too long (e.g. 15 minutes) to unlock locked items and avoid trade overrides.
-
-
 ## 📂 Project Directory Structure
 
 ```text
@@ -74,11 +39,9 @@ pkg/
 │   ├── bptf/         # backpack.tf integrations (listing management, snap scraper)
 │   ├── crit/         # Crit.tf storefront listing synchronizer
 │   └── rep/          # Trust, feedback, and user reputation lookup utilities
-├── behavior/         # High-level behavior loops (autokeys, stock manager, syncers)
+├── behavior/         # High-level behavior loops
 ├── trading/          # Onion-style trading middlewares (pricer, limits, counters)
-├── ecp/              # Escrow Bypass Chat Protocol (Obfuscator & Compressor)
 ├── reason/           # TF2-specific trade rejection reasons
-└── storage/          # Local JSON file & cache adapters
 ```
 
 ## 🚀 Quick Start

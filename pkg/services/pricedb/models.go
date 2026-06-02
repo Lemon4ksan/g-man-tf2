@@ -4,20 +4,6 @@
 
 package pricedb
 
-import "github.com/lemon4ksan/g-man-tf2/pkg/pricing"
-
-// PricelistChangedSource specifies the origin of pricelist modifications.
-type PricelistChangedSource = pricing.Source
-
-const (
-	// PricelistChangedSourceManual is the source for pricelist modifications made manually.
-	PricelistChangedSourceManual PricelistChangedSource = pricing.SourceManual
-	// PricelistChangedSourcePriceDB is the source for automatic pricing from the price database.
-	PricelistChangedSourcePriceDB PricelistChangedSource = "PriceDB"
-	// PricelistChangedSourcePaintMarkup is the source for automatic markup on painted items.
-	PricelistChangedSourcePaintMarkup PricelistChangedSource = "PaintMarkup"
-)
-
 // Currencies represents the price in TF2 currency.
 type Currencies struct {
 	Keys  int     `json:"keys"`

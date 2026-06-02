@@ -257,7 +257,7 @@ func (m *Manager) GetAllPrices() []*Price {
 }
 
 // SetPrice sets or updates a cached price in a thread-safe way.
-func (m *Manager) SetPrice(sku string, buy, sell Currencies, source PricelistChangedSource) {
+func (m *Manager) SetPrice(sku string, buy, sell Currencies, source string) {
 	m.mu.Lock()
 
 	var (
@@ -271,14 +271,14 @@ func (m *Manager) SetPrice(sku string, buy, sell Currencies, source PricelistCha
 
 		if p.Buy.Keys != buy.Keys || p.Buy.Metal != buy.Metal ||
 			p.Sell.Keys != sell.Keys || p.Sell.Metal != sell.Metal ||
-			p.Source != string(source) {
+			p.Source != source {
 			hasChanged = true
 			p.Buy = buy
 			p.Sell = sell
 
 			p.Time = time.Now().Unix()
 			if source != "" {
-				p.Source = string(source)
+				p.Source = source
 			}
 		}
 	} else {

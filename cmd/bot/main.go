@@ -32,19 +32,13 @@ import (
 	webtrading "github.com/lemon4ksan/g-man/pkg/trading/web"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
-	"github.com/lemon4ksan/g-man-tf2/pkg/behavior/critlistener"
 	"github.com/lemon4ksan/g-man-tf2/pkg/behavior/staleoffers"
-	"github.com/lemon4ksan/g-man-tf2/pkg/behavior/stock"
 	"github.com/lemon4ksan/g-man-tf2/pkg/crafting"
-	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
-	"github.com/lemon4ksan/g-man-tf2/pkg/pricing"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/bptf"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/crit"
-	"github.com/lemon4ksan/g-man-tf2/pkg/services/manualprices"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/rep"
-	tf2jsonfile "github.com/lemon4ksan/g-man-tf2/pkg/storage/jsonfile"
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 	tf2trading "github.com/lemon4ksan/g-man-tf2/pkg/trading"
 )
@@ -83,9 +77,7 @@ type Bot struct {
 	bptfChecker     *bptf.BackpackTFChecker
 	pdbManager      *pricedb.Manager
 	pdbClient       *pricedb.Client
-	costBasis       *tf2jsonfile.CostBasisStore
 	critClient      *crit.Client
-	manualPrices    *manualprices.Manager
 }
 
 // NewBot creates and initializes a new bot instance using the provided configuration
@@ -109,12 +101,6 @@ func NewBot(cfg Config, store storage.Provider, logger log.Logger) (*Bot, error)
 	bansManager := rep.NewBansManager(bptfClient, cfg.MptfAPIKey)
 	bptfChecker := bptf.NewBackpackTFChecker(bptfClient)
 
-	// Initialize Cost Basis Store for stagnant stock discount strategy
-	costBasis, err := tf2jsonfile.NewCostBasisStore("cost_basis.json", logger)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize cost basis store: %w", err)
-	}
-
 	// 3. Configure the Steam Client with all necessary modules
 	clientCfg := steam.DefaultConfig()
 	clientCfg.Storage = store
@@ -135,30 +121,6 @@ func NewBot(cfg Config, store storage.Provider, logger log.Logger) (*Bot, error)
 		return nil, fmt.Errorf("steam client initialization failed: %w", err)
 	}
 
-	manualPricesStore, err := tf2jsonfile.NewManualPricesStore("cache/tf2/manual_prices.json", logger)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize manual prices store: %w", err)
-	}
-
-	getStaticFixedPrices := func() map[string]manualprices.PriceEntry {
-		cfg := tradeCfgManager.GetConfig()
-		staticPrices := make(map[string]manualprices.PriceEntry)
-
-		for sku, itemCfg := range cfg.Items {
-			if itemCfg.FixedBuyPrice != nil && itemCfg.FixedSellPrice != nil {
-				staticPrices[sku] = manualprices.PriceEntry{
-					Buy:  *itemCfg.FixedBuyPrice,
-					Sell: *itemCfg.FixedSellPrice,
-				}
-			}
-		}
-
-		return staticPrices
-	}
-
-	priceAdapter := &pdbPriceProviderAdapter{mgr: pdbManager}
-	manualPrices := manualprices.New(manualPricesStore, priceAdapter, getStaticFixedPrices, logger)
-
 	bot := &Bot{
 		cfg:             cfg,
 		store:           store,
@@ -170,9 +132,7 @@ func NewBot(cfg Config, store storage.Provider, logger log.Logger) (*Bot, error)
 		bptfChecker:     bptfChecker,
 		pdbManager:      pdbManager,
 		pdbClient:       pdbClient,
-		costBasis:       costBasis,
 		critClient:      critClient,
-		manualPrices:    manualPrices,
 	}
 
 	return bot, nil
@@ -197,26 +157,8 @@ func (b *Bot) Run(ctx context.Context) error {
 		log.Float64("load", server.Load),
 	)
 
-	// Start cost basis persistence background thread
-	b.wg.Go(func() {
-		b.costBasis.Start(ctx)
-	})
-
-	// Start FIFO subscriber for trade accounting and auto-pricing of painted items
-	fifoSub := tf2trading.NewFIFOSubscriber(b.costBasis, nil, b.pdbManager, b.client.Bus(), b.logger)
-	b.wg.Go(func() {
-		fifoSub.Start(ctx)
-	})
-
 	// Start config hot-reloader
 	b.tradeCfgManager.StartWatching(ctx, 10*time.Second, b.logger)
-
-	// Start manual prices watcher and load initial values
-	if err := b.manualPrices.LoadAndApply(); err != nil {
-		b.logger.Error("Failed to apply initial manual prices", log.Err(err))
-	}
-
-	b.manualPrices.StartWatcher(ctx, 10*time.Second)
 
 	b.sub = b.client.Bus().Subscribe(&auth.LoggedOnEvent{}, &auth.LoggedOffEvent{})
 
@@ -307,25 +249,9 @@ func (b *Bot) setupOrchestrator() {
 
 	b.orchestrator.Install(
 		guard.AutoAccept(guardian, guardBehaviorCfg),
-		stock.Control(bp, b.pdbManager, b.tradeCfgManager, b.costBasis, craftingManager, stock.DefaultConfig()),
 		staleoffers.Monitor(webTradeManager, b.tradeCfgManager, staleoffers.DefaultConfig()),
 		achievements.Simulate(tf2Mod, tf2.AchievementConfig()),
 	)
-
-	if b.cfg.CritAPIKey != "" {
-		b.orchestrator.Install(
-			critlistener.Listen(
-				b.critClient,
-				b.pdbManager,
-				bp,
-				b.tradeCfgManager,
-				webTradeManager,
-				b.cfg.TradeRequestEventStreamURL,
-			),
-		)
-	} else {
-		b.logger.Warn("Crit.tf API key is not configured, event stream listener behavior will not be started")
-	}
 
 	// 5. Setup the TF2 Trading Engine Middlewares
 	tradeEngine := engine.New()
@@ -466,18 +392,4 @@ func main() {
 		logger.Error("Bot runtime error", log.Err(err))
 		return
 	}
-}
-
-type pdbPriceProviderAdapter struct {
-	mgr *pricedb.Manager
-}
-
-func (a *pdbPriceProviderAdapter) SetPrice(sku string, buy, sell currency.Currency, source pricing.Source) {
-	a.mgr.SetPrice(sku, pricedb.Currencies{
-		Keys:  int(buy.Keys),
-		Metal: buy.Metal,
-	}, pricedb.Currencies{
-		Keys:  int(sell.Keys),
-		Metal: sell.Metal,
-	}, source)
 }
