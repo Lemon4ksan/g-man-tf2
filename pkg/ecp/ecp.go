@@ -138,8 +138,8 @@ func (e *EasyCopyPaste) ToEcpString(itemOriginalName, botSideIntent string) (str
 // Returns an error if the input string is empty, the customer intent is unrecognized, or the
 // item name cannot be resolved from the internal mapping database.
 func (e *EasyCopyPaste) ReverseEcpString(escaped string) (*DecodedECP, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	e.mu.RLock()
+	defer e.mu.RUnlock()
 
 	if len(escaped) == 0 {
 		return nil, errors.New("input ECP string's length is 0")
