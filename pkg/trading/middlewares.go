@@ -488,7 +488,9 @@ func SmartCounterMiddleware(
 				return err
 			}
 
-			if ctx.Verdict.Action != trading.ActionSkip {
+			if ctx.Verdict.Action == trading.ActionDecline &&
+				ctx.Verdict.Reason != tf2reason.DeclineUnderpaid &&
+				ctx.Verdict.Reason != tf2reason.ReviewInvalidValue {
 				return nil
 			}
 
@@ -514,15 +516,14 @@ func SmartCounterMiddleware(
 						logger.Warn("Not enough metal for change, triggering auto-crafting...")
 
 						if smeltErr := metalMgr.TryToSmeltForChange(ctx, diff); smeltErr == nil {
+							ctx.Decline(tf2reason.DeclineNoChange)
 							return nil
 						}
-
-						ctx.Decline(tf2reason.DeclineNoChange)
-
-						return nil
 					}
 
-					return err
+					ctx.Decline(tf2reason.DeclineNoChange)
+
+					return nil
 				}
 
 				ctx.Counter(reason.AcceptCorrectValue, &trading.CounterParams{
