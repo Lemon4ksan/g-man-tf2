@@ -26,6 +26,7 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/rep"
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
+	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 )
 
 // StockConfig defines the inventory limit thresholds for the trading system.
@@ -38,9 +39,16 @@ type StockConfig struct {
 	DefaultMax int
 }
 
+// BackpackProvider defines the interface for accessing the bot's backpack inventory.
+type BackpackProvider interface {
+	GetTotalCount() int
+	GetStock(sku string) int
+	GetItem(id uint64) (*tf2.Item, bool)
+}
+
 // StockLimitMiddleware checks if an incoming trade exceeds total capacity or specific SKU boundaries.
 // It reads [StockConfig] limits and cancels the trade with [reason.DeclineOverstocked] if boundaries are violated.
-func StockLimitMiddleware(bp *backpack.Backpack, cfg StockConfig, logger log.Logger) engine.Middleware {
+func StockLimitMiddleware(bp BackpackProvider, cfg StockConfig, logger log.Logger) engine.Middleware {
 	return func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
 			if len(ctx.Offer.ItemsToReceive) == 0 {
@@ -469,13 +477,19 @@ func computePremium(
 	return totalPremium, nil
 }
 
+// MetalChangeManager defines the interface for managing metal change in the trading system.
+type MetalChangeManager interface {
+	SelectChange(amount currency.Scrap) ([]uint64, error)
+	TryToSmeltForChange(ctx context.Context, needed currency.Scrap) error
+}
+
 // SmartCounterMiddleware calculates transaction value balances and automatically adjusts mismatches.
 // If overpaid, it appends change metal from local inventory using [crafting.MetalManager].
 // If underpaid, it scans partner inventory using [trading.PartnerInventoryProvider] to request missing change.
 func SmartCounterMiddleware(
 	cfgManager *ConfigManager,
-	metalMgr *crafting.MetalManager,
-	bp *backpack.Backpack,
+	metalMgr MetalChangeManager,
+	bp BackpackProvider,
 	invProvider trading.PartnerInventoryProvider,
 	logger log.Logger,
 ) engine.Middleware {
@@ -641,7 +655,7 @@ func FindPartnerCurrency(
 	return result, remaining == 0
 }
 
-func mapIDsToItems(bp *backpack.Backpack, ids []uint64) []*trading.Item {
+func mapIDsToItems(bp BackpackProvider, ids []uint64) []*trading.Item {
 	var items []*trading.Item
 	for _, id := range ids {
 		if it, ok := bp.GetItem(id); ok {

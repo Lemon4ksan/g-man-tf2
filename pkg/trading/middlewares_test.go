@@ -1361,7 +1361,7 @@ func TestDonations_IsJunk_HasSpells(t *testing.T) {
 			{Value: "Halloween: Squash Rockets"},
 		},
 	}
-	
+
 	assert.True(t, HasSpells(itemSpellDesc))
 	assert.False(t, HasSpells(standardItem))
 }
