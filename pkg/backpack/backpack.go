@@ -99,6 +99,16 @@ func New() *Backpack {
 	}
 }
 
+// NewWithDeps constructs a lightweight [Backpack] instance using the specified cache, manager and locked map dependencies.
+// This constructor is intended for external sidecar setups or tests that need to reuse backpack methods.
+func NewWithDeps(cache ItemCache, manager SchemaProvider, locked map[uint64]bool) *Backpack {
+	return &Backpack{
+		cache:   cache,
+		manager: manager,
+		locked:  locked,
+	}
+}
+
 // Init initializes the [Backpack] module by resolving its required dependencies.
 // Returns an error if any of the mandatory dependency modules are missing.
 func (m *Backpack) Init(init module.InitContext) error {
