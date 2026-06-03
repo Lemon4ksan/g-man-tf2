@@ -60,46 +60,14 @@ type Config struct {
 	GlobalMaxStock int `json:"global_max_stock"`
 	// DefaultMaxStock represents the fallback limit applied to items without an explicit SKU configuration.
 	DefaultMaxStock int `json:"default_max_stock"`
-	// ListingCommentTemplate represents the message template appended to generated marketplace listings.
-	ListingCommentTemplate string `json:"listing_comment_template,omitempty"`
-	// ExcludedSteamIDs contains the list of player IDs that the bot will refuse to trade with.
-	ExcludedSteamIDs []string `json:"excluded_steam_ids,omitempty"`
-	// TrustedSteamIDs contains the list of administrator or authorized player IDs.
-	TrustedSteamIDs []string `json:"trusted_steam_ids,omitempty"`
-	// ExcludedListingDescriptions contains keywords used to identify and filter out special items (e.g. spells).
-	ExcludedListingDescriptions []string `json:"excluded_listing_descriptions,omitempty"`
-	// PriceSwingLimits defines bounds on automatic price modifications.
-	PriceSwingLimits PriceSwingLimits `json:"price_swing_limits"`
 	// Items contains mapping from item SKUs to their respective trading configurations.
 	Items map[string]ItemConfig `json:"items"`
 	// UseSeparateKeyRates forces the valuation of keys to use the sell price when giving keys, and the buy price when receiving keys.
 	UseSeparateKeyRates bool `json:"use_separate_key_rates"`
-	// FilterCantAfford, if true, automatically hides or does not publish buy listings on backpack.tf if the bot lacks sufficient pure currency to pay for them.
-	FilterCantAfford bool `json:"filter_cant_afford"`
-	// AutoResetToAutopriceOnceSold, if true, automatically resets manually priced items back to autoprice once sold out.
-	AutoResetToAutopriceOnceSold bool `json:"auto_reset_to_autoprice_once_sold"`
-	// EnableSmartTrashCleanup, if true, automatically deletes untradable junk items (empty crates/cases, noise makers, etc.) from the backpack.
-	EnableSmartTrashCleanup bool `json:"enable_smart_trash_cleanup"`
-	// EnableAutoSorting, if true, automatically sorts items in the backpack using optimal hierarchical layout.
-	EnableAutoSorting bool `json:"enable_auto_sorting"`
 	// EnableAutoCancelStaleOffers, if true, automatically cancels sent trade offers that have been pending/active for too long.
 	EnableAutoCancelStaleOffers bool `json:"enable_auto_cancel_stale_offers"`
 	// CancelStaleOffersAfter defines how long an active sent trade offer remains pending before being automatically cancelled (e.g. "15m", "30m").
 	CancelStaleOffersAfter string `json:"cancel_stale_offers_after"`
-	// PPUHoldDuration defines how long a cost basis entry remains valid for price protection (e.g. "24h").
-	PPUHoldDuration string `json:"ppu_hold_duration"`
-	// PPUGracePeriod defines how long price protection remains active after an item is sold out (e.g. "1h").
-	PPUGracePeriod string `json:"ppu_grace_period"`
-	// PPUMaxStockLimit represents the maximum stock level at which price protection remains active.
-	PPUMaxStockLimit int `json:"ppu_max_stock_limit"`
-	// PPUMinProfitScrap represents the minimum profit threshold added to the cost basis during PPU calculations.
-	PPUMinProfitScrap int `json:"ppu_min_profit_scrap"`
-	// PPUExcludeSKUs specifies a list of item SKUs that are excluded from PPU protection.
-	PPUExcludeSKUs []string `json:"ppu_exclude_skus,omitempty"`
-	// PPURemoveMaxRestriction, if true, completely bypasses stock quantity checks for price protection.
-	PPURemoveMaxRestriction bool `json:"ppu_remove_max_restriction"`
-	// PPUMaxProtectedUnits defines the maximum stock count threshold up to which protection is active (-1 for unlimited).
-	PPUMaxProtectedUnits int `json:"ppu_max_protected_units"`
 	// CritCommandDescriptions overrides default command description strings in the chat interface.
 	CritCommandDescriptions map[string]string `json:"crit_command_descriptions,omitempty"`
 	// FallbackSpellPremiums maps spell names to their fallback premiums in refined metal (ref).
@@ -114,36 +82,6 @@ type BackpackSectionConfig struct {
 	Category  string `json:"category"`
 	StartPage int    `json:"start_page"`
 	EndPage   int    `json:"end_page"`
-}
-
-// GetPPUHoldDuration parses the [Config.PPUHoldDuration] string and returns a [time.Duration].
-// It defaults to 24 hours if the string is empty or invalid.
-func (c *Config) GetPPUHoldDuration() time.Duration {
-	if c.PPUHoldDuration == "" {
-		return 24 * time.Hour
-	}
-
-	d, err := time.ParseDuration(c.PPUHoldDuration)
-	if err != nil {
-		return 24 * time.Hour
-	}
-
-	return d
-}
-
-// GetPPUGracePeriod parses the [Config.PPUGracePeriod] string and returns a [time.Duration].
-// It defaults to 1 hour if the string is empty or invalid.
-func (c *Config) GetPPUGracePeriod() time.Duration {
-	if c.PPUGracePeriod == "" {
-		return 1 * time.Hour
-	}
-
-	d, err := time.ParseDuration(c.PPUGracePeriod)
-	if err != nil {
-		return 1 * time.Hour
-	}
-
-	return d
 }
 
 // ConfigManager coordinates thread-safe loading, saving, and hot-reload polling of the [Config].
@@ -176,32 +114,13 @@ func (cm *ConfigManager) Load() error {
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			cm.cfg = Config{
-				GlobalMaxStock:  3000,
-				DefaultMaxStock: 5,
-				ExcludedListingDescriptions: []string{
-					"spell", "spells", "spelled", "exorcism", "pumpkin bombs", "chromatic",
-					"die job", "spectral spectrum", "putrescent pigmentation", "sinister staining",
-				},
-				PriceSwingLimits: PriceSwingLimits{
-					MaxBuyIncrease: 0.10,
-				},
-				Items:                        make(map[string]ItemConfig),
-				PPUHoldDuration:              "24h",
-				PPUGracePeriod:               "1h",
-				PPUMaxStockLimit:             1,
-				PPUMinProfitScrap:            1,
-				UseSeparateKeyRates:          false,
-				FilterCantAfford:             true,
-				AutoResetToAutopriceOnceSold: true,
-				EnableSmartTrashCleanup:      false,
-				EnableAutoSorting:            false,
-				EnableAutoCancelStaleOffers:  false,
-				CancelStaleOffersAfter:       "15m",
-				BackpackSortingSections:      []BackpackSectionConfig{},
+				GlobalMaxStock:              3000,
+				DefaultMaxStock:             5,
+				Items:                       make(map[string]ItemConfig),
+				EnableAutoCancelStaleOffers: false,
+				CancelStaleOffersAfter:      "15m",
+				BackpackSortingSections:     []BackpackSectionConfig{},
 
-				PPUExcludeSKUs:          []string{},
-				PPURemoveMaxRestriction: false,
-				PPUMaxProtectedUnits:    -1,
 				FallbackSpellPremiums: map[string]float64{
 					"Exorcism":                  3.0,
 					"Voices from Below":         5.0,
@@ -262,32 +181,8 @@ func (cm *ConfigManager) Load() error {
 		cfg.BackpackSortingSections = []BackpackSectionConfig{}
 	}
 
-	if cfg.PPUHoldDuration == "" {
-		cfg.PPUHoldDuration = "24h"
-	}
-
-	if cfg.PPUGracePeriod == "" {
-		cfg.PPUGracePeriod = "1h"
-	}
-
 	if cfg.CancelStaleOffersAfter == "" {
 		cfg.CancelStaleOffersAfter = "15m"
-	}
-
-	if cfg.PPUMaxStockLimit <= 0 {
-		cfg.PPUMaxStockLimit = 1
-	}
-
-	if cfg.PPUMinProfitScrap <= 0 {
-		cfg.PPUMinProfitScrap = 1
-	}
-
-	if cfg.PPUExcludeSKUs == nil {
-		cfg.PPUExcludeSKUs = []string{}
-	}
-
-	if cfg.PPUMaxProtectedUnits == 0 {
-		cfg.PPUMaxProtectedUnits = -1
 	}
 
 	cm.cfg = cfg

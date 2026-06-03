@@ -49,10 +49,6 @@ func TestConfigManager_LoadAndWatch_FileUpdated_HotReloadsConfig(t *testing.T) {
 	updatedConfig := Config{
 		GlobalMaxStock:  5000,
 		DefaultMaxStock: 10,
-		PriceSwingLimits: PriceSwingLimits{
-			MaxBuyIncrease:  0.15,
-			MaxSellDecrease: 0.15,
-		},
 		Items: map[string]ItemConfig{
 			"5021;6": {
 				SKU:      "5021;6",
@@ -73,7 +69,6 @@ func TestConfigManager_LoadAndWatch_FileUpdated_HotReloadsConfig(t *testing.T) {
 	}, 1*time.Second, 10*time.Millisecond)
 
 	assert.Equal(t, 10, cm.GetConfig().DefaultMaxStock)
-	assert.Equal(t, 0.15, cm.GetConfig().PriceSwingLimits.MaxBuyIncrease)
 
 	itemCfg, ok := cm.GetItemConfig("5021;6")
 	assert.True(t, ok)
