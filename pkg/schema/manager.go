@@ -446,7 +446,12 @@ func (m *Manager) buildSchema(
 	}
 	raw.Schema.PaintKits = paintKits
 
-	overviewBytes, _ := json.Marshal(overview)
+	var schemaData any = overview
+	if result, ok := overview["result"]; ok {
+		schemaData = result
+	}
+
+	overviewBytes, _ := json.Marshal(schemaData)
 	if err := json.Unmarshal(overviewBytes, &raw.Schema); err != nil {
 		return fmt.Errorf("failed to parse schema overview: %w", err)
 	}

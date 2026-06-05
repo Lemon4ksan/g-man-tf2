@@ -152,6 +152,12 @@ func TestManager_Refresh_StandardFlow_SuccessfullyPopulatesSchema(t *testing.T) 
 		t.Errorf("expected item defindex 5021, got %d", schema.Raw.Schema.Items[0].Defindex)
 	}
 
+	if len(schema.Raw.Schema.Qualities) == 0 {
+		t.Error("expected raw schema qualities to be populated, but it is empty")
+	} else if val, ok := schema.Raw.Schema.Qualities["Normal"]; !ok || val != 0 {
+		t.Errorf("expected quality 'Normal' to be 0, got %v (exists: %t)", val, ok)
+	}
+
 	select {
 	case <-sub.C():
 		// OK
