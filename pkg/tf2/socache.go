@@ -81,10 +81,16 @@ const (
 	AttrPaintSecondary uint32 = 261
 	// AttrStrangePart1 represents the first applied Strange Part slot.
 	AttrStrangePart1 uint32 = 380
+	// AttrStrangePart1Val represents the first applied Strange Part counter value.
+	AttrStrangePart1Val uint32 = 381
 	// AttrStrangePart2 represents the second applied Strange Part slot.
 	AttrStrangePart2 uint32 = 382
+	// AttrStrangePart2Val represents the second applied Strange Part counter value.
+	AttrStrangePart2Val uint32 = 383
 	// AttrStrangePart3 represents the third applied Strange Part slot.
 	AttrStrangePart3 uint32 = 384
+	// AttrStrangePart3Val represents the third applied Strange Part counter value.
+	AttrStrangePart3Val uint32 = 385
 	// AttrCannotCraftVariant represents the crafting-restriction attribute variation.
 	AttrCannotCraftVariant uint32 = 449
 	// AttrEOTLEarlySupporter represents the End of the Line supporter tag.
@@ -277,6 +283,8 @@ type Item struct {
 	Spells []sku.Spell
 	// Parts contains the list of Strange Part IDs.
 	Parts []uint32
+	// PartValues maps Strange Part IDs to their counter values.
+	PartValues map[uint32]uint32
 	// HasCustomDecal indicates whether the item has a custom decal (applied picture).
 	HasCustomDecal bool
 	// DecalUGCID represents the reconstructed 64-bit UGC ID of the custom decal image.
@@ -924,6 +932,10 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 	var (
 		decalLo uint32
 		decalHi uint32
+
+		part1ID, part1Val uint32
+		part2ID, part2Val uint32
+		part3ID, part3Val uint32
 	)
 
 	for _, attr := range p.GetAttribute() {
@@ -958,8 +970,21 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 			item.IsElevated = true
 		case AttrCraftNumber:
 			item.CraftNumber = getUint(val)
-		case AttrStrangePart1, AttrStrangePart2, AttrStrangePart3:
-			item.Parts = append(item.Parts, uint32(getFloat(val)))
+		case AttrStrangePart1:
+			part1ID = uint32(getFloat(val))
+			item.Parts = append(item.Parts, part1ID)
+		case AttrStrangePart2:
+			part2ID = uint32(getFloat(val))
+			item.Parts = append(item.Parts, part2ID)
+		case AttrStrangePart3:
+			part3ID = uint32(getFloat(val))
+			item.Parts = append(item.Parts, part3ID)
+		case AttrStrangePart1Val:
+			part1Val = getUint(val)
+		case AttrStrangePart2Val:
+			part2Val = getUint(val)
+		case AttrStrangePart3Val:
+			part3Val = getUint(val)
 		case AttrCannotCraftVariant:
 			item.IsCraftable = false
 		case AttrEOTLEarlySupporter:
@@ -999,6 +1024,21 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 		case 227: // custom_texture_hi
 			decalHi = getUint(val)
 			item.HasCustomDecal = true
+		}
+	}
+
+	if part1ID != 0 || part2ID != 0 || part3ID != 0 {
+		item.PartValues = make(map[uint32]uint32)
+		if part1ID != 0 {
+			item.PartValues[part1ID] = part1Val
+		}
+
+		if part2ID != 0 {
+			item.PartValues[part2ID] = part2Val
+		}
+
+		if part3ID != 0 {
+			item.PartValues[part3ID] = part3Val
 		}
 	}
 

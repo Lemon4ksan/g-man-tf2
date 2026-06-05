@@ -1001,7 +1001,12 @@ func (s *Schema) ItemName(item *sku.Item, proper, usePipeForSkin, scmFormat bool
 			}
 		}
 
-		parts = append(parts, "("+partName+": 0)")
+		val := 0
+		if item.PartValues != nil {
+			val = item.PartValues[partID]
+		}
+
+		parts = append(parts, "("+partName+": "+strconv.Itoa(val)+")")
 	}
 
 	if item.Crateseries != 0 {

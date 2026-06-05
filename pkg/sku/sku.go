@@ -43,6 +43,7 @@ type Item struct {
 	Paint         int
 	Spells        []Spell
 	Parts         []int
+	PartValues    map[int]int
 }
 
 // Spell represents a Halloween spell attached to an item.

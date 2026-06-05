@@ -466,8 +466,11 @@ func TestSOCache_protoToItem_Attributes_ParsedCorrectly(t *testing.T) {
 		{DefIndex: proto.Uint32(AttrKillEater), ValueBytes: uint32ToBytes(1)},
 		{DefIndex: proto.Uint32(AttrCraftNumber), ValueBytes: uint32ToBytes(42)},
 		{DefIndex: proto.Uint32(AttrStrangePart1), ValueBytes: float32ToBytes(101.0)},
+		{DefIndex: proto.Uint32(AttrStrangePart1Val), ValueBytes: uint32ToBytes(42)},
 		{DefIndex: proto.Uint32(AttrStrangePart2), ValueBytes: float32ToBytes(102.0)},
+		{DefIndex: proto.Uint32(AttrStrangePart2Val), ValueBytes: uint32ToBytes(500)},
 		{DefIndex: proto.Uint32(AttrStrangePart3), ValueBytes: float32ToBytes(103.0)},
+		{DefIndex: proto.Uint32(AttrStrangePart3Val), ValueBytes: uint32ToBytes(1337)},
 		{DefIndex: proto.Uint32(AttrCannotCraftVariant), ValueBytes: uint32ToBytes(1)},
 		{DefIndex: proto.Uint32(AttrEOTLEarlySupporter), ValueBytes: float32ToBytes(1.0)},
 		{DefIndex: proto.Uint32(AttrQuestLoanerIDLow), ValueBytes: uint32ToBytes(0xAA55AA55)},
@@ -508,6 +511,7 @@ func TestSOCache_protoToItem_Attributes_ParsedCorrectly(t *testing.T) {
 	assert.True(t, item.IsElevated)
 	assert.Equal(t, uint32(42), item.CraftNumber)
 	assert.Equal(t, []uint32{101, 102, 103}, item.Parts)
+	assert.Equal(t, map[uint32]uint32{101: 42, 102: 500, 103: 1337}, item.PartValues)
 	assert.True(t, item.EarlySupporter)
 	assert.Equal(t, uint64(0x55AA55AAAA55AA55), item.QuestID)
 	assert.InDelta(t, float32(0.123), item.Wear, 0.0001)
