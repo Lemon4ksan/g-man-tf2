@@ -418,6 +418,8 @@ func IdentifySpell(name string) (sku.Spell, bool) {
 		shortName = strings.TrimPrefix(shortName, p)
 	}
 
+	shortName = strings.TrimSuffix(shortName, " (spell only active during event)")
+
 	if s, ok := SpellDefinitions[shortName]; ok {
 		return s, true
 	}

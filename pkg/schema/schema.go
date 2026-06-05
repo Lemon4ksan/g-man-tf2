@@ -322,6 +322,29 @@ func (s *Schema) buildIndices() {
 		}
 	}
 
+	if len(s.qualByName) == 0 {
+		fallbackQualities := map[int]string{
+			0:  "Normal",
+			1:  "Genuine",
+			3:  "Vintage",
+			5:  "Unusual",
+			6:  "Unique",
+			7:  "Community",
+			8:  "Valve",
+			9:  "Self-Made",
+			10: "Customized",
+			11: "Strange",
+			12: "Completed",
+			13: "Haunted",
+			14: "Collector's",
+			15: "Decorated Weapon",
+		}
+		for id, name := range fallbackQualities {
+			s.qualByID[id] = name
+			s.qualByName[strings.ToLower(name)] = id
+		}
+	}
+
 	seenEffects := make(map[string]bool)
 
 	for _, eff := range s.Raw.Schema.AttributeControlledAttachedParticles {
@@ -1644,7 +1667,7 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 		debugLog("with # after", name, item)
 	}
 
-	if strings.Contains(name, "salvaged mann co. supply crate") {
+	if strings.Contains(name, "salvaged mann co. supply crate") && !strings.Contains(name, "key") {
 		debugLog("salvaged crate", name, item)
 		item.Crateseries = number
 		item.Defindex = 5068
@@ -1654,7 +1677,7 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 		return item
 	}
 
-	if strings.Contains(name, "select reserve mann co. supply crate") {
+	if strings.Contains(name, "select reserve mann co. supply crate") && !strings.Contains(name, "key") {
 		item.Defindex = 5660
 		item.Crateseries = 60
 		item.Quality = QualityUnique
@@ -1662,7 +1685,7 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 		return item
 	}
 
-	if strings.Contains(name, "mann co. supply crate") {
+	if strings.Contains(name, "mann co. supply crate") && !strings.Contains(name, "key") {
 		debugLog("mann co crate", name, item)
 
 		crateseries := number
@@ -1784,10 +1807,10 @@ func (s *Schema) SKUFromItem(item *sku.Item) string {
 	return sku.FromObject(item)
 }
 
-// SKUFromEconItem converts a generic [trading.Item] into a standardized TF2 SKU string.
-func (s *Schema) SKUFromEconItem(item *trading.Item) string {
+// ItemFromEconItem converts a generic [trading.Item] into a structured [sku.Item] with all attributes parsed.
+func (s *Schema) ItemFromEconItem(item *trading.Item) *sku.Item {
 	if item == nil {
-		return "unknown"
+		return nil
 	}
 
 	nameToParse := item.MarketHashName
@@ -1797,7 +1820,7 @@ func (s *Schema) SKUFromEconItem(item *trading.Item) string {
 
 	skuItem := s.ItemFromName(nameToParse)
 	if skuItem == nil {
-		return "unknown"
+		return nil
 	}
 
 	for _, tag := range item.Tags {
@@ -1885,12 +1908,21 @@ func (s *Schema) SKUFromEconItem(item *trading.Item) string {
 
 		if d.Color == "756b5e" {
 			clean := strings.Trim(val, "()")
-			if before, _, ok := strings.Cut(clean, ":"); ok {
+			if before, after, ok := strings.Cut(clean, ":"); ok {
 				partName := strings.TrimSpace(before)
 				for name, suffix := range s.StrangeParts() {
 					if strings.Contains(partName, name) {
 						if partID, err := strconv.Atoi(strings.TrimPrefix(suffix, "sp")); err == nil {
 							skuItem.Parts = append(skuItem.Parts, partID)
+
+							valStr := strings.TrimSpace(after)
+							valStr = strings.ReplaceAll(valStr, ",", "")
+							if valInt, err := strconv.Atoi(valStr); err == nil {
+								if skuItem.PartValues == nil {
+									skuItem.PartValues = make(map[int]int)
+								}
+								skuItem.PartValues[partID] = valInt
+							}
 						}
 
 						break
@@ -1920,6 +1952,16 @@ func (s *Schema) SKUFromEconItem(item *trading.Item) string {
 	}
 
 	s.NormalizeItem(skuItem)
+
+	return skuItem
+}
+
+// SKUFromEconItem converts a generic [trading.Item] into a standardized TF2 SKU string.
+func (s *Schema) SKUFromEconItem(item *trading.Item) string {
+	skuItem := s.ItemFromEconItem(item)
+	if skuItem == nil {
+		return "unknown"
+	}
 
 	return sku.FromObject(skuItem)
 }

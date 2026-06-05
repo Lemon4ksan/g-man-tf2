@@ -328,7 +328,12 @@ func (m *Manager) refreshPriceDB(ctx context.Context) error {
 		return fmt.Errorf("failed to fetch items_game.txt: %w", err)
 	}
 
-	overview := map[string]any{"result": rawSchema}
+	overview, err := m.getSchemaOverview(ctx)
+	if err != nil {
+		m.Logger.WarnContext(ctx, "Failed to fetch schema overview from Steam, using PriceDB raw schema instead", log.Err(err))
+		overview = map[string]any{"result": rawSchema}
+	}
+
 	if err := m.buildSchema(overview, items, paintKits, itemsGame); err != nil {
 		return err
 	}
