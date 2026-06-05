@@ -6,7 +6,7 @@ require (
 	github.com/PuerkitoBio/goquery v1.11.0
 	github.com/andygrunwald/vdf v1.1.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/lemon4ksan/g-man v0.5.1
+	github.com/lemon4ksan/g-man v0.5.2
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/sync v0.19.0
