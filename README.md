@@ -39,7 +39,6 @@ pkg/
 │   ├── bptf/         # backpack.tf integrations (listing management, snap scraper)
 │   ├── crit/         # Crit.tf storefront listing synchronizer
 │   └── rep/          # Trust, feedback, and user reputation lookup utilities
-├── behavior/         # High-level behavior loops
 ├── trading/          # Onion-style trading middlewares (pricer, limits, counters)
 ├── reason/           # TF2-specific trade rejection reasons
 ```

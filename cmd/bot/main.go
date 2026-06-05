@@ -32,7 +32,6 @@ import (
 	webtrading "github.com/lemon4ksan/g-man/pkg/trading/web"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
-	"github.com/lemon4ksan/g-man-tf2/pkg/behavior/staleoffers"
 	"github.com/lemon4ksan/g-man-tf2/pkg/crafting"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/bptf"
@@ -249,7 +248,6 @@ func (b *Bot) setupOrchestrator() {
 
 	b.orchestrator.Install(
 		guard.AutoAccept(guardian, guardBehaviorCfg),
-		staleoffers.Monitor(webTradeManager, b.tradeCfgManager, staleoffers.DefaultConfig()),
 		achievements.Simulate(tf2Mod, tf2.AchievementConfig()),
 	)
 
