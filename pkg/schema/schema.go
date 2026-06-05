@@ -258,6 +258,16 @@ type Schema struct {
 
 // New constructs a [Schema] instance and indexes the [Raw] payload for O(1) lookups.
 func New(raw *Raw) *Schema {
+	if raw != nil && len(raw.Schema.KillEaterScoreTypes) == 0 {
+		raw.Schema.KillEaterScoreTypes = make([]*KillEaterScoreType, 0, len(StrangePartsMap))
+		for typeID, typeName := range StrangePartsMap {
+			raw.Schema.KillEaterScoreTypes = append(raw.Schema.KillEaterScoreTypes, &KillEaterScoreType{
+				Type:     typeID,
+				TypeName: typeName,
+			})
+		}
+	}
+
 	s := &Schema{
 		Raw:            raw,
 		itemsByDef:     make(map[int]*Item),
