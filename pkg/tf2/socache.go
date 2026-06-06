@@ -53,10 +53,6 @@ func (f EconItemFlag) HasFlag(flag EconItemFlag) bool {
 
 // Attributes list configuration from items_game.txt.
 const (
-	// AttrCustomName represents a Name Tag customization.
-	AttrCustomName uint32 = 111
-	// AttrCustomDesc represents a Description Tag customization.
-	AttrCustomDesc uint32 = 112
 	// AttrMedalNumber represents a registration number on tournament medals.
 	AttrMedalNumber uint32 = 133
 	// AttrUnusualEffect represents the Unusual particle effect identifier.
@@ -93,6 +89,10 @@ const (
 	AttrStrangePart3Val uint32 = 385
 	// AttrCannotCraftVariant represents the crafting-restriction attribute variation.
 	AttrCannotCraftVariant uint32 = 449
+	// AttrCustomName represents a Name Tag customization in TF2.
+	AttrCustomName uint32 = 500
+	// AttrCustomDesc represents a Description Tag customization in TF2.
+	AttrCustomDesc uint32 = 501
 	// AttrEOTLEarlySupporter represents the End of the Line supporter tag.
 	AttrEOTLEarlySupporter uint32 = 703
 	// AttrWear represents the skin pattern wear float value.
@@ -289,6 +289,11 @@ type Item struct {
 	HasCustomDecal bool
 	// DecalUGCID represents the reconstructed 64-bit UGC ID of the custom decal image.
 	DecalUGCID uint64
+
+	// ImageURL represents the URL of the small backpack icon for the relevant item.
+	ImageURL string
+	// ImageURLLarge represents the URL of the large backpack image for the relevant item.
+	ImageURLLarge string
 }
 
 // Position returns the item's slot index in the backpack.
@@ -379,6 +384,9 @@ func (i *Item) Fix(s *schema.Schema) {
 	if sch == nil {
 		return
 	}
+
+	i.ImageURL = sch.ImageURL
+	i.ImageURLLarge = sch.ImageURLLarge
 
 	for _, attr := range sch.Attributes {
 		if attr.Name == "cannot trade" || attr.Class == "cannot_trade" {
@@ -944,9 +952,13 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 
 		switch def {
 		case AttrCustomName:
-			item.CustomName = string(val)
+			if name := cleanGCString(val); name != "" {
+				item.CustomName = name
+			}
 		case AttrCustomDesc:
-			item.CustomDesc = string(val)
+			if desc := cleanGCString(val); desc != "" {
+				item.CustomDesc = desc
+			}
 		case AttrMedalNumber:
 			item.MedalNumber = getUint(val)
 		case AttrUnusualEffect:
@@ -1105,4 +1117,28 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 	}
 
 	return item
+}
+
+// cleanGCString removes C-style null terminators and non-printable control
+// characters from raw Game Coordinator attribute bytes.
+func cleanGCString(b []byte) string {
+	if len(b) == 0 {
+		return ""
+	}
+
+	start := 0
+	for start < len(b) && (b[start] < 32 || b[start] == 127) {
+		start++
+	}
+
+	end := len(b)
+	for end > start && (b[end-1] < 32 || b[end-1] == 127 || b[end-1] == 0) {
+		end--
+	}
+
+	if start >= end {
+		return ""
+	}
+
+	return string(b[start:end])
 }

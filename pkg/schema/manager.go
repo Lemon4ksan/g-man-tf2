@@ -330,7 +330,12 @@ func (m *Manager) refreshPriceDB(ctx context.Context) error {
 
 	overview, err := m.getSchemaOverview(ctx)
 	if err != nil {
-		m.Logger.WarnContext(ctx, "Failed to fetch schema overview from Steam, using PriceDB raw schema instead", log.Err(err))
+		m.Logger.WarnContext(
+			ctx,
+			"Failed to fetch schema overview from Steam, using PriceDB raw schema instead",
+			log.Err(err),
+		)
+
 		overview = map[string]any{"result": rawSchema}
 	}
 
@@ -503,6 +508,8 @@ func (m *Manager) buildSchema(
 			item.ItemClass = intern(item.ItemClass)
 			item.CraftClass = intern(item.CraftClass)
 			item.ItemName = intern(item.ItemName)
+			item.ImageURL = intern(item.ImageURL)
+			item.ImageURLLarge = intern(item.ImageURLLarge)
 
 			for i, class := range item.UsedByClasses {
 				item.UsedByClasses[i] = intern(class)

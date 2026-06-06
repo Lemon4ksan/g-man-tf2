@@ -79,6 +79,10 @@ type Item struct {
 	UsedByClasses []string `json:"used_by_classes"`
 	// Attributes contains static attributes defined on this item.
 	Attributes []ItemAttribute `json:"attributes"`
+	// ImageURL represents the URL of the small (128x128) backpack icon.
+	ImageURL string `json:"image_url"`
+	// ImageURLLarge represents the URL of the large (512x512) backpack image.
+	ImageURLLarge string `json:"image_url_large"`
 }
 
 // Capabilities defines customization options and trade/craft permissions for an item.
@@ -1916,11 +1920,13 @@ func (s *Schema) ItemFromEconItem(item *trading.Item) *sku.Item {
 							skuItem.Parts = append(skuItem.Parts, partID)
 
 							valStr := strings.TrimSpace(after)
+
 							valStr = strings.ReplaceAll(valStr, ",", "")
 							if valInt, err := strconv.Atoi(valStr); err == nil {
 								if skuItem.PartValues == nil {
 									skuItem.PartValues = make(map[int]int)
 								}
+
 								skuItem.PartValues[partID] = valInt
 							}
 						}
