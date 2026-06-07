@@ -187,8 +187,8 @@ func isActionItem(sch *schema.Item) bool {
 	}
 
 	nameLower := strings.ToLower(sch.ItemName)
-
 	internalLower := strings.ToLower(sch.Name)
+
 	if strings.Contains(nameLower, "noise maker") || strings.Contains(internalLower, "noise_maker") {
 		return true
 	}
@@ -280,9 +280,7 @@ func DefaultLayout() Layout {
 
 // CurrencySorter sorts Keys first, then Ref, Rec, and Scrap.
 func CurrencySorter(a, b *tf2.Item, s *schema.Schema) int {
-	aPri := GetPurePriority(a.DefIndex, s)
-
-	bPri := GetPurePriority(b.DefIndex, s)
+	aPri, bPri := GetPurePriority(a.DefIndex, s), GetPurePriority(b.DefIndex, s)
 	if aPri != bPri {
 		return aPri - bPri
 	}
@@ -300,23 +298,17 @@ func CurrencySorter(a, b *tf2.Item, s *schema.Schema) int {
 
 // WeaponsSorter groups weapons by quality (Unique first, others second), then by class (Scout -> Spy -> Multiclass), slot (Primary -> Melee), and defindex.
 func WeaponsSorter(a, b *tf2.Item, s *schema.Schema) int {
-	aQualPri := GetQualityPriority(a.Quality)
-
-	bQualPri := GetQualityPriority(b.Quality)
+	aQualPri, bQualPri := GetQualityPriority(a.Quality), GetQualityPriority(b.Quality)
 	if aQualPri != bQualPri {
 		return aQualPri - bQualPri
 	}
 
-	aClassPri := GetClassPriority(a, s)
-
-	bClassPri := GetClassPriority(b, s)
+	aClassPri, bClassPri := GetClassPriority(a, s), GetClassPriority(b, s)
 	if aClassPri != bClassPri {
 		return aClassPri - bClassPri
 	}
 
-	aSlotPri := GetSlotPriority(a, s)
-
-	bSlotPri := GetSlotPriority(b, s)
+	aSlotPri, bSlotPri := GetSlotPriority(a, s), GetSlotPriority(b, s)
 	if aSlotPri != bSlotPri {
 		return aSlotPri - bSlotPri
 	}

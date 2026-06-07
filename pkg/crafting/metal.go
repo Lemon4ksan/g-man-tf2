@@ -13,6 +13,7 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/log"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
+	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 )
 
@@ -174,10 +175,9 @@ func (m *MetalManager) TryToSmeltForChange(ctx context.Context, needed currency.
 // SmeltDuplicates identifies duplicate weapons across classes and smelts them until the needed scrap value is covered.
 // Returns an error if no duplicate weapons are available or if non-tradable weapons are encountered.
 func (m *MetalManager) SmeltDuplicates(ctx context.Context, needed currency.Scrap) error {
-	classes := []string{"Scout", "Soldier", "Pyro", "Demoman", "Heavy", "Engineer", "Medic", "Sniper", "Spy"}
 	smelted := 0
 
-	for _, class := range classes {
+	for _, class := range schema.Classes {
 		for {
 			weapons := m.fetcher.FindWeaponsByClassForSmelting(class)
 			if len(weapons) < 2 {

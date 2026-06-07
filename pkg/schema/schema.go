@@ -111,16 +111,16 @@ type ItemAttribute struct {
 func (a *ItemAttribute) UnmarshalJSON(data []byte) error {
 	type Alias ItemAttribute
 
-	aux := &struct {
-		*Alias
+	var aux struct {
+		Alias
 		DynamicValue any `json:"value"`
-	}{
-		Alias: (*Alias)(a),
 	}
 
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
+
+	*a = ItemAttribute(aux.Alias)
 
 	switch v := aux.DynamicValue.(type) {
 	case float64:
@@ -258,6 +258,16 @@ type Schema struct {
 
 	spellsByName map[string]sku.Spell
 	spellsByID   map[string]string
+
+	craftableWeapons             []*Item
+	craftableWeaponsForTrading   []string
+	uncraftableWeaponsForTrading []string
+	weaponsForCraftingByClass    map[string][]string
+	unusualEffectsCache          []struct {
+		Name string
+		ID   int
+	}
+	paintableItemDefindexesCache []int
 }
 
 // New constructs a [Schema] instance and indexes the [Raw] payload for O(1) lookups.
@@ -398,6 +408,60 @@ func (s *Schema) buildIndices() {
 
 	s.crateSeriesList = s.buildCrateSeriesList()
 	s.buildSpellIndices()
+
+	s.craftableWeapons = make([]*Item, 0)
+	for _, it := range s.Raw.Schema.Items {
+		if _, ok := weaponsToExclude[it.Defindex]; ok {
+			continue
+		}
+
+		if it.ItemQuality == QualityUnique && it.CraftClass == "weapon" {
+			s.craftableWeapons = append(s.craftableWeapons, it)
+		}
+	}
+
+	s.craftableWeaponsForTrading = make([]string, 0, len(s.craftableWeapons))
+	s.uncraftableWeaponsForTrading = make([]string, 0)
+
+	for _, it := range s.craftableWeapons {
+		s.craftableWeaponsForTrading = append(s.craftableWeaponsForTrading, fmt.Sprintf("%d;6", it.Defindex))
+		if _, ok := excludeUncraftable[it.Defindex]; !ok {
+			s.uncraftableWeaponsForTrading = append(
+				s.uncraftableWeaponsForTrading,
+				fmt.Sprintf("%d;6;uncraftable", it.Defindex),
+			)
+		}
+	}
+
+	s.weaponsForCraftingByClass = make(map[string][]string)
+	for _, class := range Classes {
+		var classWeapons []string
+		for _, it := range s.craftableWeapons {
+			if slices.Contains(it.UsedByClasses, class) {
+				classWeapons = append(classWeapons, fmt.Sprintf("%d;6", it.Defindex))
+			}
+		}
+
+		s.weaponsForCraftingByClass[class] = classWeapons
+	}
+
+	s.unusualEffectsCache = make([]struct {
+		Name string
+		ID   int
+	}, 0, len(s.effByID))
+	for id, name := range s.effByID {
+		s.unusualEffectsCache = append(s.unusualEffectsCache, struct {
+			Name string
+			ID   int
+		}{name, id})
+	}
+
+	s.paintableItemDefindexesCache = make([]int, 0)
+	for _, it := range s.Raw.Schema.Items {
+		if it.Capabilities != nil && it.Capabilities.Paintable {
+			s.paintableItemDefindexesCache = append(s.paintableItemDefindexesCache, it.Defindex)
+		}
+	}
 
 	s.Raw.ItemsGame = nil
 }
@@ -564,19 +628,7 @@ func (s *Schema) UnusualEffects() []struct {
 	Name string
 	ID   int
 } {
-	out := make([]struct {
-		Name string
-		ID   int
-	}, 0, len(s.effByID))
-
-	for id, name := range s.effByID {
-		out = append(out, struct {
-			Name string
-			ID   int
-		}{name, id})
-	}
-
-	return out
+	return s.unusualEffectsCache
 }
 
 // Paints returns a map of all paint color names to their decimal values.
@@ -586,15 +638,7 @@ func (s *Schema) Paints() map[string]int {
 
 // PaintableItemDefindexes returns a list of defindexes for all paintable items.
 func (s *Schema) PaintableItemDefindexes() []int {
-	var out []int
-
-	for _, it := range s.Raw.Schema.Items {
-		if it.Capabilities != nil && it.Capabilities.Paintable {
-			out = append(out, it.Defindex)
-		}
-	}
-
-	return out
+	return s.paintableItemDefindexesCache
 }
 
 // StrangeParts returns a map of strange part names to their SKU suffixes.
@@ -652,79 +696,24 @@ func (s *Schema) SpellIDByName(name string) (sku.Spell, bool) {
 	return IdentifySpell(name)
 }
 
-var weaponsToExclude = map[int]bool{
-	266: true, 452: true, 466: true, 474: true,
-	572: true, 574: true, 587: true, 638: true,
-	735: true, 736: true, 737: true, 851: true,
-	880: true, 933: true, 939: true, 947: true,
-	1013: true, 1152: true, 30474: true,
-}
-
 // CraftableWeaponsSchema returns all craftable weapon definitions in the schema.
 func (s *Schema) CraftableWeaponsSchema() []*Item {
-	var out []*Item
-
-	for _, it := range s.Raw.Schema.Items {
-		if weaponsToExclude[it.Defindex] {
-			continue
-		}
-
-		if it.ItemQuality == QualityUnique && it.CraftClass == "weapon" {
-			out = append(out, it)
-		}
-	}
-
-	return out
+	return s.craftableWeapons
 }
 
 // WeaponsForCraftingByClass returns weapon SKUs usable by the specified character class.
 func (s *Schema) WeaponsForCraftingByClass(class string) []string {
-	validClasses := map[string]bool{
-		"Scout": true, "Soldier": true, "Pyro": true, "Demoman": true,
-		"Heavy": true, "Engineer": true, "Medic": true, "Sniper": true, "Spy": true,
-	}
-	if !validClasses[class] {
-		panic(fmt.Sprintf("invalid class %q", class))
-	}
-
-	var out []string
-
-	for _, it := range s.CraftableWeaponsSchema() {
-		if slices.Contains(it.UsedByClasses, class) {
-			out = append(out, fmt.Sprintf("%d;6", it.Defindex))
-		}
-	}
-
-	return out
+	return s.weaponsForCraftingByClass[class]
 }
 
 // CraftableWeaponsForTrading returns SKUs of all craftable unique weapons.
 func (s *Schema) CraftableWeaponsForTrading() []string {
-	weapons := s.CraftableWeaponsSchema()
-
-	out := make([]string, 0, len(weapons))
-	for _, it := range weapons {
-		out = append(out, fmt.Sprintf("%d;6", it.Defindex))
-	}
-
-	return out
+	return s.craftableWeaponsForTrading
 }
 
 // UncraftableWeaponsForTrading returns SKUs of all uncraftable unique weapons.
 func (s *Schema) UncraftableWeaponsForTrading() []string {
-	exclude := map[int]bool{348: true, 349: true, 1178: true, 1179: true, 1180: true, 1181: true, 1190: true}
-
-	var out []string
-
-	for _, it := range s.CraftableWeaponsSchema() {
-		if exclude[it.Defindex] {
-			continue
-		}
-
-		out = append(out, fmt.Sprintf("%d;6;uncraftable", it.Defindex))
-	}
-
-	return out
+	return s.uncraftableWeaponsForTrading
 }
 
 // CrateSeriesList returns a map of crate defindexes to their default series numbers.
@@ -777,6 +766,13 @@ func (s *Schema) PaintKits() map[string]int {
 	return s.paintKitByName
 }
 
+var validSingleSeries = map[int][]int{
+	5022: {1, 3, 7, 12, 13, 18, 19, 23, 26, 31, 34, 39, 43, 47, 54, 57, 75},
+	5041: {2, 4, 8, 11, 14, 17, 20, 24, 27, 32, 37, 42, 44, 49, 56, 71, 76},
+	5045: {5, 9, 10, 15, 16, 21, 25, 28, 29, 33, 38, 41, 45, 55, 59, 77},
+	5068: {30, 40, 50},
+}
+
 // CheckExistence verifies whether the specified [sku.Item] possesses valid quality and attribute configurations.
 func (s *Schema) CheckExistence(item *sku.Item) bool {
 	schemaItem := s.ItemByDef(item.Defindex)
@@ -791,18 +787,19 @@ func (s *Schema) CheckExistence(item *sku.Item) bool {
 		}
 	}
 
-	allowedQualities := []int{schemaItem.ItemQuality}
-
-	switch schemaItem.ItemQuality {
-	case QualityUnusual:
-		allowedQualities = append(allowedQualities, 11)
-	case QualityUnique:
-		allowedQualities = append(allowedQualities, 1, 3, 11)
-	case QualityStrange:
-		allowedQualities = append(allowedQualities, 5)
+	qualityValid := item.Quality == schemaItem.ItemQuality
+	if !qualityValid {
+		switch schemaItem.ItemQuality {
+		case QualityUnusual:
+			qualityValid = item.Quality == 11
+		case QualityUnique:
+			qualityValid = item.Quality == 1 || item.Quality == 3 || item.Quality == 11
+		case QualityStrange:
+			qualityValid = item.Quality == 5
+		}
 	}
 
-	if !slices.Contains(allowedQualities, item.Quality) {
+	if !qualityValid {
 		return false
 	}
 
@@ -842,21 +839,19 @@ func (s *Schema) CheckExistence(item *sku.Item) bool {
 		}
 	}
 
-	hasExtraAttr := func() bool {
-		return item.Quality != QualityUnique ||
-			item.Killstreak != 0 ||
-			item.Australium ||
-			item.Effect != 0 ||
-			item.Festivized ||
-			item.Paintkit != 0 ||
-			item.Wear != 0 ||
-			item.Quality2 != 0 ||
-			item.Craftnumber != 0 ||
-			item.Target != 0 ||
-			item.Output != 0 ||
-			item.OutputQuality != 0 ||
-			item.Paint != 0
-	}
+	hasExtraAttr := item.Quality != QualityUnique ||
+		item.Killstreak != 0 ||
+		item.Australium ||
+		item.Effect != 0 ||
+		item.Festivized ||
+		item.Paintkit != 0 ||
+		item.Wear != 0 ||
+		item.Quality2 != 0 ||
+		item.Craftnumber != 0 ||
+		item.Target != 0 ||
+		item.Output != 0 ||
+		item.OutputQuality != 0 ||
+		item.Paint != 0
 
 	if schemaItem.ItemClass == "supply_crate" && item.Crateseries == 0 {
 		if item.Defindex != 5739 && item.Defindex != 5760 &&
@@ -864,13 +859,13 @@ func (s *Schema) CheckExistence(item *sku.Item) bool {
 			return false
 		}
 
-		if hasExtraAttr() {
+		if hasExtraAttr {
 			return false
 		}
 	}
 
 	if item.Crateseries != 0 {
-		if hasExtraAttr() {
+		if hasExtraAttr {
 			return false
 		}
 
@@ -878,12 +873,6 @@ func (s *Schema) CheckExistence(item *sku.Item) bool {
 			return false
 		}
 
-		validSingleSeries := map[int][]int{
-			5022: {1, 3, 7, 12, 13, 18, 19, 23, 26, 31, 34, 39, 43, 47, 54, 57, 75},
-			5041: {2, 4, 8, 11, 14, 17, 20, 24, 27, 32, 37, 42, 44, 49, 56, 71, 76},
-			5045: {5, 9, 10, 15, 16, 21, 25, 28, 29, 33, 38, 41, 45, 55, 59, 77},
-			5068: {30, 40, 50},
-		}
 		if list, ok := validSingleSeries[item.Defindex]; ok {
 			if !slices.Contains(list, item.Crateseries) {
 				return false
@@ -1154,25 +1143,29 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 		debugLog("strange after", name, item)
 	}
 
-	name = strings.ReplaceAll(name, "uncraftable", "non-craftable")
-	if strings.Contains(name, "non-craftable") {
-		debugLog("non-craftable before", name, item)
-		name = strings.ReplaceAll(name, "non-craftable", "")
-		name = strings.TrimSpace(name)
-		item.Craftable = false
-		debugLog("non-craftable after", name, item)
+	if strings.Contains(name, "craft") {
+		name = strings.ReplaceAll(name, "uncraftable", "non-craftable")
+		if strings.Contains(name, "non-craftable") {
+			debugLog("non-craftable before", name, item)
+			name = strings.ReplaceAll(name, "non-craftable", "")
+			name = strings.TrimSpace(name)
+			item.Craftable = false
+			debugLog("non-craftable after", name, item)
+		}
 	}
 
-	name = strings.ReplaceAll(name, "untradeable", "non-tradable")
-	name = strings.ReplaceAll(name, "untradable", "non-tradable")
+	if strings.Contains(name, "trad") {
+		name = strings.ReplaceAll(name, "untradeable", "non-tradable")
+		name = strings.ReplaceAll(name, "untradable", "non-tradable")
 
-	name = strings.ReplaceAll(name, "non-tradeable", "non-tradable")
-	if strings.Contains(name, "non-tradable") {
-		debugLog("non-tradable before", name, item)
-		name = strings.ReplaceAll(name, "non-tradable", "")
-		name = strings.TrimSpace(name)
-		item.Tradable = false
-		debugLog("non-tradable after", name, item)
+		name = strings.ReplaceAll(name, "non-tradeable", "non-tradable")
+		if strings.Contains(name, "non-tradable") {
+			debugLog("non-tradable before", name, item)
+			name = strings.ReplaceAll(name, "non-tradable", "")
+			name = strings.TrimSpace(name)
+			item.Tradable = false
+			debugLog("non-tradable after", name, item)
+		}
 	}
 
 	if strings.Contains(name, "unusualifier") {
@@ -1534,28 +1527,27 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 		debugLog("collector's chemistry set before", name, item)
 		name = strings.ReplaceAll(name, "collector's ", "")
 		name = strings.ReplaceAll(name, "chemistry set", "")
-
 		name = strings.TrimSpace(name)
+
 		if strings.Contains(name, "festive") && !strings.Contains(name, "a rather festive tree") {
 			item.Defindex = 20007
 		} else {
 			item.Defindex = 20006
 		}
 
-		schemaItem := s.ItemByName(name)
-		if schemaItem != nil {
-			item.Output = schemaItem.Defindex
+		item.Quality = QualityUnique
 
-			item.OutputQuality = QualityCollectors
-			if item.Quality == 0 {
-				item.Quality = schemaItem.ItemQuality
+		if name != "" {
+			schemaItem := s.ItemByName(name)
+			if schemaItem != nil {
+				item.Output = schemaItem.Defindex
+				item.OutputQuality = QualityCollectors
 			}
-		} else {
-			debugLog("return collector's chemistry set (no target)", name, item)
-			return item
 		}
 
 		debugLog("collector's chemistry set after", name, item)
+
+		return item
 	}
 
 	if strings.Contains(name, "strangifier chemistry set") {
@@ -1563,19 +1555,21 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 		name = strings.ReplaceAll(name, "strangifier chemistry set", "")
 		name = strings.TrimSpace(name)
 
-		schemaItem := s.ItemByName(name)
-		if schemaItem != nil {
-			item.Defindex = 20000
-			item.Target = schemaItem.Defindex
-			item.Quality = QualityUnique
-			item.Output = 6522
-			item.OutputQuality = QualityUnique
-		} else {
-			debugLog("return strangifier chemistry set (no target)", name, item)
-			return item
+		item.Defindex = 20000
+		item.Quality = QualityUnique
+		item.Output = 6522
+		item.OutputQuality = QualityUnique
+
+		if name != "" {
+			schemaItem := s.ItemByName(name)
+			if schemaItem != nil {
+				item.Target = schemaItem.Defindex
+			}
 		}
 
 		debugLog("strangifier chemistry set after", name, item)
+
+		return item
 	}
 
 	if strings.Contains(name, "strangifier") && !strings.Contains(name, "strangifier chemistry set") {

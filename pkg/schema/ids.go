@@ -67,6 +67,9 @@ const (
 	WearBattleScarred = 5
 )
 
+// Classes is a complete list of TF2 class names.
+var Classes = []string{"Scout", "Soldier", "Pyro", "Demoman", "Heavy", "Engineer", "Medic", "Sniper", "Spy"}
+
 // StrangePartsMap maps Strange part (Kill Eater Score Type) IDs to their official English display names.
 var StrangePartsMap = map[int]string{
 	0:   "Kills",
@@ -349,6 +352,19 @@ var strangifierChemistrySetSeries = map[int]int{
 	30374: 3, 30366: 3, 30347: 3, 30365: 3, 30355: 3,
 	30358: 3, 30340: 3, 30351: 3, 30376: 3, 30373: 3,
 	30346: 3, 30336: 3, 30337: 3, 30368: 3, 30364: 3,
+}
+
+var weaponsToExclude = map[int]struct{}{
+	266: {}, 452: {}, 466: {}, 474: {},
+	572: {}, 574: {}, 587: {}, 638: {},
+	735: {}, 736: {}, 737: {}, 851: {},
+	880: {}, 933: {}, 939: {}, 947: {},
+	1013: {}, 1152: {}, 30474: {},
+}
+
+var excludeUncraftable = map[int]struct{}{
+	348: {}, 349: {}, 1178: {}, 1179: {},
+	1180: {}, 1181: {}, 1190: {},
 }
 
 // RetiredKeyInfo represents a retired key.

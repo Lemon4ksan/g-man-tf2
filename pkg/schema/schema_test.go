@@ -1548,9 +1548,7 @@ func TestCoverage_SchemaHelpers(t *testing.T) {
 
 	assert.NotEmpty(t, s.CrateSeriesList())
 
-	assert.Panics(t, func() {
-		s.WeaponsForCraftingByClass("InvalidClass")
-	})
+	assert.Nil(t, s.WeaponsForCraftingByClass("InvalidClass"))
 
 	assert.NotEmpty(t, s.CraftableWeaponsForTrading())
 

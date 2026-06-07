@@ -11,6 +11,8 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/behavior"
 	"github.com/lemon4ksan/g-man/pkg/bus"
 	"github.com/lemon4ksan/g-man/pkg/log"
+
+	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 )
 
 // BehaviorName is the unique identifier for the pure liquidator behavior.
@@ -148,9 +150,7 @@ func (a *Automator) Tick(ctx context.Context) error {
 // It runs a condensing cycle after smelting is complete to compress newly generated scrap.
 // Returns an error if weapon smelting or metal condensing fails.
 func (a *Automator) CleanInventory(ctx context.Context) error {
-	classes := []string{"Scout", "Soldier", "Pyro", "Demoman", "Heavy", "Engineer", "Medic", "Sniper", "Spy"}
-
-	for _, class := range classes {
+	for _, class := range schema.Classes {
 		for {
 			weapons := a.inv.FindWeaponsByClassForSmelting(class)
 			if len(weapons) < 2 {
