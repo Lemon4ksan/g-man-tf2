@@ -205,7 +205,6 @@ func RunInventoryMaintenance(ctx context.Context, client *steam.Client, logger l
 	// --- STEP 1: Smelt Duplicate Weapons ---
 	logger.InfoContext(ctx, "Scanning for weapons to smelt...")
 
-	classes := []string{"Scout", "Soldier", "Pyro", "Demoman", "Heavy", "Engineer", "Medic", "Sniper", "Spy"}
 	s := bpMod.Schema().Get()
 
 	type SmeltPair struct {
@@ -216,7 +215,7 @@ func RunInventoryMaintenance(ctx context.Context, client *steam.Client, logger l
 
 	var plan []SmeltPair
 
-	for _, class := range classes {
+	for _, class := range schema.Classes {
 		weapons := bpMod.FindWeaponsByClassForSmelting(class)
 		if len(weapons) < 2 {
 			// No duplicates left for this class (requires at least 2 weapons)
