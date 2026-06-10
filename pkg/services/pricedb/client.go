@@ -12,7 +12,7 @@ import (
 
 const (
 	// BaseURL is the base URL for the PriceDB API.
-	BaseURL = "https://api.pricedb.io"
+	BaseURL = "https://pricedb.io"
 	// SKUURL is the base URL for the PriceDB SKU API.
 	SKUURL = "https://sku.pricedb.io"
 	// SpellURL is the base URL for the PriceDB Spell API.
@@ -56,15 +56,40 @@ func (c *Client) GetItem(ctx context.Context, sku string) (*Price, error) {
 }
 
 // GetItemsBulk fetches the latest prices for an array of SKUs in a single request.
+// It automatically filters out empty SKUs and splits the request into batches of up to 100 SKUs.
 func (c *Client) GetItemsBulk(ctx context.Context, skus []string) ([]*Price, error) {
-	req := bulkRequest{SKUs: skus}
-
-	resp, err := rest.PostJSON[bulkRequest, []*Price](ctx, c.restClient, "/api/items-bulk", req, nil)
-	if err != nil {
-		return nil, err
+	validSKUs := make([]string, 0, len(skus))
+	for _, sku := range skus {
+		if sku != "" {
+			validSKUs = append(validSKUs, sku)
+		}
 	}
 
-	return *resp, nil
+	if len(validSKUs) == 0 {
+		return nil, nil
+	}
+
+	const batchSize = 100
+
+	var allPrices []*Price
+
+	for i := 0; i < len(validSKUs); i += batchSize {
+		end := min(i+batchSize, len(validSKUs))
+		batch := validSKUs[i:end]
+
+		req := bulkRequest{SKUs: batch}
+
+		resp, err := rest.PostJSON[bulkRequest, []*Price](ctx, c.restClient, "/api/items-bulk", req, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		if resp != nil {
+			allPrices = append(allPrices, *resp...)
+		}
+	}
+
+	return allPrices, nil
 }
 
 // Search performs a fuzzy search for items by name.
