@@ -14,7 +14,7 @@ import (
 )
 
 var rxPriceKey = regexp.MustCompile(
-	`^(\d+);([0-9]|[1][0-5])(;((uncraftable)|(untrad(e)?able)|(australium)|(festive)|(strange)|((u|pk|td-|c|od-|oq-|p)\d+)|(w[1-5])|(kt-[1-3])|(n((100)|[1-9]\d?))))*?$|^\d+$`,
+	`^(\d+);([0-9]|[1][0-5])(;((uncraftable)|(untrad(e)?able)|(australium)|(festive)|(strange)|((u|pk|td-|c|od-|oq-|p|sd)\d+)|(w[1-5])|(kt-[1-3])|(n((100)|[1-9]\d?))))*?$|^\d+$`,
 )
 
 // IsValid tests if a string matches the standard TF2 SKU format.
@@ -44,6 +44,7 @@ type Item struct {
 	Spells        []Spell
 	Parts         []int
 	PartValues    map[int]int
+	Seed          int
 }
 
 // Spell represents a Halloween spell attached to an item.
@@ -112,6 +113,10 @@ func FromString(sku string) (*Item, error) {
 		case strings.HasPrefix(normAttr, "pk") && len(normAttr) > 2:
 			if val, err := strconv.Atoi(normAttr[2:]); err == nil {
 				item.Paintkit = val
+			}
+		case strings.HasPrefix(normAttr, "sd") && len(normAttr) > 2:
+			if val, err := strconv.Atoi(normAttr[2:]); err == nil {
+				item.Seed = val
 			}
 		case strings.HasPrefix(normAttr, "w") && len(normAttr) > 1:
 			if val, err := strconv.Atoi(normAttr[1:]); err == nil {
@@ -263,5 +268,29 @@ func FromObject(item *Item) string {
 		b.WriteString(strconv.Itoa(partID))
 	}
 
+	if item.Seed != 0 {
+		b.WriteString(";sd")
+		b.WriteString(strconv.Itoa(item.Seed))
+	}
+
 	return b.String()
+}
+
+// ToPricingSKU normalizes the specified SKU string by stripping transient flags
+// such as Festivized, Spells, Strange Parts, and Paint, which are typically
+// not priced separately or ignored by the base price database.
+// Returns the unmodified SKU string if parsing fails.
+func ToPricingSKU(skuStr string) string {
+	it, err := FromString(skuStr)
+	if err != nil {
+		return skuStr
+	}
+
+	it.Festivized = false
+	it.Spells = nil
+	it.Parts = nil
+	it.PartValues = nil
+	it.Paint = 0
+
+	return FromObject(it)
 }

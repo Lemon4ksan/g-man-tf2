@@ -158,31 +158,42 @@ func (m *ListingManager) ItemToSKU(doc ItemDocument) string {
 		return ""
 	}
 
-	// Resolve defindex by name since it's not provided in the bptf response
-	itemSchema := m.schema.Get().ItemByName(doc.BaseName)
-	if itemSchema == nil {
+	s := m.schema.Get()
+	if s == nil {
 		return ""
 	}
 
-	defindex := itemSchema.Defindex
+	// Try parsing full item name using schema ItemFromName first to get all attributes
+	item := s.ItemFromName(doc.Name)
+	if item == nil {
+		// Fallback to manual resolution if parsing failed
+		itemSchema := s.ItemByName(doc.BaseName)
+		if itemSchema == nil {
+			return ""
+		}
 
-	item := &sku.Item{
-		Defindex:  defindex,
-		Quality:   doc.Quality.ID,
-		Tradable:  doc.Tradable,
-		Craftable: doc.Craftable,
-	}
+		item = &sku.Item{
+			Defindex:  itemSchema.Defindex,
+			Quality:   doc.Quality.ID,
+			Tradable:  doc.Tradable,
+			Craftable: doc.Craftable,
+		}
 
-	if doc.Particle != nil {
-		item.Effect = doc.Particle.ID
-	}
+		if doc.Particle != nil {
+			item.Effect = doc.Particle.ID
+		}
 
-	if doc.Paint != nil {
-		item.Paint = doc.Paint.ID
-	}
+		if doc.Paint != nil {
+			item.Paint = doc.Paint.ID
+		}
 
-	if doc.ElevatedQuality != nil && doc.ElevatedQuality.ID == 11 {
-		item.Quality2 = 11
+		if doc.ElevatedQuality != nil && doc.ElevatedQuality.ID == 11 {
+			item.Quality2 = 11
+		}
+	} else {
+		// Ensure tradability and craftability are set from document
+		item.Tradable = doc.Tradable
+		item.Craftable = doc.Craftable
 	}
 
 	return sku.FromObject(item)

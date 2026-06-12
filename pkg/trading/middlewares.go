@@ -675,7 +675,8 @@ func isUnusual(target string) bool {
 	return it.Quality == 5
 }
 
-// GetPricingSKU normalizes the specified SKU string by stripping transient flags such as Festivized.
+// GetPricingSKU normalizes the specified SKU string by stripping transient flags such as Festivized, Spells, and Strange Parts.
+// Paint is kept to support manual pricing overrides and fallback naming for painted items.
 // Returns the unmodified SKU string if parsing fails.
 func GetPricingSKU(skuStr string) string {
 	it, err := sku.FromString(skuStr)
@@ -684,6 +685,9 @@ func GetPricingSKU(skuStr string) string {
 	}
 
 	it.Festivized = false
+	it.Spells = nil
+	it.Parts = nil
+	it.PartValues = nil
 
 	return sku.FromObject(it)
 }

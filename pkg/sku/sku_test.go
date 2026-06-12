@@ -185,3 +185,48 @@ func TestRoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func TestToPricingSKU(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{
+			input: "363;6",
+			want:  "363;6",
+		},
+		{
+			input: "363;6;festive",
+			want:  "363;6",
+		},
+		{
+			input: "363;6;s-1009-1;s-1004-3",
+			want:  "363;6",
+		},
+		{
+			input: "363;11;sp17;sp20",
+			want:  "363;11",
+		},
+		{
+			input: "200;6;p5;festive;s-1009-1;sp17",
+			want:  "200;6",
+		},
+		{
+			input: "15000;15;w3;pk1;strange;kt-3;festive",
+			want:  "15000;15;w3;pk1;strange;kt-3", // keep wear, paintkit, strange, killstreak
+		},
+		{
+			input: "invalid_sku",
+			want:  "invalid_sku",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := sku.ToPricingSKU(tt.input)
+			if got != tt.want {
+				t.Errorf("ToPricingSKU(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}

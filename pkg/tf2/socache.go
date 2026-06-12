@@ -97,6 +97,8 @@ const (
 	AttrEOTLEarlySupporter uint32 = 703
 	// AttrWear represents the skin pattern wear float value.
 	AttrWear uint32 = 725
+	// AttrPaintkitSeed represents the skin pattern seed.
+	AttrPaintkitSeed uint32 = 729
 	// AttrPaintkit represents the skin pattern index identifier.
 	AttrPaintkit uint32 = 834
 	// AttrSpell1 represents the first applied Halloween spell effect slot.
@@ -254,6 +256,8 @@ type Item struct {
 	Wear float32
 	// Paintkit represents the skin pattern ID.
 	Paintkit uint32
+	// PaintkitSeed represents the skin pattern seed (1-1000).
+	PaintkitSeed uint32
 	// CrateSeries represents the series number for supply crates.
 	CrateSeries uint32
 	// Paint represents the applied paint color ID.
@@ -352,6 +356,7 @@ func (i Item) ToSKUObject() *sku.Item {
 		Effect:      int(i.Effect),
 		Festivized:  i.Festivized,
 		Paintkit:    int(i.Paintkit),
+		Seed:        int(i.PaintkitSeed),
 		Wear:        int(i.Wear * 100),
 		Craftnumber: int(i.CraftNumber),
 		Crateseries: int(i.CrateSeries),
@@ -1009,6 +1014,8 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 			item.Wear = getFloat(val)
 		case AttrPaintkit:
 			item.Paintkit = getUint(val)
+		case AttrPaintkitSeed:
+			item.PaintkitSeed = uint32(getFloat(val))
 		case AttrSpell1, AttrSpell2, AttrSpell3, AttrSpell4, AttrSpell5, AttrSpell6:
 			item.Spells = append(item.Spells, sku.Spell{
 				Attribute: int(def),
