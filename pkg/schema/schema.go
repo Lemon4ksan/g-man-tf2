@@ -82,7 +82,66 @@ type Item struct {
 	// ImageURL represents the URL of the small (128x128) backpack icon.
 	ImageURL string `json:"image_url"`
 	// ImageURLLarge represents the URL of the large (512x512) backpack image.
-	ImageURLLarge string `json:"image_url_large"`
+	ImageURLLarge string `json:"image_image_url_large"`
+	// Flags represents item flags bitmask (trade/craft restrictions).
+	Flags int `json:"flags,omitempty"`
+	// Origin represents the item origin/provenance ID.
+	Origin int `json:"origin,omitempty"`
+	// LoadoutSlot represents the default loadout slot position.
+	LoadoutSlot int `json:"loadoutslot,omitempty"`
+	// ItemClass specifies the item class for equipping.
+	ItemSlot string `json:"item_slot,omitempty"`
+	// StyleCount represents the number of available styles.
+	StyleCount int `json:"styles,omitempty"`
+	// UsedByClassesRaw is the raw class usability bitmask (if present).
+	UsedByClassesRaw int `json:"used_by_classes_mask,omitempty"`
+}
+
+// IsTradableByFlags checks if the item is tradable based on its flags bitmask.
+// Returns true if the CannotTrade flag is NOT set.
+func (it *Item) IsTradableByFlags() bool {
+	return it.Flags&FlagCannotTrade == 0
+}
+
+// IsCraftableByFlags checks if the item is craftable based on its flags bitmask.
+// Returns true if the CannotBeUsedInCrafting flag is NOT set.
+func (it *Item) IsCraftableByFlags() bool {
+	return it.Flags&FlagCannotBeUsedInCrafting == 0
+}
+
+// HasFlag checks if a specific flag bit is set in the item's flags.
+func (it *Item) HasFlag(flag int) bool {
+	return it.Flags&flag != 0
+}
+
+// GetLoadoutSlot returns the loadout slot position for this item.
+// Returns LoadoutInvalid if not set.
+func (it *Item) GetLoadoutSlot() int {
+	if it.LoadoutSlot != 0 {
+		return it.LoadoutSlot
+	}
+
+	return LoadoutInvalid
+}
+
+// IsWeapon checks if the item is a weapon based on its craft class.
+func (it *Item) IsWeapon() bool {
+	return it.CraftClass == "weapon"
+}
+
+// IsCosmetic checks if the item is a cosmetic based on its loadout slot.
+func (it *Item) IsCosmetic() bool {
+	return it.LoadoutSlot == LoadoutHead || it.LoadoutSlot == LoadoutMisc || it.LoadoutSlot == LoadoutMisc2
+}
+
+// IsTaunt checks if the item is a taunt based on its loadout slot.
+func (it *Item) IsTaunt() bool {
+	return it.LoadoutSlot >= LoadoutTaunt && it.LoadoutSlot <= LoadoutTaunt8
+}
+
+// IsTool checks if the item is a tool/consumable.
+func (it *Item) IsTool() bool {
+	return it.ItemClass == "tool"
 }
 
 // Capabilities defines customization options and trade/craft permissions for an item.
@@ -93,6 +152,95 @@ type Capabilities struct {
 	Nameable bool `json:"nameable"`
 	// CanCraft indicates whether purchased copies of the item remain craftable.
 	CanCraft bool `json:"can_craft_if_purchased"`
+	// Decodable indicates whether the item can be unlocked with a key (crate).
+	Decodable bool `json:"decodable"`
+	// CanCustomizeTexture indicates whether the item's texture can be customized (War Paints).
+	CanCustomizeTexture bool `json:"can_customize_texture"`
+	// Usable indicates whether the item can be used/consumed.
+	Usable bool `json:"usable"`
+	// CanGiftWrap indicates whether the item can be gift wrapped.
+	CanGiftWrap bool `json:"can_gift_wrap"`
+	// CanCollect indicates whether the item can be collected into a craft set.
+	CanCollect bool `json:"can_collect"`
+	// CanCraftCount indicates whether the item tracks craft count.
+	CanCraftCount bool `json:"can_craft_count"`
+	// CanCraftMark indicates whether a crafted-by mark can be applied.
+	CanCraftMark bool `json:"can_craft_mark"`
+	// CanBeRestored indicates whether the item can be restored from Trade Up.
+	CanBeRestored bool `json:"can_be_restored"`
+	// CanUseStrangeParts indicates whether strange parts can be applied.
+	CanUseStrangeParts bool `json:"can_use_strange_parts"`
+	// CanStrangify indicates whether a strangifier can be applied.
+	CanStrangify bool `json:"can_strangify"`
+	// CanKillstreakify indicates whether a killstreak kit can be applied.
+	CanKillstreakify bool `json:"can_killstreakify"`
+	// CanConsume indicates whether the item is consumable.
+	CanConsume bool `json:"can_consume"`
+	// PaintableTeamColors indicates whether team-specific paint can be applied.
+	PaintableTeamColors bool `json:"paintable_team_colors"`
+}
+
+// HasCapability checks if the item has a specific capability flag.
+// Returns false if Capabilities is nil.
+func (c *Capabilities) HasCapability(cap string) bool {
+	if c == nil {
+		return false
+	}
+
+	switch cap {
+	case "paintable":
+		return c.Paintable
+	case "nameable":
+		return c.Nameable
+	case "decodable":
+		return c.Decodable
+	case "can_customize_texture":
+		return c.CanCustomizeTexture
+	case "usable":
+		return c.Usable
+	case "can_gift_wrap":
+		return c.CanGiftWrap
+	case "can_collect":
+		return c.CanCollect
+	case "can_use_strange_parts":
+		return c.CanUseStrangeParts
+	case "can_strangify":
+		return c.CanStrangify
+	case "can_killstreakify":
+		return c.CanKillstreakify
+	case "can_consume":
+		return c.CanConsume
+	case "paintable_team_colors":
+		return c.PaintableTeamColors
+	default:
+		return false
+	}
+}
+
+// CanApplyTool checks if a specific tool type can be applied to this item.
+func (c *Capabilities) CanApplyTool(toolType string) bool {
+	if c == nil {
+		return false
+	}
+
+	switch toolType {
+	case "paint":
+		return c.Paintable || c.PaintableTeamColors
+	case "nametag":
+		return c.Nameable
+	case "desctag":
+		return c.Nameable
+	case "strangifier":
+		return c.CanStrangify
+	case "strange-part":
+		return c.CanUseStrangeParts
+	case "killstreak":
+		return c.CanKillstreakify
+	case "gift-wrap":
+		return c.CanGiftWrap
+	default:
+		return false
+	}
 }
 
 // ItemAttribute represents a static attribute or modifier applied to an item.
@@ -188,6 +336,87 @@ type ItemSet struct {
 	Attributes []ItemAttribute `json:"attributes"`
 }
 
+// RecipeCategory represents the category of a crafting recipe
+type RecipeCategory int
+
+// Possible recipe categories
+const (
+	RecipeCategoryCraftingItems RecipeCategory = 0
+	RecipeCategoryCommonItems   RecipeCategory = 1
+	RecipeCategoryRareItems     RecipeCategory = 2
+	RecipeCategorySpecial       RecipeCategory = 3
+)
+
+// RecipeDefinition represents a crafting recipe from the TF2 schema.
+type RecipeDefinition struct {
+	// DefIndex is the unique recipe definition index.
+	DefIndex int `json:"defindex"`
+	// Name is the internal recipe name.
+	Name string `json:"name"`
+	// Disabled indicates if the recipe is currently disabled.
+	Disabled bool `json:"disabled"`
+	// RequiresAllSameClass requires all input items to be the same class.
+	RequiresAllSameClass bool `json:"require_all_same_class"`
+	// RequiresAllSameSlot requires all input items to be the same slot.
+	RequiresAllSameSlot bool `json:"require_all_same_slot"`
+	// PremiumAccountOnly requires a premium account to use.
+	PremiumAccountOnly bool `json:"premium_account_only"`
+	// Category is the recipe category.
+	Category RecipeCategory `json:"category"`
+	// InputItems lists the input item criteria (defindexes and counts).
+	InputItems []RecipeInputItem `json:"input_items"`
+	// OutputItems lists the output item criteria.
+	OutputItems []RecipeOutputItem `json:"output_items"`
+}
+
+// RecipeInputItem represents an input ingredient for a crafting recipe.
+type RecipeInputItem struct {
+	// DefIndex is the item definition index required (-1 for any).
+	DefIndex int `json:"defindex"`
+	// Count is the number of this item required.
+	Count int `json:"count"`
+	// Slot is the loadout slot filter (-1 for any).
+	Slot int `json:"slot"`
+	// Class is the class filter (empty for any).
+	Class string `json:"class"`
+}
+
+// RecipeOutputItem represents an output result from a crafting recipe.
+type RecipeOutputItem struct {
+	// DefIndex is the item definition index of the output (-1 for random).
+	DefIndex int `json:"defindex"`
+	// Count is the number of items produced.
+	Count int `json:"count"`
+}
+
+// GetRecipe returns the recipe definition for the given defindex, or nil if not found.
+func (s *Schema) GetRecipe(defindex int) *RecipeDefinition {
+	if s == nil || s.recipes == nil {
+		return nil
+	}
+
+	r, ok := s.recipes[defindex]
+	if !ok {
+		return nil
+	}
+
+	return r
+}
+
+// GetAllRecipes returns all recipe definitions.
+func (s *Schema) GetAllRecipes() []*RecipeDefinition {
+	if s == nil {
+		return nil
+	}
+
+	recipes := make([]*RecipeDefinition, 0, len(s.recipes))
+	for _, r := range s.recipes {
+		recipes = append(recipes, r)
+	}
+
+	return recipes
+}
+
 // OriginName maps a numeric origin ID to its localized display name.
 type OriginName struct {
 	// Origin represents the item origin ID.
@@ -268,6 +497,7 @@ type Schema struct {
 		ID   int
 	}
 	paintableItemDefindexesCache []int
+	recipes                      map[int]*RecipeDefinition
 }
 
 // New constructs a [Schema] instance and indexes the [Raw] payload for O(1) lookups.
@@ -764,6 +994,51 @@ func (s *Schema) PaintKitsByName() map[string]int {
 // PaintKits returns a map of paint kit names to their numeric IDs.
 func (s *Schema) PaintKits() map[string]int {
 	return s.paintKitByName
+}
+
+// QualityName returns the quality name for the given quality ID.
+// Returns an empty string if the quality ID is not found.
+func (s *Schema) QualityName(qualityID int) string {
+	if s == nil {
+		return ""
+	}
+
+	return s.qualByID[qualityID]
+}
+
+// QualityID returns the numeric quality ID for the given quality name (case-insensitive).
+// Returns -1 if the quality name is not found.
+func (s *Schema) QualityID(name string) int {
+	if s == nil {
+		return -1
+	}
+
+	if id, ok := s.qualByName[strings.ToLower(name)]; ok {
+		return id
+	}
+
+	return -1
+}
+
+// IsPaintKitWeapon checks if the item is eligible for War Paint / PaintKit application.
+// Returns true if the item has the can_customize_texture capability.
+func (it *Item) IsPaintKitWeapon() bool {
+	return it.Capabilities != nil && it.Capabilities.CanCustomizeTexture
+}
+
+// ValidatePaintKit checks if a specific paintkit can be applied to this weapon item.
+// Returns true if the weapon supports the given paintkit ID.
+// This is a basic validation — full validation requires the paintkit's supported weapon list.
+func (it *Item) ValidatePaintKit(paintkitID int) bool {
+	if !it.IsPaintKitWeapon() {
+		return false
+	}
+
+	if paintkitID <= 0 {
+		return false
+	}
+
+	return true
 }
 
 var validSingleSeries = map[int][]int{

@@ -44,6 +44,89 @@ const (
 	QualityDecorated  = 15
 )
 
+// ItemFlags represent trade/craft restrictions on items (bitmask)
+const (
+	FlagCannotTrade                    = 1 << 0
+	FlagCannotBeUsedInCrafting         = 1 << 1
+	FlagCanBeTradedByFreeAccounts      = 1 << 2
+	FlagNonEconomy                     = 1 << 3
+	FlagPurchasedAfterStoreChanges2012 = 1 << 4
+)
+
+// ItemOrigin represents the provenance/origin of an item
+const (
+	OriginDrop                = 0
+	OriginAchievement         = 1
+	OriginPurchased           = 2
+	OriginTraded              = 3
+	OriginCrafted             = 4
+	OriginStorePromotion      = 5
+	OriginGifted              = 6
+	OriginFoundInCrate        = 7
+	OriginForeign             = 8
+	OriginMvMMissionReward    = 9
+	OriginQuestDrop           = 10
+	OriginCraftCollectionUpg  = 11
+	OriginCraftHalloweenOffer = 12
+	OriginPaintkit            = 13
+	OriginUntradableContract  = 14
+	OriginMannCoCrate         = 15
+	OriginGiftedUnused        = 16
+	OriginMarketPurchase      = 17
+	OriginCraftedUpgraded     = 18
+	OriginMax                 = 19
+)
+
+// Loadout positions for item slots
+const (
+	LoadoutInvalid   = -1
+	LoadoutPrimary   = 0
+	LoadoutSecondary = 1
+	LoadoutMelee     = 2
+	LoadoutUtility   = 3
+	LoadoutBuilding  = 4
+	LoadoutPDA       = 5
+	LoadoutPDA2      = 6
+	LoadoutHead      = 7
+	LoadoutMisc      = 8
+	LoadoutAction    = 9
+	LoadoutMisc2     = 10
+	LoadoutTaunt     = 11
+	LoadoutTaunt2    = 12
+	LoadoutTaunt3    = 13
+	LoadoutTaunt4    = 14
+	LoadoutTaunt5    = 15
+	LoadoutTaunt6    = 16
+	LoadoutTaunt7    = 17
+	LoadoutTaunt8    = 18
+)
+
+// Backpack size limits
+const (
+	BackpackDefaultSize = 300
+	BackpackMaxSize     = 4000
+)
+
+// Weapon slot types
+const (
+	WeaponSlotPrimary       = 0
+	WeaponSlotSecondary     = 1
+	WeaponSlotMelee         = 2
+	WeaponSlotGrenade       = 3
+	WeaponSlotBuilding      = 4
+	WeaponSlotPDA           = 5
+	WeaponSlotItem1         = 6
+	WeaponSlotItem2         = 7
+	WeaponSlotHead          = 8
+	WeaponSlotMisc          = 9
+	WeaponSlotMeleeAllClass = 10
+	WeaponSlotSecondary2    = 11
+	WeaponSlotPrimary2      = 12
+	WeaponSlotItem3         = 13
+	WeaponSlotItem4         = 14
+	WeaponSlotPassTimeBall  = 15
+)
+
 // Attribute ID constants for TF2 items
 const (
 	AttrUnusualEffect = 134
