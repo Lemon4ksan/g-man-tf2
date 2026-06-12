@@ -450,3 +450,30 @@ func (t *TF2) MoveItems(ctx context.Context, items []ItemPos) error {
 
 	return nil
 }
+
+// FulfillDynamicRecipeComponent requests the Game Coordinator to feed an ingredient into a dynamic recipe (like a Fabricator or Chemistry Set).
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
+func (t *TF2) FulfillDynamicRecipeComponent(ctx context.Context, toolID, subjectID, attributeIndex uint64) error {
+	req := &pb.CMsgFulfillDynamicRecipeComponent{
+		ToolItemId: proto.Uint64(toolID),
+		ConsumptionComponents: []*pb.CMsgRecipeComponent{
+			{
+				SubjectItemId:  proto.Uint64(subjectID),
+				AttributeIndex: proto.Uint64(attributeIndex),
+			},
+		},
+	}
+
+	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCFulfillDynamicRecipeComponent), req)
+}
+
+// ConsumePaintkit requests the Game Coordinator to apply a paint kit (Warpaint) and produce a decorated weapon item.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
+func (t *TF2) ConsumePaintkit(ctx context.Context, warpaintID uint64, weaponDefIndex uint32) error {
+	req := &pb.CMsgConsumePaintkit{
+		SourceId:       proto.Uint64(warpaintID),
+		TargetDefindex: proto.Uint32(weaponDefIndex),
+	}
+
+	return t.gc.Send(ctx, AppID, uint32(pb.ETFGCMsg_k_EMsgGCConsumePaintKit), req)
+}
