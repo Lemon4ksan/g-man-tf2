@@ -2038,3 +2038,41 @@ func (s *Schema) ToJSON() map[string]any {
 		"raw":     s.Raw,
 	}
 }
+
+// WeaponOption represents a base weapon definition name and defindex.
+type WeaponOption struct {
+	Defindex uint32
+	Name     string
+}
+
+// GetSupportedWeaponsForPaintkit returns the list of base weapons (name and defindex) that can have the specified paintkit applied.
+func (s *Schema) GetSupportedWeaponsForPaintkit(paintkitID int) []WeaponOption {
+	var options []WeaponOption
+
+	// Helper to add if mapped
+	addOption := func(defindex uint32, name string, skinMap map[int]int) {
+		if skinMap[paintkitID] != 0 {
+			options = append(options, WeaponOption{
+				Defindex: defindex,
+				Name:     name,
+			})
+		}
+	}
+
+	addOption(22, "Pistol", pistolSkins)
+	addOption(18, "Rocket Launcher", rocketLauncherSkins)
+	addOption(29, "Medi Gun", medicgunSkins)
+	addOption(24, "Revolver", revolverSkins)
+	addOption(20, "Stickybomb Launcher", stickybombSkins)
+	addOption(14, "Sniper Rifle", sniperRifleSkins)
+	addOption(21, "Flame Thrower", flameThrowerSkins)
+	addOption(15, "Minigun", minigunSkins)
+	addOption(13, "Scattergun", scattergunSkins)
+	addOption(12, "Shotgun", shotgunSkins)
+	addOption(16, "SMG", smgSkins)
+	addOption(7, "Wrench", wrenchSkins)
+	addOption(19, "Grenade Launcher", grenadeLauncherSkins)
+	addOption(4, "Knife", knifeSkins)
+
+	return options
+}
