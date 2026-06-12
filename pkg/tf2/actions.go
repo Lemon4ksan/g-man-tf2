@@ -357,6 +357,15 @@ func (t *TF2) DeliverGift(ctx context.Context, giftID, targetSteamID uint64) err
 	return t.gc.SendRaw(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCDeliverGift), buf.Bytes())
 }
 
+// UnwrapGiftRequest requests the Game Coordinator to unwrap a received gift package.
+// Returns an error if the network packet cannot be sent to the Game Coordinator.
+func (t *TF2) UnwrapGiftRequest(ctx context.Context, itemID uint64) error {
+	data := make([]byte, 8)
+	binary.LittleEndian.PutUint64(data[0:8], itemID)
+
+	return t.gc.SendRaw(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCUnwrapGiftRequest), data)
+}
+
 // InviteToTrade requests the Game Coordinator to initiate a live trade invitation with another player.
 // Returns an error if the network packet cannot be sent to the Game Coordinator.
 func (t *TF2) InviteToTrade(ctx context.Context, steamID uint64) error {
