@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/andygrunwald/vdf"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
@@ -371,22 +372,32 @@ type RecipeDefinition struct {
 
 // RecipeInputItem represents an input ingredient for a crafting recipe.
 type RecipeInputItem struct {
-	// DefIndex is the item definition index required (-1 for any).
+	// DefIndex is the item definition index required (-1 for name-based lookup).
 	DefIndex int `json:"defindex"`
+	// Name is the item name for name-based conditions (e.g. "The Sandvich").
+	Name string `json:"name,omitempty"`
 	// Count is the number of this item required.
 	Count int `json:"count"`
 	// Slot is the loadout slot filter (-1 for any).
 	Slot int `json:"slot"`
 	// Class is the class filter (empty for any).
 	Class string `json:"class"`
+	// LootlistName is the lootlist for dynamic recipes (e.g. "all_particle_hats").
+	LootlistName string `json:"lootlist_name,omitempty"`
+	// Quality is the quality filter for dynamic recipes.
+	Quality string `json:"quality,omitempty"`
 }
 
 // RecipeOutputItem represents an output result from a crafting recipe.
 type RecipeOutputItem struct {
-	// DefIndex is the item definition index of the output (-1 for random).
+	// DefIndex is the item definition index of the output (-1 for name-based lookup).
 	DefIndex int `json:"defindex"`
+	// Name is the item name for name-based conditions.
+	Name string `json:"name,omitempty"`
 	// Count is the number of items produced.
 	Count int `json:"count"`
+	// LootlistName is the lootlist for dynamic recipe outputs.
+	LootlistName string `json:"lootlist_name,omitempty"`
 }
 
 // GetRecipe returns the recipe definition for the given defindex, or nil if not found.
@@ -693,6 +704,7 @@ func (s *Schema) buildIndices() {
 		}
 	}
 
+	s.buildRecipes()
 	s.Raw.ItemsGame = nil
 }
 
@@ -711,6 +723,250 @@ func (s *Schema) buildSpellIndices() {
 			s.spellsByName[lowerName] = spellObj
 		}
 	}
+}
+
+func (s *Schema) buildRecipes() {
+	if s.Raw.ItemsGame == nil {
+		return
+	}
+
+	recipesRaw, ok := s.Raw.ItemsGame["recipes"].(map[string]any)
+	if !ok {
+		return
+	}
+
+	s.recipes = make(map[int]*RecipeDefinition)
+
+	for defindexStr, rawBlock := range recipesRaw {
+		defindex, err := strconv.Atoi(defindexStr)
+		if err != nil {
+			continue
+		}
+
+		blockStr, ok := rawBlock.(string)
+		if !ok {
+			continue
+		}
+
+		parser := vdf.NewParser(strings.NewReader(blockStr))
+
+		parsed, err := parser.Parse()
+		if err != nil {
+			debugLog("failed to parse recipe", defindex, ":", err)
+			continue
+		}
+
+		recipeData := findFirstMap(parsed)
+		if recipeData == nil {
+			continue
+		}
+
+		recipe := &RecipeDefinition{
+			DefIndex: defindex,
+		}
+
+		if v, ok := recipeData["name"].(string); ok {
+			recipe.Name = v
+		}
+
+		if v, ok := recipeData["disabled"].(string); ok {
+			recipe.Disabled = v == "1"
+		}
+
+		if v, ok := recipeData["premium_only"].(string); ok {
+			recipe.PremiumAccountOnly = v == "1"
+		}
+
+		if v, ok := recipeData["all_same_class"].(string); ok {
+			recipe.RequiresAllSameClass = v == "1"
+		}
+
+		if v, ok := recipeData["all_same_slot"].(string); ok {
+			recipe.RequiresAllSameSlot = v == "1"
+		}
+
+		if v, ok := recipeData["category"].(string); ok {
+			recipe.Category = parseRecipeCategory(v)
+		}
+
+		// Parse standard input_items
+		if inputItems, ok := recipeData["input_items"].(map[string]any); ok {
+			recipe.InputItems = parseRecipeInputItems(inputItems)
+		}
+
+		// Parse standard output_items
+		if outputItems, ok := recipeData["output_items"].(map[string]any); ok {
+			recipe.OutputItems = parseRecipeOutputItems(outputItems)
+		}
+
+		// Parse dynamic recipe (tool/usage/components)
+		if tool, ok := recipeData["tool"].(map[string]any); ok {
+			recipe.InputItems = parseDynamicRecipeInputs(tool)
+		}
+
+		s.recipes[defindex] = recipe
+	}
+}
+
+func findFirstMap(m map[string]any) map[string]any {
+	for _, v := range m {
+		if sub, ok := v.(map[string]any); ok {
+			return sub
+		}
+	}
+
+	return nil
+}
+
+func parseRecipeCategory(s string) RecipeCategory {
+	switch s {
+	case "crafting":
+		return RecipeCategoryCraftingItems
+	case "commonitem":
+		return RecipeCategoryCommonItems
+	case "rareitem":
+		return RecipeCategoryRareItems
+	case "special":
+		return RecipeCategorySpecial
+	default:
+		return RecipeCategoryCraftingItems
+	}
+}
+
+func parseRecipeInputItems(inputItems map[string]any) []RecipeInputItem {
+	var result []RecipeInputItem
+
+	for countStr, itemData := range inputItems {
+		itemMap, ok := itemData.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		count, _ := strconv.Atoi(countStr)
+		if count <= 0 {
+			count = 1
+		}
+
+		input := RecipeInputItem{
+			Count: count,
+			Slot:  -1,
+		}
+
+		if conditions, ok := itemMap["conditions"].(map[string]any); ok {
+			for _, cond := range conditions {
+				condMap, ok := cond.(map[string]any)
+				if !ok {
+					continue
+				}
+
+				field, _ := condMap["field"].(string)
+				value, _ := condMap["value"].(string)
+
+				switch field {
+				case "defindex":
+					if di, err := strconv.Atoi(value); err == nil {
+						input.DefIndex = di
+					}
+				case "name":
+					input.Name = value
+				}
+			}
+		}
+
+		result = append(result, input)
+	}
+
+	return result
+}
+
+func parseRecipeOutputItems(outputItems map[string]any) []RecipeOutputItem {
+	var result []RecipeOutputItem
+
+	for _, itemData := range outputItems {
+		itemMap, ok := itemData.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		output := RecipeOutputItem{Count: 1}
+
+		if conditions, ok := itemMap["conditions"].(map[string]any); ok {
+			for _, cond := range conditions {
+				condMap, ok := cond.(map[string]any)
+				if !ok {
+					continue
+				}
+
+				field, _ := condMap["field"].(string)
+				value, _ := condMap["value"].(string)
+
+				switch field {
+				case "defindex":
+					if di, err := strconv.Atoi(value); err == nil {
+						output.DefIndex = di
+					}
+				case "name":
+					output.Name = value
+				}
+			}
+		}
+
+		result = append(result, output)
+	}
+
+	return result
+}
+
+func parseDynamicRecipeInputs(tool map[string]any) []RecipeInputItem {
+	usage, ok := tool["usage"].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	components, ok := usage["components"].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	input, ok := components["input"].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	var result []RecipeInputItem
+
+	for _, inputData := range input {
+		inputMap, ok := inputData.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		ri := RecipeInputItem{Count: 1}
+
+		if v, ok := inputMap["lootlist_name"].(string); ok {
+			ri.LootlistName = v
+		}
+
+		if v, ok := inputMap["quality"].(string); ok {
+			ri.Quality = v
+		}
+
+		if counts, ok := inputMap["counts"].(map[string]any); ok {
+			for _, countVal := range counts {
+				if c, ok := countVal.(string); ok {
+					if n, err := strconv.Atoi(c); err == nil {
+						ri.Count = n
+					}
+				}
+
+				break
+			}
+		}
+
+		result = append(result, ri)
+	}
+
+	return result
 }
 
 func (s *Schema) buildCrateSeriesList() map[int]int {

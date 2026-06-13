@@ -730,11 +730,22 @@ func (m *Manager) getItemsGame(ctx context.Context, url string) (map[string]any,
 	}
 
 	seriesMap := make(map[string]any)
+	recipesMap := make(map[string]any)
+
 	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
 
 	var currentDefindex string
 
 	inItemsSection := false
+	inRecipesSection := false
+
+	var recipeBuf strings.Builder
+
+	var recipeDefindex string
+
+	recipeBracketDepth := 0
+
 	bracketCount := 0
 
 	for scanner.Scan() {
@@ -743,25 +754,87 @@ func (m *Manager) getItemsGame(ctx context.Context, url string) (map[string]any,
 
 		if trimmed == "{" {
 			bracketCount++
+
+			if inRecipesSection && recipeBracketDepth > 0 {
+				recipeBracketDepth++
+
+				recipeBuf.WriteString(line)
+				recipeBuf.WriteString("\n")
+
+				continue
+			}
+
+			if inRecipesSection && bracketCount == 2 {
+				recipeBracketDepth = 1
+
+				recipeBuf.Reset()
+
+				recipeBuf.WriteString(line)
+				recipeBuf.WriteString("\n")
+
+				continue
+			}
+
 			continue
 		}
 
 		if trimmed == "}" {
+			if inRecipesSection && recipeBracketDepth > 0 {
+				recipeBracketDepth--
+
+				recipeBuf.WriteString(line)
+				recipeBuf.WriteString("\n")
+
+				if recipeBracketDepth == 0 {
+					if recipeDefindex != "" {
+						recipesMap[recipeDefindex] = recipeBuf.String()
+					}
+
+					recipeDefindex = ""
+
+					recipeBuf.Reset()
+				}
+			}
+
 			bracketCount--
+
 			if bracketCount == 2 {
 				currentDefindex = ""
 			}
 
 			if bracketCount == 1 {
 				inItemsSection = false
+				inRecipesSection = false
 			}
 
 			continue
 		}
 
-		if trimmed == "\"items\"" && bracketCount == 1 {
-			inItemsSection = true
-			continue
+		if bracketCount == 1 {
+			if trimmed == "\"items\"" {
+				inItemsSection = true
+				inRecipesSection = false
+
+				continue
+			}
+
+			if trimmed == "\"recipes\"" {
+				inRecipesSection = true
+				inItemsSection = false
+
+				continue
+			}
+		}
+
+		if inRecipesSection && bracketCount == 2 && recipeBracketDepth == 0 {
+			if match := rxDefindex.FindStringSubmatch(line); len(match) == 2 {
+				recipeDefindex = match[1]
+			}
+		}
+
+		if inRecipesSection && recipeBracketDepth > 0 {
+			recipeBuf.WriteString(line)
+			recipeBuf.WriteString("\n")
 		}
 
 		if inItemsSection {
@@ -778,6 +851,7 @@ func (m *Manager) getItemsGame(ctx context.Context, url string) (map[string]any,
 							"set supply crate series": float64(series),
 						},
 					}
+
 					currentDefindex = ""
 				}
 			}
@@ -789,7 +863,8 @@ func (m *Manager) getItemsGame(ctx context.Context, url string) (map[string]any,
 	}
 
 	return map[string]any{
-		"items": seriesMap,
+		"items":   seriesMap,
+		"recipes": recipesMap,
 	}, nil
 }
 
