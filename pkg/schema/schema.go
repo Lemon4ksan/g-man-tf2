@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/andygrunwald/vdf"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
@@ -748,74 +747,249 @@ func (s *Schema) buildRecipes() {
 			continue
 		}
 
-		parser := vdf.NewParser(strings.NewReader(blockStr))
-
-		parsed, err := parser.Parse()
-		if err != nil {
-			debugLog("failed to parse recipe", defindex, ":", err)
+		recipe := parseRecipeBlock(defindex, blockStr)
+		if recipe == nil {
 			continue
-		}
-
-		recipeData := findFirstMap(parsed)
-		if recipeData == nil {
-			continue
-		}
-
-		recipe := &RecipeDefinition{
-			DefIndex: defindex,
-		}
-
-		if v, ok := recipeData["name"].(string); ok {
-			recipe.Name = v
-		}
-
-		if v, ok := recipeData["disabled"].(string); ok {
-			recipe.Disabled = v == "1"
-		}
-
-		if v, ok := recipeData["premium_only"].(string); ok {
-			recipe.PremiumAccountOnly = v == "1"
-		}
-
-		if v, ok := recipeData["all_same_class"].(string); ok {
-			recipe.RequiresAllSameClass = v == "1"
-		}
-
-		if v, ok := recipeData["all_same_slot"].(string); ok {
-			recipe.RequiresAllSameSlot = v == "1"
-		}
-
-		if v, ok := recipeData["category"].(string); ok {
-			recipe.Category = parseRecipeCategory(v)
-		}
-
-		// Parse standard input_items
-		if inputItems, ok := recipeData["input_items"].(map[string]any); ok {
-			recipe.InputItems = parseRecipeInputItems(inputItems)
-		}
-
-		// Parse standard output_items
-		if outputItems, ok := recipeData["output_items"].(map[string]any); ok {
-			recipe.OutputItems = parseRecipeOutputItems(outputItems)
-		}
-
-		// Parse dynamic recipe (tool/usage/components)
-		if tool, ok := recipeData["tool"].(map[string]any); ok {
-			recipe.InputItems = parseDynamicRecipeInputs(tool)
 		}
 
 		s.recipes[defindex] = recipe
 	}
 }
 
-func findFirstMap(m map[string]any) map[string]any {
-	for _, v := range m {
-		if sub, ok := v.(map[string]any); ok {
-			return sub
+// parseRecipeBlock parses a raw VDF recipe block into a RecipeDefinition.
+// Uses a custom line-by-line parser to handle duplicate VDF keys that
+// Go's map-based VDF parsers cannot represent.
+func parseRecipeBlock(defindex int, block string) *RecipeDefinition {
+	r := &RecipeDefinition{DefIndex: defindex}
+
+	lines := strings.Split(block, "\n")
+
+	// Skip the first { (opening brace of the recipe block itself)
+	startIdx := 0
+	for i, l := range lines {
+		if strings.TrimSpace(l) == "{" {
+			startIdx = i + 1
+			break
 		}
 	}
 
-	return nil
+	sectionStack := []string{"root"}
+
+	var pendingKey string
+
+	var (
+		pendingInput         *RecipeInputItem
+		pendingOutput        *RecipeOutputItem
+		condField, condValue string
+	)
+
+	for _, line := range lines[startIdx:] {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+
+		parent := sectionStack[len(sectionStack)-1]
+
+		if trimmed == "{" {
+			switch parent {
+			case "root":
+				switch pendingKey {
+				case "input_items":
+					sectionStack = append(sectionStack, "input_items")
+				case "output_items":
+					sectionStack = append(sectionStack, "output_items")
+				case "tool":
+					sectionStack = append(sectionStack, "tool")
+				default:
+					sectionStack = append(sectionStack, "skip")
+				}
+
+			case "input_items":
+				pendingInput = &RecipeInputItem{Count: 1, Slot: -1}
+				if c, cErr := strconv.Atoi(pendingKey); cErr == nil && c > 0 {
+					pendingInput.Count = c
+				}
+
+				sectionStack = append(sectionStack, "input_item")
+
+			case "output_items":
+				pendingOutput = &RecipeOutputItem{Count: 1}
+
+				sectionStack = append(sectionStack, "output_item")
+			case "input_item", "output_item":
+				if pendingKey == "conditions" {
+					sectionStack = append(sectionStack, "conditions")
+				} else {
+					sectionStack = append(sectionStack, "skip")
+				}
+
+			case "conditions":
+				condField = ""
+				condValue = ""
+
+				sectionStack = append(sectionStack, "condition")
+			case "tool":
+				sectionStack = append(sectionStack, "tool_"+pendingKey)
+			case "tool_usage", "tool_components":
+				sectionStack = append(sectionStack, "tool_"+pendingKey)
+			case "tool_input":
+				pendingInput = &RecipeInputItem{Count: 1, Slot: -1}
+
+				sectionStack = append(sectionStack, "dynamic_input")
+			case "dynamic_input":
+				if pendingKey == "counts" {
+					sectionStack = append(sectionStack, "counts")
+				} else {
+					sectionStack = append(sectionStack, "skip")
+				}
+
+			default:
+				sectionStack = append(sectionStack, "skip")
+			}
+
+			pendingKey = ""
+
+			continue
+		}
+
+		if trimmed == "}" {
+			top := sectionStack[len(sectionStack)-1]
+
+			switch top {
+			case "input_item":
+				if pendingInput != nil {
+					r.InputItems = append(r.InputItems, *pendingInput)
+					pendingInput = nil
+				}
+			case "output_item":
+				if pendingOutput != nil {
+					r.OutputItems = append(r.OutputItems, *pendingOutput)
+					pendingOutput = nil
+				}
+			case "condition":
+				if condField != "" {
+					if pendingInput != nil {
+						switch condField {
+						case "defindex":
+							pendingInput.DefIndex, _ = strconv.Atoi(condValue)
+						case "name":
+							pendingInput.Name = condValue
+						}
+					}
+
+					if pendingOutput != nil {
+						switch condField {
+						case "defindex":
+							pendingOutput.DefIndex, _ = strconv.Atoi(condValue)
+						case "name":
+							pendingOutput.Name = condValue
+						}
+					}
+				}
+
+			case "dynamic_input":
+				if pendingInput != nil {
+					r.InputItems = append(r.InputItems, *pendingInput)
+					pendingInput = nil
+				}
+			}
+
+			sectionStack = sectionStack[:len(sectionStack)-1]
+			pendingKey = ""
+
+			continue
+		}
+
+		key, value := parseRecipeVDFLine(trimmed)
+		if key == "" {
+			continue
+		}
+
+		top := sectionStack[len(sectionStack)-1]
+
+		switch top {
+		case "root":
+			pendingKey = key
+			switch key {
+			case "name":
+				r.Name = value
+			case "disabled":
+				r.Disabled = value == "1"
+			case "premium_only":
+				r.PremiumAccountOnly = value == "1"
+			case "all_same_class":
+				r.RequiresAllSameClass = value == "1"
+			case "all_same_slot":
+				r.RequiresAllSameSlot = value == "1"
+			case "category":
+				r.Category = parseRecipeCategory(value)
+			}
+
+		case "input_item", "output_item":
+			pendingKey = key
+
+		case "condition":
+			switch key {
+			case "field":
+				condField = value
+			case "value":
+				condValue = value
+			}
+
+		case "dynamic_input":
+			pendingKey = key
+			if pendingInput != nil {
+				switch key {
+				case "lootlist_name":
+					pendingInput.LootlistName = value
+				case "quality":
+					pendingInput.Quality = value
+				}
+			}
+
+		case "counts":
+			if pendingInput != nil {
+				if c, cErr := strconv.Atoi(value); cErr == nil {
+					pendingInput.Count = c
+				}
+			}
+		}
+	}
+
+	return r
+}
+
+// parseRecipeVDFLine parses a VDF key-value line.
+// Returns (key, value) for "key" "value" lines.
+// Returns (key, "") for key-only lines (block keys like "1").
+func parseRecipeVDFLine(line string) (string, string) {
+	if !strings.HasPrefix(line, "\"") {
+		return "", ""
+	}
+
+	endQuote := strings.Index(line[1:], "\"")
+	if endQuote < 0 {
+		return "", ""
+	}
+
+	key := line[1 : endQuote+1]
+
+	rest := line[endQuote+2:]
+	rest = strings.TrimLeft(rest, " \t")
+
+	if len(rest) == 0 || !strings.HasPrefix(rest, "\"") {
+		return key, ""
+	}
+
+	rest = rest[1:]
+
+	endQuote2 := strings.Index(rest, "\"")
+	if endQuote2 < 0 {
+		return key, ""
+	}
+
+	return key, rest[:endQuote2]
 }
 
 func parseRecipeCategory(s string) RecipeCategory {
@@ -831,142 +1005,6 @@ func parseRecipeCategory(s string) RecipeCategory {
 	default:
 		return RecipeCategoryCraftingItems
 	}
-}
-
-func parseRecipeInputItems(inputItems map[string]any) []RecipeInputItem {
-	var result []RecipeInputItem
-
-	for countStr, itemData := range inputItems {
-		itemMap, ok := itemData.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		count, _ := strconv.Atoi(countStr)
-		if count <= 0 {
-			count = 1
-		}
-
-		input := RecipeInputItem{
-			Count: count,
-			Slot:  -1,
-		}
-
-		if conditions, ok := itemMap["conditions"].(map[string]any); ok {
-			for _, cond := range conditions {
-				condMap, ok := cond.(map[string]any)
-				if !ok {
-					continue
-				}
-
-				field, _ := condMap["field"].(string)
-				value, _ := condMap["value"].(string)
-
-				switch field {
-				case "defindex":
-					if di, err := strconv.Atoi(value); err == nil {
-						input.DefIndex = di
-					}
-				case "name":
-					input.Name = value
-				}
-			}
-		}
-
-		result = append(result, input)
-	}
-
-	return result
-}
-
-func parseRecipeOutputItems(outputItems map[string]any) []RecipeOutputItem {
-	var result []RecipeOutputItem
-
-	for _, itemData := range outputItems {
-		itemMap, ok := itemData.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		output := RecipeOutputItem{Count: 1}
-
-		if conditions, ok := itemMap["conditions"].(map[string]any); ok {
-			for _, cond := range conditions {
-				condMap, ok := cond.(map[string]any)
-				if !ok {
-					continue
-				}
-
-				field, _ := condMap["field"].(string)
-				value, _ := condMap["value"].(string)
-
-				switch field {
-				case "defindex":
-					if di, err := strconv.Atoi(value); err == nil {
-						output.DefIndex = di
-					}
-				case "name":
-					output.Name = value
-				}
-			}
-		}
-
-		result = append(result, output)
-	}
-
-	return result
-}
-
-func parseDynamicRecipeInputs(tool map[string]any) []RecipeInputItem {
-	usage, ok := tool["usage"].(map[string]any)
-	if !ok {
-		return nil
-	}
-
-	components, ok := usage["components"].(map[string]any)
-	if !ok {
-		return nil
-	}
-
-	input, ok := components["input"].(map[string]any)
-	if !ok {
-		return nil
-	}
-
-	var result []RecipeInputItem
-
-	for _, inputData := range input {
-		inputMap, ok := inputData.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		ri := RecipeInputItem{Count: 1}
-
-		if v, ok := inputMap["lootlist_name"].(string); ok {
-			ri.LootlistName = v
-		}
-
-		if v, ok := inputMap["quality"].(string); ok {
-			ri.Quality = v
-		}
-
-		if counts, ok := inputMap["counts"].(map[string]any); ok {
-			for _, countVal := range counts {
-				if c, ok := countVal.(string); ok {
-					if n, err := strconv.Atoi(c); err == nil {
-						ri.Count = n
-					}
-				}
-
-				break
-			}
-		}
-
-		result = append(result, ri)
-	}
-
-	return result
 }
 
 func (s *Schema) buildCrateSeriesList() map[int]int {
