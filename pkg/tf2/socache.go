@@ -97,8 +97,10 @@ const (
 	AttrEOTLEarlySupporter uint32 = 703
 	// AttrWear represents the skin pattern wear float value.
 	AttrWear uint32 = 725
-	// AttrPaintkitSeed represents the skin pattern seed.
-	AttrPaintkitSeed uint32 = 729
+	// AttrPaintkitSeedLo represents the low 32 bits of the custom paintkit seed.
+	AttrPaintkitSeedLo uint32 = 866
+	// AttrPaintkitSeedHi represents the high 32 bits of the custom paintkit seed.
+	AttrPaintkitSeedHi uint32 = 867
 	// AttrPaintkit represents the skin pattern index identifier.
 	AttrPaintkit uint32 = 834
 	// AttrSpell1 represents the first applied Halloween spell effect slot.
@@ -256,8 +258,8 @@ type Item struct {
 	Wear float32
 	// Paintkit represents the skin pattern ID.
 	Paintkit uint32
-	// PaintkitSeed represents the skin pattern seed (1-1000).
-	PaintkitSeed uint32
+	// PaintkitSeed represents the skin pattern seed.
+	PaintkitSeed uint64
 	// CrateSeries represents the series number for supply crates.
 	CrateSeries uint32
 	// Paint represents the applied paint color ID.
@@ -995,6 +997,9 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 		part1ID, part1Val uint32
 		part2ID, part2Val uint32
 		part3ID, part3Val uint32
+
+		seedLo, seedHi       uint32
+		hasSeedLo, hasSeedHi bool
 	)
 
 	for _, attr := range p.GetAttribute() {
@@ -1060,8 +1065,12 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 			item.Wear = getFloat(val)
 		case AttrPaintkit:
 			item.Paintkit = getUint(val)
-		case AttrPaintkitSeed:
-			item.PaintkitSeed = uint32(getFloat(val))
+		case AttrPaintkitSeedLo:
+			seedLo = getUint(val)
+			hasSeedLo = true
+		case AttrPaintkitSeedHi:
+			seedHi = getUint(val)
+			hasSeedHi = true
 		case AttrSpell1, AttrSpell2, AttrSpell3, AttrSpell4, AttrSpell5, AttrSpell6:
 			item.Spells = append(item.Spells, sku.Spell{
 				Attribute: int(def),
@@ -1109,6 +1118,12 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 
 	if item.HasCustomDecal {
 		item.DecalUGCID = (uint64(decalHi) << 32) | uint64(decalLo)
+	}
+
+	if hasSeedLo || hasSeedHi {
+		item.PaintkitSeed = (uint64(seedHi) << 32) | uint64(seedLo)
+	} else if item.Paintkit != 0 {
+		item.PaintkitSeed = item.OriginalID
 	}
 
 	if slices.Contains(
