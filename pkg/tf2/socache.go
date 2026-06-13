@@ -298,6 +298,52 @@ type Item struct {
 	ImageURL string
 	// ImageURLLarge represents the URL of the large backpack image for the relevant item.
 	ImageURLLarge string
+
+	// RecipeComponents contains the parsed dynamic recipe components (fabricator/chemistry set inputs/outputs).
+	RecipeComponents []RecipeComponent
+}
+
+// RecipeComponent represents a single ingredient or output slot of a dynamic recipe item (fabricator, chemistry set).
+type RecipeComponent struct {
+	// SlotIndex is the attribute definition index (2000-2009) identifying this component slot.
+	SlotIndex uint32
+	// DefIndex is the required item definition index (0 if not specified).
+	DefIndex uint32
+	// Quality is the required item quality (0 if not specified).
+	Quality uint32
+	// Flags is the component_flags bitmask.
+	Flags uint32
+	// NumRequired is how many items are needed for this component.
+	NumRequired uint32
+	// NumFulfilled is how many items have already been contributed.
+	NumFulfilled uint32
+	// AttributesString is the raw encoded attribute requirements.
+	AttributesString string
+}
+
+// IsOutput returns true if this component is an output (reward) slot.
+func (c *RecipeComponent) IsOutput() bool {
+	return c.Flags&0x01 != 0
+}
+
+// IsUntradable returns true if the produced item will be untradable.
+func (c *RecipeComponent) IsUntradable() bool {
+	return c.Flags&0x02 != 0
+}
+
+// HasDefIndex returns true if this component specifies a required item definition.
+func (c *RecipeComponent) HasDefIndex() bool {
+	return c.Flags&0x04 != 0
+}
+
+// HasQuality returns true if this component specifies a required quality.
+func (c *RecipeComponent) HasQuality() bool {
+	return c.Flags&0x08 != 0
+}
+
+// IsComplete returns true if all required items have been fulfilled.
+func (c *RecipeComponent) IsComplete() bool {
+	return c.NumFulfilled >= c.NumRequired
 }
 
 // Position returns the item's slot index in the backpack.
