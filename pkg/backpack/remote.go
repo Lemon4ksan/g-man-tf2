@@ -82,6 +82,24 @@ func NewRemote(steamID uint64, client service.Doer, opts ...Option) *Remote {
 	return p
 }
 
+// GetItems retrieves all items in the external inventory.
+// Returns an error if the inventory fails to load.
+func (r *Remote) GetItems(ctx context.Context) ([]TF2Item, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if !r.fetched {
+		if err := r.fetch(ctx); err != nil {
+			return nil, err
+		}
+	}
+
+	result := make([]TF2Item, len(r.items))
+	copy(result, r.items)
+
+	return result, nil
+}
+
 // GetItemsBySKU retrieves all items in the external inventory matching the specified SKU.
 // Returns an error if the inventory fails to load due to privacy settings or API rate limits.
 func (r *Remote) GetItemsBySKU(ctx context.Context, targetSKU string) ([]TF2Item, error) {

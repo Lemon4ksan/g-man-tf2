@@ -331,15 +331,15 @@ func WeaponsSorter(a, b *tf2.Item, s *schema.Schema) int {
 // CosmeticsSorter groups cosmetics by quality (Unique first, others second), then by class and defindex.
 func CosmeticsSorter(a, b *tf2.Item, s *schema.Schema) int {
 	aQualPri := GetQualityPriority(a.Quality)
-
 	bQualPri := GetQualityPriority(b.Quality)
+
 	if aQualPri != bQualPri {
 		return aQualPri - bQualPri
 	}
 
 	aClassPri := GetClassPriority(a, s)
-
 	bClassPri := GetClassPriority(b, s)
+
 	if aClassPri != bClassPri {
 		return aClassPri - bClassPri
 	}
@@ -366,8 +366,8 @@ func DefindexSorter(a, b *tf2.Item, s *schema.Schema) int {
 	}
 
 	aQualPri := GetQualityPriority(a.Quality)
-
 	bQualPri := GetQualityPriority(b.Quality)
+
 	if aQualPri != bQualPri {
 		return aQualPri - bQualPri
 	}

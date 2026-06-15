@@ -282,22 +282,13 @@ func (m *Backpack) GetPureStock() currency.PureStock {
 	if m.Logger != nil && (totalRef > 0 || totalRec > 0 || totalScrap > 0) {
 		m.Logger.Debug(
 			"Pure stock metal count statistics",
-			log.Int(
-				"total_ref",
-				totalRef,
-			),
+			log.Int("total_ref", totalRef),
 			log.Int("tradable_ref", int(stock.Refined)),
 			log.Int("untradable_ref", untradableRef),
-			log.Int(
-				"total_rec",
-				totalRec,
-			),
+			log.Int("total_rec", totalRec),
 			log.Int("tradable_rec", int(stock.Reclaimed)),
 			log.Int("untradable_rec", untradableRec),
-			log.Int(
-				"total_scrap",
-				totalScrap,
-			),
+			log.Int("total_scrap", totalScrap),
 			log.Int("tradable_scrap", int(stock.Scrap)),
 			log.Int("untradable_scrap", untradableScrap),
 		)
