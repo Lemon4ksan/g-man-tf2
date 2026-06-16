@@ -124,9 +124,10 @@ type TF2 struct {
 	service service.Doer
 	apps    AppsProvider
 
-	state  atomic.Int32
-	cache  *SOCache
-	schema SchemaProvider
+	state      atomic.Int32
+	cache      *SOCache
+	schema     SchemaProvider
+	keepActive bool
 }
 
 // New creates a new TF2 module.
@@ -340,9 +341,20 @@ func (t *TF2) GetCurrentAchievements(ctx context.Context) (map[uint32]bool, erro
 	return unlocked, nil
 }
 
+// SetKeepActive configures whether the TF2 client should always remain active (In-Game)
+// when other behaviors modify the active games list. This is useful for trading bots
+// to prevent GC disconnection during idle/achievement farming loops.
+func (t *TF2) SetKeepActive(val bool) {
+	t.keepActive = val
+}
+
 // PlayGames launches or stops TF2 and coordinates Game Coordinator states.
 // Returns an error if the play request fails or the context is cancelled.
 func (t *TF2) PlayGames(ctx context.Context, appIDs []uint32) error {
+	if t.keepActive && !slices.Contains(appIDs, AppID) {
+		appIDs = append(slices.Clone(appIDs), AppID)
+	}
+
 	err := t.apps.PlayGames(ctx, appIDs, false)
 	if err == nil {
 		hasTF2 := slices.Contains(appIDs, AppID)
