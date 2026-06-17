@@ -249,7 +249,7 @@ func TestPriceManager_RealtimeWebsocketHandshake(t *testing.T) {
 	var priceUpdated sync.WaitGroup
 	priceUpdated.Add(1)
 
-	manager.socket = NewSocketManager(wsURL, manager.logger)
+	manager.socket = NewSocketManager(wsURL, client.restClient, manager.logger)
 	manager.socket.OnPrice(func(p *Price) {
 		if p.SKU == "5021;6" && p.Buy.Metal == 82.0 {
 			manager.mu.Lock()

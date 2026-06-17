@@ -7,14 +7,15 @@ package pricedb
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/g-man/pkg/log"
 )
 
@@ -23,6 +24,7 @@ type SocketManager struct {
 	url       string
 	logger    log.Logger
 	userAgent string
+	client    *aoni.Client // Инжектируем настроенный aoni.Client!
 
 	mu   sync.Mutex
 	conn *websocket.Conn
@@ -31,21 +33,16 @@ type SocketManager struct {
 }
 
 // NewSocketManager creates a new Socket.IO client for PriceDB.
-func NewSocketManager(rawURL string, logger log.Logger) *SocketManager {
+func NewSocketManager(rawURL string, client *aoni.Client, logger log.Logger) *SocketManager {
 	if rawURL == "" {
 		rawURL = "ws://ws.pricedb.io/"
 	}
 
 	return &SocketManager{
 		url:    rawURL,
+		client: client,
 		logger: logger.With(log.Module("pricedb_socket")),
 	}
-}
-
-// WithUserAgent sets a custom User-Agent header for the socket connection.
-func (s *SocketManager) WithUserAgent(ua string) *SocketManager {
-	s.userAgent = ua
-	return s
 }
 
 // OnPrice sets the callback for when a price update is received.
@@ -90,21 +87,26 @@ func (s *SocketManager) connectAndListen(ctx context.Context) error {
 
 	s.logger.Debug("Connecting to PriceDB Socket.IO...", log.String("url", u.String()))
 
-	dialer := websocket.DefaultDialer
-
-	var header http.Header
+	var mods []aoni.RequestModifier
 	if s.userAgent != "" {
-		header = make(http.Header)
-		header.Set("User-Agent", s.userAgent)
+		mods = append(mods, aoni.WithUserAgent(s.userAgent))
 	}
 
-	conn, resp, err := dialer.DialContext(ctx, u.String(), header)
+	wsConn, resp, err := aoni.DialWebSocket(ctx, s.client, u.String(), mods...)
 	if err != nil {
 		return err
 	}
 
 	if resp != nil && resp.Body != nil {
-		defer resp.Body.Close()
+		_ = resp.Body.Close()
+	}
+
+	var conn *websocket.Conn
+	if wp, ok := wsConn.(interface{ RawConn() *websocket.Conn }); ok {
+		conn = wp.RawConn()
+	} else {
+		_ = wsConn.Close()
+		return errors.New("pricedb: underlying connection is not a gorilla websocket")
 	}
 
 	s.mu.Lock()

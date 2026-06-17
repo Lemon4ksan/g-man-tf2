@@ -20,10 +20,9 @@ import (
 	"time"
 
 	"github.com/andygrunwald/vdf"
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/g-man/pkg/log"
-	"github.com/lemon4ksan/g-man/pkg/rest"
 	"github.com/lemon4ksan/g-man/pkg/steam"
-	"github.com/lemon4ksan/g-man/pkg/steam/api"
 	"github.com/lemon4ksan/g-man/pkg/steam/module"
 	"github.com/lemon4ksan/g-man/pkg/steam/service"
 	"github.com/mitchellh/mapstructure"
@@ -83,7 +82,7 @@ type Manager struct {
 
 	config        Config
 	svcClient     service.Doer
-	restClient    rest.Requester
+	restClient    aoni.Requester
 	pricedbClient *pricedb.Client
 
 	mu            sync.RWMutex
@@ -118,14 +117,10 @@ func (m *Manager) Init(init module.InitContext) error {
 	m.svcClient = init.Service()
 	m.restClient = init.Rest()
 
-	type httpProvider interface {
-		HTTP() rest.HTTPDoer
-	}
-
-	if hp, ok := m.restClient.(httpProvider); ok {
-		m.pricedbClient = pricedb.NewClient(hp.HTTP())
+	if aoniClient := aoni.UnwrapClient(m.restClient); aoniClient != nil {
+		m.pricedbClient = pricedb.NewClient(aoniClient)
 	} else {
-		m.pricedbClient = pricedb.NewClient(nil)
+		m.pricedbClient = pricedb.NewClient(aoni.NewClient(nil))
 	}
 
 	return nil
@@ -878,12 +873,12 @@ func (m *Manager) getItemsGame(ctx context.Context, url string) (map[string]any,
 }
 
 func (m *Manager) isForbiddenError(err error) bool {
-	var apiErr *api.SteamAPIError
+	var apiErr *service.SteamAPIError
 	if errors.As(err, &apiErr) {
 		return true
 	}
 
-	restErr := &rest.APIError{}
+	restErr := &aoni.APIError{}
 	if errors.As(err, &restErr) {
 		return true
 	}
@@ -905,7 +900,7 @@ func (m *Manager) fetchFromMirror(ctx context.Context, component string) (map[st
 		return nil, fmt.Errorf("mirror URL for %s not configured", component)
 	}
 
-	res, err := rest.GetJSON[map[string]any](ctx, m.restClient, url, nil)
+	res, err := aoni.GetJSON[map[string]any](ctx, m.restClient, url)
 	if err != nil {
 		return nil, fmt.Errorf("mirror fetch failed: %w", err)
 	}
@@ -916,7 +911,7 @@ func (m *Manager) fetchFromMirror(ctx context.Context, component string) (map[st
 func (m *Manager) fetchItemsFromMirror(ctx context.Context) ([]any, error) {
 	url := m.config.ItemsMirrorURL
 
-	res, err := rest.GetJSON[[]any](ctx, m.restClient, url, nil)
+	res, err := aoni.GetJSON[[]any](ctx, m.restClient, url)
 	if err != nil {
 		return nil, fmt.Errorf("mirror items fetch failed: %w", err)
 	}

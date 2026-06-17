@@ -12,7 +12,7 @@ import (
 	"strconv"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/lemon4ksan/g-man/pkg/rest"
+	"github.com/lemon4ksan/aoni"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 )
@@ -37,7 +37,7 @@ func (c *BackpackTFChecker) CheckHistory(ctx context.Context, assetID uint64) (b
 
 	resp, err := c.bptfClient.REST().Request(ctx, http.MethodGet, path, nil, nil)
 	if err != nil {
-		apiErr := &rest.APIError{}
+		apiErr := &aoni.APIError{}
 		if errors.As(err, &apiErr) {
 			return backpack.HistoryStatus{Recorded: false}, nil
 		}

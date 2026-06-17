@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/g-man/pkg/log"
-	"github.com/lemon4ksan/g-man/pkg/rest"
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 	"github.com/lemon4ksan/g-man/pkg/steam/module"
@@ -259,7 +259,7 @@ func (m *Manager) checkGroup(ctx context.Context) {
 
 	m.lastGroupCheck = time.Now()
 	if err != nil {
-		var restError *rest.APIError
+		var restError *aoni.APIError
 		if errors.As(err, &restError) && restError.StatusCode == 404 {
 			m.Logger.WarnContext(ctx,
 				"Bot is not part of a store group (HTTP 404). Storefront URLs will fallback to standard profile link.",
@@ -487,7 +487,7 @@ func (m *Manager) worker(ctx context.Context) {
 			}
 
 			// Self-healing Item Not Found HTTP 400 recovery
-			var restError *rest.APIError
+			var restError *aoni.APIError
 
 			is400 := false
 			if err != nil {

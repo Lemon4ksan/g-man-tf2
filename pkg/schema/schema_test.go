@@ -19,9 +19,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lemon4ksan/g-man/pkg/rest"
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/g-man/pkg/steam"
-	"github.com/lemon4ksan/g-man/pkg/steam/api"
+	"github.com/lemon4ksan/g-man/pkg/steam/service"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 	"github.com/lemon4ksan/g-man/test/module"
 	"github.com/stretchr/testify/assert"
@@ -2077,13 +2077,13 @@ func TestCoverage_ManagerErrors(t *testing.T) {
 	assert.True(t, sm.isForbiddenError(errors.New("403 Forbidden")))
 	assert.False(t, sm.isForbiddenError(errors.New("generic error")))
 
-	apiErr := &api.SteamAPIError{
+	apiErr := &service.SteamAPIError{
 		StatusCode: 403,
 		Message:    "Forbidden",
 	}
 	assert.True(t, sm.isForbiddenError(apiErr))
 
-	restErr := &rest.APIError{
+	restErr := &aoni.APIError{
 		StatusCode: 403,
 	}
 	assert.True(t, sm.isForbiddenError(restErr))

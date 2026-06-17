@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/g-man/pkg/behavior"
 	"github.com/lemon4ksan/g-man/pkg/bus"
 	"github.com/lemon4ksan/g-man/pkg/log"
@@ -52,10 +53,12 @@ func NewManager(client *Client, logger log.Logger) *Manager {
 		syncInterval: 30 * time.Minute,
 	}
 
-	m.socket = NewSocketManager("", m.logger)
-	if client != nil && client.UserAgent() != "" {
-		m.socket.WithUserAgent(client.UserAgent())
+	var restClient *aoni.Client
+	if client != nil {
+		restClient = client.restClient
 	}
+
+	m.socket = NewSocketManager("", restClient, m.logger)
 
 	m.socket.OnPrice(func(p *Price) {
 		m.logger.Debug("Received real-time price update", log.String("sku", p.SKU))

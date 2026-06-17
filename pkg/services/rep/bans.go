@@ -9,7 +9,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/lemon4ksan/g-man/pkg/rest"
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/bptf"
@@ -19,7 +19,7 @@ import (
 type BansManager struct {
 	bptfClient *bptf.Client
 	mptfAPIKey string
-	httpClient rest.HTTPDoer
+	httpClient aoni.HTTPDoer
 }
 
 // NewBansManager creates a new bans manager.
@@ -96,7 +96,7 @@ func (m *BansManager) checkMarketplaceTF(ctx context.Context, steamID id.ID) (bo
 		} `json:"results"`
 	}
 
-	resp, err := rest.PostJSON[any, MPTFResponse](ctx, rest.NewClient(m.httpClient), url, req, nil)
+	resp, err := aoni.PostJSON[any, MPTFResponse](ctx, aoni.NewClient(m.httpClient), url, req, nil)
 	if err != nil {
 		return false, err
 	}

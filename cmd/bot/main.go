@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/g-man/pkg/behavior"
 	"github.com/lemon4ksan/g-man/pkg/behavior/achievements"
 	"github.com/lemon4ksan/g-man/pkg/behavior/guard"
@@ -22,7 +23,9 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/auth"
+	"github.com/lemon4ksan/g-man/pkg/steam/social/friends"
 	"github.com/lemon4ksan/g-man/pkg/steam/socket"
+	"github.com/lemon4ksan/g-man/pkg/steam/sys/account"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/apps"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/directory"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/gc"
@@ -93,7 +96,7 @@ func NewBot(cfg Config, store storage.Provider, logger log.Logger) (*Bot, error)
 	// 2. Setup standard HTTP clients and TF2 API services
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 	bptfClient := bptf.New(httpClient, cfg.BptfAPIKey, cfg.BptfUserToken)
-	pdbClient := pricedb.NewClient(httpClient)
+	pdbClient := pricedb.NewClient(aoni.NewClient(httpClient))
 	critClient := crit.NewClient(httpClient, cfg.CritAPIKey)
 
 	pdbManager := pricedb.NewManager(pdbClient, logger)
@@ -106,6 +109,8 @@ func NewBot(cfg Config, store storage.Provider, logger log.Logger) (*Bot, error)
 
 	opts := []steam.Option{
 		steam.WithLogger(logger),
+		friends.WithModule(),
+		account.WithModule(),
 		apps.WithModule(),
 		gc.WithModule(),
 		tf2.WithModule(),

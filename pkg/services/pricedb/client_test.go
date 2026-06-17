@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/lemon4ksan/aoni"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,7 +39,7 @@ func TestClient_GetItem(t *testing.T) {
 	defer server.Close()
 
 	// Initialize the client and override the REST client's base URL
-	client := NewClient(nil)
+	client := NewClient(aoni.NewClient(nil))
 	client.restClient = client.restClient.WithBaseURL(server.URL)
 
 	price, err := client.GetItem(context.Background(), sku)

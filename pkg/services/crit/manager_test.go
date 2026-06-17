@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lemon4ksan/g-man/pkg/rest"
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 	"github.com/lemon4ksan/g-man/pkg/steam/social/chat"
 	"github.com/lemon4ksan/g-man/pkg/steam/social/chat/commands"
@@ -156,7 +156,7 @@ func TestManager_Bootstrap_Success(t *testing.T) {
 	// Assert cache is populated
 	listing, exists := mgr.FindListingByAssetID("10001")
 	assert.True(t, exists)
-	assert.Equal(t, rest.Int64String(101), listing.ID)
+	assert.Equal(t, aoni.Int64String(101), listing.ID)
 
 	// Assert slug is cached
 	assert.Equal(t, "epic-store", mgr.customStoreSlug)
@@ -250,7 +250,7 @@ func TestManager_QueueAndRateLimiter(t *testing.T) {
 	case res := <-ch:
 		require.NoError(t, res.Err)
 		assert.Equal(t, "99999", res.Listing.AssetID)
-		assert.Equal(t, rest.Int64String(202), res.Listing.ID)
+		assert.Equal(t, aoni.Int64String(202), res.Listing.ID)
 	case <-time.After(2 * time.Second):
 		t.Fatal("Timeout waiting for transaction worker")
 	}
@@ -258,7 +258,7 @@ func TestManager_QueueAndRateLimiter(t *testing.T) {
 	// Verify item was cached
 	listing, exists := mgr.FindListingByAssetID("99999")
 	assert.True(t, exists)
-	assert.Equal(t, rest.Int64String(202), listing.ID)
+	assert.Equal(t, aoni.Int64String(202), listing.ID)
 }
 
 func TestManager_ItemNotFoundSelfHealing(t *testing.T) {
@@ -323,7 +323,7 @@ func TestManager_ItemNotFoundSelfHealing(t *testing.T) {
 	case res := <-ch:
 		require.NoError(t, res.Err)
 		assert.Equal(t, "88888", res.Listing.AssetID)
-		assert.Equal(t, rest.Int64String(777), res.Listing.ID)
+		assert.Equal(t, aoni.Int64String(777), res.Listing.ID)
 	case <-time.After(3 * time.Second):
 		t.Fatal("Timeout waiting for recovery self-healing")
 	}
@@ -395,7 +395,7 @@ func TestManager_EventLoop(t *testing.T) {
 
 	listing, exists := mgr.FindListingByAssetID("12345")
 	assert.True(t, exists, "Acquired item should have been processed and cached by event loop")
-	assert.Equal(t, rest.Int64String(99), listing.ID)
+	assert.Equal(t, aoni.Int64String(99), listing.ID)
 }
 
 func TestManager_ChatCommands(t *testing.T) {

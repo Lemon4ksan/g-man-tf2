@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/lemon4ksan/g-man/pkg/rest"
+	"github.com/lemon4ksan/aoni"
 )
 
 // critResponse implements rest.BaseResponse to automatically parse API wrappers.
@@ -57,13 +57,13 @@ func (r *critResponse) UnmarshalJSON(data []byte) error {
 
 // Listing represents a crit.tf showcase classified listing.
 type Listing struct {
-	ID         rest.Int64String   `json:"id,omitempty"`
+	ID         aoni.Int64String   `json:"id,omitempty"`
 	SteamID    string             `json:"steam_id,omitempty"`
 	ItemName   string             `json:"item_name,omitempty"`
 	ItemImage  string             `json:"item_image,omitempty"`
 	AssetID    string             `json:"asset_id"`
 	PriceKeys  int                `json:"price_keys"`
-	PriceMetal rest.Float64String `json:"price_metal"`
+	PriceMetal aoni.Float64String `json:"price_metal"`
 	Quality    string             `json:"quality,omitempty"`
 	Type       string             `json:"type,omitempty"`
 	SKU        string             `json:"sku,omitempty"`
