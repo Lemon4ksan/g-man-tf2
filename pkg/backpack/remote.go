@@ -6,25 +6,29 @@ package backpack
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"reflect"
+	"strconv"
 	"sync"
 
-	"github.com/lemon4ksan/g-man/pkg/bus"
 	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/steam/community"
 	"github.com/lemon4ksan/g-man/pkg/steam/community/inventory"
 	"github.com/lemon4ksan/g-man/pkg/steam/service"
 	"github.com/lemon4ksan/g-man/pkg/steam/webapi"
 	"github.com/lemon4ksan/g-man/pkg/trading"
+	"github.com/lemon4ksan/miyako/generic"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 )
 
 // Remote manages auditing and validation tasks for external player inventories.
-// It loads inventory data lazily from Steam WebAPI or falls back to community inventory endpoints.
+// It loads inventory data from the Steam community web interface and enriches
+// missing item metadata via ISteamEconomy/GetAssetClassInfo.
 // Use [NewRemote] to instantiate and configure remote profile sessions.
 type Remote struct {
 	steamID   uint64
@@ -42,19 +46,12 @@ type Remote struct {
 }
 
 // Option defines configuration setter functions for initializing [Remote] instances.
-type Option = bus.Option[*Remote]
+type Option = generic.Option[*Remote]
 
 // WithLogger configures a custom [log.Logger] for logging [Remote] operations.
 func WithLogger(l log.Logger) Option {
 	return func(inv *Remote) {
 		inv.logger = l
-	}
-}
-
-// WithCommunityBackoff configures an alternate community inventory request pipeline.
-func WithCommunityBackoff(r community.Requester) Option {
-	return func(inv *Remote) {
-		inv.community = r
 	}
 }
 
@@ -66,18 +63,25 @@ func WithDupeCheckers(dc []DupeChecker) Option {
 }
 
 // NewRemote constructs a new configured [Remote] instance for auditing external profiles.
-func NewRemote(steamID uint64, client service.Doer, opts ...Option) *Remote {
+// The community requester is required for inventory fetching.
+func NewRemote(
+	steamID uint64,
+	client service.Doer,
+	community community.Requester,
+	schema *schema.Schema,
+	opts ...Option,
+) *Remote {
 	p := &Remote{
 		steamID:      steamID,
 		client:       client,
+		community:    community,
 		logger:       log.Discard,
 		dupeCheckers: make([]DupeChecker, 0),
 		items:        make([]TF2Item, 0),
+		schema:       schema,
 	}
 
-	for _, opt := range opts {
-		opt(p)
-	}
+	generic.ApplyOptions(p, opts...)
 
 	return p
 }
@@ -264,47 +268,15 @@ func (r *Remote) checkWithServices(
 }
 
 func (r *Remote) fetch(ctx context.Context) error {
-	err := r.fetchViaWebAPI(ctx)
-	if err == nil {
-		r.logger.Debug("Inventory fetched via WebAPI", log.Uint64("steam_id", r.steamID))
-		return nil
+	if r.community == nil || r.community.SessionID(community.BaseURL) == "" {
+		return errors.New("cannot fetch remote inventory: no community web session available")
 	}
 
-	if r.community == nil || r.community.SessionID("") == "" {
-		return fmt.Errorf("webapi failed and no community session available: %w", err)
+	if r.schema == nil {
+		return errors.New("cannot fetch remote inventory: no schema available")
 	}
-
-	r.logger.Warn("WebAPI failed, attempting Community fallback",
-		log.Uint64("steam_id", r.steamID),
-		log.Err(err),
-	)
 
 	return r.fetchCommunity(ctx)
-}
-
-func (r *Remote) fetchViaWebAPI(ctx context.Context) error {
-	req := struct {
-		SteamID uint64 `url:"steamid"`
-	}{r.steamID}
-
-	resp, err := service.WebAPI[PlayerItemsResponse](ctx, r.client, "GET", "IEconItems_440", "GetPlayerItems", 1, req)
-	if err != nil {
-		return err
-	}
-
-	if resp.Result.Status == 15 {
-		return errors.New("inventory is private (status 15)")
-	}
-
-	if resp.Result.Status != 1 {
-		return fmt.Errorf("steam api error: %s (status %d)", resp.Result.StatusDetail, resp.Result.Status)
-	}
-
-	r.items = resp.Result.Items
-	r.slots = resp.Result.NumBackpackSlots
-	r.fetched = true
-
-	return nil
 }
 
 func (r *Remote) fetchCommunity(ctx context.Context) error {
@@ -312,21 +284,157 @@ func (r *Remote) fetchCommunity(ctx context.Context) error {
 		ctx, r.community, r.steamID, 440, 2, false, "english",
 	)
 	if err != nil {
-		return fmt.Errorf("community fallback failed: %w", err)
+		return fmt.Errorf("community inventory fetch failed: %w", err)
 	}
 
-	unifiedItems := make([]TF2Item, 0, len(items)+len(currencies))
-	for _, it := range items {
-		unifiedItems = append(unifiedItems, mapCEconToTF2(it, r.schema))
+	allCEconItems := make([]inventory.CEconItem, 0, len(items)+len(currencies))
+	allCEconItems = append(allCEconItems, items...)
+	allCEconItems = append(allCEconItems, currencies...)
+
+	if err := r.enrichCommunityItems(ctx, allCEconItems); err != nil {
+		r.logger.Warn("Failed to enrich community items descriptions", log.Err(err))
 	}
 
-	for _, it := range currencies {
+	unifiedItems := make([]TF2Item, 0, len(allCEconItems))
+	for _, it := range allCEconItems {
 		unifiedItems = append(unifiedItems, mapCEconToTF2(it, r.schema))
 	}
 
 	r.items = unifiedItems
 	r.slots = total
 	r.fetched = true
+
+	return nil
+}
+
+// enrichCommunityItems performs a batch query to ISteamEconomy/GetAssetClassInfo
+// to fill in missing AppData for items obtained from the community web interface.
+func (r *Remote) enrichCommunityItems(ctx context.Context, items []inventory.CEconItem) error {
+	if r.client == nil {
+		r.logger.Warn("No WebAPI client available, skipping community items enrichment")
+		return nil
+	}
+
+	type descKey struct {
+		ClassID    string
+		InstanceID string
+	}
+
+	var missingKeys []descKey
+
+	seenKeys := make(map[descKey]bool)
+
+	for _, it := range items {
+		desc := it.Description
+		if len(desc.AppData) == 0 && len(desc.Tags) == 0 && len(desc.Descriptions) == 0 && desc.Name == "" {
+			continue
+		}
+
+		hasDefIndex := false
+		if desc.AppData != nil {
+			_, hasDefIndex = desc.AppData["def_index"]
+		}
+
+		if !hasDefIndex {
+			k := descKey{ClassID: desc.ClassID, InstanceID: desc.InstanceID}
+			if !seenKeys[k] {
+				seenKeys[k] = true
+				missingKeys = append(missingKeys, k)
+			}
+		}
+	}
+
+	if len(missingKeys) == 0 {
+		return nil
+	}
+
+	type GetAssetClassInfoResponse struct {
+		Result map[string]json.RawMessage `json:"result"`
+	}
+
+	type rawAssetClassDescription struct {
+		ClassID    string         `json:"classid"`
+		InstanceID string         `json:"instanceid"`
+		AppData    map[string]any `json:"app_data,omitempty"`
+	}
+
+	resolvedDescs := make(map[descKey]rawAssetClassDescription)
+
+	chunkSize := 50
+	for i := 0; i < len(missingKeys); i += chunkSize {
+		end := min(i+chunkSize, len(missingKeys))
+		chunk := missingKeys[i:end]
+
+		params := make(url.Values)
+		params.Set("appid", "440")
+		params.Set("language", "english")
+		params.Set("class_count", strconv.Itoa(len(chunk)))
+
+		for idx, k := range chunk {
+			params.Set(fmt.Sprintf("classid%d", idx), k.ClassID)
+
+			if k.InstanceID != "0" && k.InstanceID != "" {
+				params.Set(fmt.Sprintf("instanceid%d", idx), k.InstanceID)
+			}
+		}
+
+		apiResp, err := service.WebAPI[GetAssetClassInfoResponse](
+			ctx,
+			r.client,
+			"GET",
+			"ISteamEconomy",
+			"GetAssetClassInfo",
+			1,
+			params,
+		)
+		if err != nil {
+			return err
+		}
+
+		if apiResp != nil && apiResp.Result != nil {
+			for key, rawVal := range apiResp.Result {
+				if key == "success" {
+					continue
+				}
+
+				var desc rawAssetClassDescription
+				if err := json.Unmarshal(rawVal, &desc); err == nil {
+					cID := desc.ClassID
+					if cID == "" {
+						cID = key
+					}
+
+					resolvedDescs[descKey{ClassID: cID, InstanceID: desc.InstanceID}] = desc
+				}
+			}
+		}
+	}
+
+	for i := range items {
+		if items[i].Description.ClassID == "" {
+			continue
+		}
+
+		hasDefIndex := false
+		if items[i].Description.AppData != nil {
+			_, hasDefIndex = items[i].Description.AppData["def_index"]
+		}
+
+		if !hasDefIndex {
+			k := descKey{ClassID: items[i].Description.ClassID, InstanceID: items[i].Description.InstanceID}
+
+			var resolved rawAssetClassDescription
+
+			found := false
+			if resolved, found = resolvedDescs[k]; !found {
+				resolved, found = resolvedDescs[descKey{ClassID: items[i].Description.ClassID, InstanceID: "0"}]
+			}
+
+			if found && resolved.AppData != nil {
+				items[i].Description.AppData = resolved.AppData
+			}
+		}
+	}
 
 	return nil
 }

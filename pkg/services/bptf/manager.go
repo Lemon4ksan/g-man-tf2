@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/lemon4ksan/g-man/pkg/log"
+	"github.com/lemon4ksan/miyako/yumi"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
@@ -121,13 +122,23 @@ func (m *ListingManager) DeleteAll(ctx context.Context) error {
 		return nil
 	}
 
-	// Batch delete in chunks of 100
-	for i := range ids {
-		end := min(i+100, len(ids))
+	const batchSize = 100
 
-		if err := m.client.BatchDeleteListings(ctx, ids[i:end]); err != nil {
-			return fmt.Errorf("batch delete failed at %d: %w", i, err)
-		}
+	var batches [][]string
+	for i := 0; i < len(ids); i += batchSize {
+		end := min(i+batchSize, len(ids))
+		batches = append(batches, ids[i:end])
+	}
+
+	err := yumi.ForEach(ctx, yumi.PipelineConfig{
+		Workers: 3,
+		RPS:     5,
+		Burst:   2,
+	}, batches, func(chunkCtx context.Context, batch []string) error {
+		return m.client.BatchDeleteListings(chunkCtx, batch)
+	})
+	if err != nil {
+		return fmt.Errorf("batch delete failed: %w", err)
 	}
 
 	m.mu.Lock()

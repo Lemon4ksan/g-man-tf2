@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/lemon4ksan/g-man/pkg/behavior"
-	"github.com/lemon4ksan/g-man/pkg/bus"
 	"github.com/lemon4ksan/g-man/pkg/log"
+	"github.com/lemon4ksan/miyako/generic"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 )
@@ -18,11 +18,9 @@ import (
 // BehaviorName is the unique identifier for the pure liquidator behavior.
 const BehaviorName = "pure_liquidator"
 
-// WithPureLiquidator returns an option that registers the pure liquidator behavior with the orchestrator.
-func WithPureLiquidator(mgr *Manager, inv InventoryProvider) behavior.Option {
-	return func(o *behavior.Orchestrator) {
-		o.Register(NewAutomator(mgr, inv, WithLogger(o.Logger())))
-	}
+// WithPureLiquidator registers the pure liquidator behavior with the orchestrator.
+func WithPureLiquidator(orch *behavior.Orchestrator, mgr *Manager, inv InventoryProvider) {
+	orch.Register(NewAutomator(mgr, inv, WithLogger(orch.Logger())))
 }
 
 // Automator is a high-level background orchestrator that maintains metal reserves and handles duplicate weapon recrafting.
@@ -41,7 +39,7 @@ type Automator struct {
 }
 
 // Option defines functional configuration setters for the [Automator].
-type Option = bus.Option[*Automator]
+type Option = generic.Option[*Automator]
 
 // WithLogger configures a custom [log.Logger] for the [Automator].
 func WithLogger(l log.Logger) Option {

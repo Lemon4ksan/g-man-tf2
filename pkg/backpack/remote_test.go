@@ -9,8 +9,11 @@ import (
 	"errors"
 	"testing"
 
+	communitymock "github.com/lemon4ksan/g-man/test/community"
 	"github.com/lemon4ksan/g-man/test/requester"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 )
 
 type MockDupeChecker struct {
@@ -26,23 +29,91 @@ func (m *MockDupeChecker) CheckHistory(ctx context.Context, id uint64) (HistoryS
 	return m.Responses[id], nil
 }
 
-func newMockPlayerItemsResponse(items []TF2Item) PlayerItemsResponse {
-	resp := PlayerItemsResponse{}
-	resp.Result.Status = 1
-	resp.Result.NumBackpackSlots = 100
-	resp.Result.Items = items
+func newMockSchema() *schema.Schema {
+	raw := &schema.Raw{}
+	raw.Schema.Items = []*schema.Item{
+		{
+			Defindex:    5021,
+			ItemQuality: 6,
+			Name:        "Mann Co. Supply Crate Key",
+		},
+		{
+			Defindex:    5002,
+			ItemQuality: 6,
+			Name:        "Reclaimed Metal",
+		},
+		{
+			Defindex:    5001,
+			ItemQuality: 6,
+			Name:        "Reclaimed Metal",
+		},
+		{
+			Defindex:    5000,
+			ItemQuality: 6,
+			Name:        "Scrap Metal",
+		},
+		{
+			Defindex:    1,
+			ItemQuality: 6,
+			Name:        "Scattergun",
+		},
+	}
 
-	return resp
+	return schema.New(raw)
+}
+
+type mockInventoryResponse struct {
+	Success      int               `json:"success"`
+	Assets       []mockAsset       `json:"assets"`
+	Descriptions []mockDescription `json:"descriptions"`
+	TotalCount   int               `json:"total_inventory_count"`
+}
+
+type mockAsset struct {
+	AssetID    string `json:"assetid"`
+	ClassID    string `json:"classid"`
+	InstanceID string `json:"instanceid"`
+	Amount     string `json:"amount"`
+}
+
+type mockDescription struct {
+	ClassID        string         `json:"classid"`
+	InstanceID     string         `json:"instanceid"`
+	Tradable       int            `json:"tradable"`
+	Name           string         `json:"name"`
+	MarketHashName string         `json:"market_hash_name"`
+	AppData        map[string]any `json:"app_data,omitempty"`
 }
 
 func TestRemote_IsDuped_DupedAndCleanItems_ReturnsExpectedFlags(t *testing.T) {
 	t.Parallel()
 
-	mockAPI := requester.New()
-	mockAPI.SetJSONResponse("IEconItems_440", "GetPlayerItems", newMockPlayerItemsResponse([]TF2Item{
-		{ID: 100, OriginalID: 50},
-		{ID: 200, OriginalID: 200},
-	}))
+	communityMock := communitymock.New()
+	s := newMockSchema()
+
+	mockResp := mockInventoryResponse{
+		Success:    1,
+		TotalCount: 2,
+		Assets: []mockAsset{
+			{AssetID: "100", ClassID: "100", InstanceID: "0", Amount: "1"},
+			{AssetID: "200", ClassID: "200", InstanceID: "0", Amount: "1"},
+		},
+		Descriptions: []mockDescription{
+			{
+				ClassID: "100", InstanceID: "0", Tradable: 1,
+				Name: "Item 100", MarketHashName: "Item 100",
+				AppData: map[string]any{"def_index": "1", "quality": "6", "original_id": "50"},
+			},
+			{
+				ClassID: "200", InstanceID: "0", Tradable: 1,
+				Name: "Item 200", MarketHashName: "Item 200",
+				AppData: map[string]any{"def_index": "1", "quality": "6", "original_id": "200"},
+			},
+		},
+	}
+	communityMock.SetJSONResponse("inventory/7656119/440/2", 200, mockResp)
+
+	inv := NewRemote(7656119, nil, communityMock, s)
 
 	checker1 := &MockDupeChecker{
 		Responses: map[uint64]HistoryStatus{
@@ -51,7 +122,7 @@ func TestRemote_IsDuped_DupedAndCleanItems_ReturnsExpectedFlags(t *testing.T) {
 		},
 	}
 
-	inv := NewRemote(7656119, mockAPI, WithDupeCheckers([]DupeChecker{checker1}))
+	inv.dupeCheckers = []DupeChecker{checker1}
 
 	tests := []struct {
 		name      string
@@ -77,7 +148,7 @@ func TestRemote_IsDuped_DupedAndCleanItems_ReturnsExpectedFlags(t *testing.T) {
 				}
 			} else {
 				if got == nil || *got != *tt.wantDuped {
-					t.Errorf("IsDuped() = %v, want %v", got, tt.wantDuped)
+					t.Errorf("IsDuped() = %v, want %v", got, *tt.wantDuped)
 				}
 			}
 		})
@@ -98,7 +169,8 @@ func TestRemote_IsDuped_MultipleCheckers_VerifiesWithSubsequentCheckers(t *testi
 		},
 	}
 
-	inv := NewRemote(7656119, nil, WithDupeCheckers([]DupeChecker{checker1, checker2}))
+	s := newMockSchema()
+	inv := NewRemote(7656119, nil, nil, s, WithDupeCheckers([]DupeChecker{checker1, checker2}))
 
 	got, _ := inv.IsDuped(t.Context(), 100)
 	if got == nil || !*got {
@@ -109,13 +181,32 @@ func TestRemote_IsDuped_MultipleCheckers_VerifiesWithSubsequentCheckers(t *testi
 func TestRemote_GetItemsBySKU_ValidInventory_FiltersBySKU(t *testing.T) {
 	t.Parallel()
 
-	mockAPI := requester.New()
-	mockAPI.SetJSONResponse("IEconItems_440", "GetPlayerItems", newMockPlayerItemsResponse([]TF2Item{
-		{ID: 1, Defindex: 5021, Quality: 6, FlagCannotTrade: false},
-		{ID: 2, Defindex: 1, Quality: 6, FlagCannotTrade: false},
-	}))
+	communityMock := communitymock.New()
+	s := newMockSchema()
 
-	inv := NewRemote(7656119, mockAPI)
+	mockResp := mockInventoryResponse{
+		Success:    1,
+		TotalCount: 2,
+		Assets: []mockAsset{
+			{AssetID: "1", ClassID: "5021", InstanceID: "0", Amount: "1"},
+			{AssetID: "2", ClassID: "1", InstanceID: "0", Amount: "1"},
+		},
+		Descriptions: []mockDescription{
+			{
+				ClassID: "5021", InstanceID: "0", Tradable: 1,
+				Name: "Key", MarketHashName: "Key",
+				AppData: map[string]any{"def_index": "5021", "quality": "6"},
+			},
+			{
+				ClassID: "1", InstanceID: "0", Tradable: 1,
+				Name: "Scattergun", MarketHashName: "Scattergun",
+				AppData: map[string]any{"def_index": "1", "quality": "6"},
+			},
+		},
+	}
+	communityMock.SetJSONResponse("inventory/7656119/440/2", 200, mockResp)
+
+	inv := NewRemote(7656119, nil, communityMock, s)
 
 	items, err := inv.GetItemsBySKU(t.Context(), "5021;6")
 	assert.NoError(t, err)
@@ -134,7 +225,9 @@ func TestRemote_CanTradeWithoutHold_ValidResponse_ReturnsHoldStatus(t *testing.T
 		"my_escrow":    0,
 	})
 
-	inv := NewRemote(7656119, mockAPI)
+	s := newMockSchema()
+	inv := NewRemote(7656119, mockAPI, mockAPI, s)
+
 	ok, err := inv.CanTradeWithoutHold(t.Context(), "token")
 	assert.NoError(t, err)
 	assert.True(t, ok)
@@ -143,30 +236,67 @@ func TestRemote_CanTradeWithoutHold_ValidResponse_ReturnsHoldStatus(t *testing.T
 func TestRemote_FindMetalInPartnerInventory_AvailableMetal_ReturnsRequiredChange(t *testing.T) {
 	t.Parallel()
 
-	mockAPI := requester.New()
-	mockAPI.SetJSONResponse("IEconItems_440", "GetPlayerItems", newMockPlayerItemsResponse([]TF2Item{
-		{ID: 10, Defindex: 5002, Quality: 6, FlagCannotTrade: false},
-		{ID: 11, Defindex: 5002, Quality: 6, FlagCannotTrade: false},
-		{ID: 12, Defindex: 5001, Quality: 6, FlagCannotTrade: false},
-		{ID: 13, Defindex: 5000, Quality: 6, FlagCannotTrade: false},
-	}))
+	communityMock := communitymock.New()
+	s := newMockSchema()
 
-	inv := NewRemote(7656119, mockAPI)
+	mockResp := mockInventoryResponse{
+		Success:    1,
+		TotalCount: 4,
+		Assets: []mockAsset{
+			{AssetID: "10", ClassID: "5002", InstanceID: "0", Amount: "1"},
+			{AssetID: "11", ClassID: "5002", InstanceID: "0", Amount: "1"},
+			{AssetID: "12", ClassID: "5001", InstanceID: "0", Amount: "1"},
+			{AssetID: "13", ClassID: "5000", InstanceID: "0", Amount: "1"},
+		},
+		Descriptions: []mockDescription{
+			{
+				ClassID: "5002", InstanceID: "0", Tradable: 1,
+				Name: "Refined Metal", MarketHashName: "Refined Metal",
+				AppData: map[string]any{"def_index": "5002", "quality": "6"},
+			},
+			{
+				ClassID: "5001", InstanceID: "0", Tradable: 1,
+				Name: "Reclaimed Metal", MarketHashName: "Reclaimed Metal",
+				AppData: map[string]any{"def_index": "5001", "quality": "6"},
+			},
+			{
+				ClassID: "5000", InstanceID: "0", Tradable: 1,
+				Name: "Scrap Metal", MarketHashName: "Scrap Metal",
+				AppData: map[string]any{"def_index": "5000", "quality": "6"},
+			},
+		},
+	}
+	communityMock.SetJSONResponse("inventory/7656119/440/2", 200, mockResp)
+
+	inv := NewRemote(7656119, nil, communityMock, s)
 
 	items, err := inv.FindMetalInPartnerInventory(t.Context(), 21)
 	assert.NoError(t, err)
 	assert.Len(t, items, 3)
 }
 
-func TestRemote_Fetch_WebAPIFailsNoCommunity_ReturnsError(t *testing.T) {
+func TestRemote_Fetch_NoCommunitySession_ReturnsError(t *testing.T) {
 	t.Parallel()
 
-	mockAPI := requester.New()
-	mockAPI.ResponseErrs["IEconItems_440/GetPlayerItems"] = errors.New("rate limited")
+	s := newMockSchema()
+	inv := NewRemote(7656119, nil, nil, s)
 
-	inv := NewRemote(7656119, mockAPI)
 	err := inv.fetch(t.Context())
 	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no community web session")
+}
+
+func TestRemote_Fetch_NoSchema_ReturnsError(t *testing.T) {
+	t.Parallel()
+
+	communityMock := communitymock.New()
+	communityMock.MockSessionID = "mock_session_12345"
+
+	inv := NewRemote(7656119, nil, communityMock, nil)
+
+	err := inv.fetch(t.Context())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no schema available")
 }
 
 func boolPtr(b bool) *bool { return &b }

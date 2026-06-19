@@ -12,11 +12,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lemon4ksan/g-man/pkg/bus"
 	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/module"
 	"github.com/lemon4ksan/g-man/pkg/trading"
+	"github.com/lemon4ksan/miyako/bus"
+	"github.com/lemon4ksan/miyako/generic"
+	"github.com/lemon4ksan/miyako/sync/keylock"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
@@ -87,25 +89,28 @@ type Backpack struct {
 	manager SchemaProvider
 	trading TradingProvider
 
-	mu     sync.RWMutex
-	locked map[uint64]bool
+	mu        sync.RWMutex
+	itemLocks *keylock.KeyMutex[uint64]
+	locked    generic.Set[uint64]
 }
 
 // New constructs a new [Backpack] instance with empty lock states and pre-declared dependencies.
 func New() *Backpack {
 	return &Backpack{
-		Base:   module.New(ModuleName).WithDeps(tf2.ModuleName, schema.ModuleName, "trading"),
-		locked: make(map[uint64]bool),
+		Base:      module.New(ModuleName).WithDeps(tf2.ModuleName, schema.ModuleName, "trading"),
+		itemLocks: keylock.New[uint64](),
+		locked:    make(generic.Set[uint64]),
 	}
 }
 
 // NewWithDeps constructs a lightweight [Backpack] instance using the specified cache, manager and locked map dependencies.
 // This constructor is intended for external sidecar setups or tests that need to reuse backpack methods.
-func NewWithDeps(cache ItemCache, manager SchemaProvider, locked map[uint64]bool) *Backpack {
+func NewWithDeps(cache ItemCache, manager SchemaProvider, locked generic.Set[uint64]) *Backpack {
 	return &Backpack{
-		cache:   cache,
-		manager: manager,
-		locked:  locked,
+		cache:     cache,
+		manager:   manager,
+		itemLocks: keylock.New[uint64](),
+		locked:    locked,
 	}
 }
 
@@ -172,7 +177,7 @@ func (m *Backpack) LockItems(ids []uint64) {
 	defer m.mu.Unlock()
 
 	for _, id := range ids {
-		m.locked[id] = true
+		m.locked.Add(id)
 	}
 }
 
@@ -325,7 +330,7 @@ func (m *Backpack) FindCraftableItems(defIndex uint32, count int) []uint64 {
 
 	var result []uint64
 	for _, item := range m.cache.GetItems() {
-		if item.DefIndex == defIndex && item.IsCraftable && !m.locked[item.ID] {
+		if item.DefIndex == defIndex && item.IsCraftable && !m.locked.Has(item.ID) {
 			result = append(result, item.ID)
 			if len(result) == count {
 				break
@@ -372,7 +377,7 @@ func (m *Backpack) FindWeaponsByClass(class string) []*tf2.Item {
 
 	var result []*tf2.Item
 	for _, item := range m.cache.GetItems() {
-		if !item.IsCraftable || !item.IsTradable || m.locked[item.ID] {
+		if !item.IsCraftable || !item.IsTradable || m.locked.Has(item.ID) {
 			continue
 		}
 
@@ -404,7 +409,7 @@ func (m *Backpack) FindWeaponsByClassForSmelting(class string) []*tf2.Item {
 
 	var candidates []*tf2.Item
 	for _, item := range m.cache.GetItems() {
-		if !item.IsCraftable || !item.IsTradable || m.locked[item.ID] {
+		if !item.IsCraftable || !item.IsTradable || m.locked.Has(item.ID) {
 			continue
 		}
 
@@ -553,7 +558,7 @@ func (m *Backpack) GetAssetIDs(targetSKU string) []uint64 {
 
 	var result []uint64
 	for _, item := range m.cache.GetItems() {
-		if !m.locked[item.ID] && item.IsTradable && item.GetSKU(s) == targetSKU {
+		if !m.locked.Has(item.ID) && item.IsTradable && item.GetSKU(s) == targetSKU {
 			result = append(result, item.ID)
 		}
 	}
@@ -578,16 +583,22 @@ func (m *Backpack) GetLockedAssetIDs() []uint64 {
 // It packs items tightly in a continuous sequence, advancing pages only when a page is full.
 // Returns an error if the schema is not ready, if item moves fail, or if the context is cancelled.
 func (m *Backpack) ApplyLayout(ctx context.Context, layout Layout) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	s := m.manager.Get()
 	if s == nil {
 		return errors.New("schema not ready")
 	}
 
-	locked := m.getLockedMap()
-	plannedIDs := make(map[uint64]bool)
+	// Snapshot locked items under read lock
+	m.mu.RLock()
+
+	lockedSnapshot := make(generic.Set[uint64], len(m.locked))
+	for id := range m.locked {
+		lockedSnapshot[id] = struct{}{}
+	}
+
+	m.mu.RUnlock()
+
+	plannedIDs := make(generic.Set[uint64])
 
 	var moves []tf2.ItemPos
 
@@ -599,8 +610,6 @@ func (m *Backpack) ApplyLayout(ctx context.Context, layout Layout) error {
 	for _, section := range layout.Sections {
 		if section.StartPage > 0 {
 			if section.StartPage < currentPage || (section.StartPage == currentPage && currentSlot > 1) {
-				// The previous section overflowed into this section's starting page.
-				// Automatically shift this section to start on the next fresh page to prevent overlaps.
 				if currentSlot > 1 {
 					currentPage++
 				}
@@ -614,7 +623,7 @@ func (m *Backpack) ApplyLayout(ctx context.Context, layout Layout) error {
 
 		var matchedItems []*tf2.Item
 		for _, item := range allItems {
-			if plannedIDs[item.ID] || locked[item.ID] {
+			if plannedIDs.Has(item.ID) || lockedSnapshot.Has(item.ID) {
 				continue
 			}
 
@@ -631,14 +640,12 @@ func (m *Backpack) ApplyLayout(ctx context.Context, layout Layout) error {
 			}
 		}
 
-		// Sort matched items within this section if a sorter is provided.
 		if section.OrderBy != nil {
 			slices.SortFunc(matchedItems, func(a, b *tf2.Item) int {
 				return section.OrderBy(a, b, s)
 			})
 		}
 
-		// Allocate continuous slots for matched items.
 		for _, item := range matchedItems {
 			for {
 				if section.EndPage > 0 && currentPage > section.EndPage {
@@ -648,9 +655,8 @@ func (m *Backpack) ApplyLayout(ctx context.Context, layout Layout) error {
 
 				targetPos := PositionOf(currentPage, currentSlot)
 
-				// Skip slots occupied by locked items to preserve their positions.
-				if !isSlotOccupiedByLockedItem(targetPos, allItems, locked) {
-					plannedIDs[item.ID] = true
+				if !isSlotOccupiedByLockedItem(targetPos, allItems, lockedSnapshot) {
+					plannedIDs.Add(item.ID)
 
 					if item.Position() != targetPos {
 						moves = append(moves, tf2.ItemPos{
@@ -668,7 +674,6 @@ func (m *Backpack) ApplyLayout(ctx context.Context, layout Layout) error {
 					break
 				}
 
-				// Move to next slot as current is occupied by a locked item
 				currentSlot++
 				if currentSlot > ItemsPerPage {
 					currentSlot = 1
@@ -688,9 +693,9 @@ func (m *Backpack) ApplyLayout(ctx context.Context, layout Layout) error {
 	return m.tf2.MoveItems(ctx, moves)
 }
 
-func isSlotOccupiedByLockedItem(pos uint32, allItems []*tf2.Item, lockedMap map[uint64]bool) bool {
+func isSlotOccupiedByLockedItem(pos uint32, allItems []*tf2.Item, lockedSet generic.Set[uint64]) bool {
 	for _, item := range allItems {
-		if item.Position() == pos && lockedMap[item.ID] {
+		if item.Position() == pos && lockedSet.Has(item.ID) {
 			return true
 		}
 	}
@@ -744,10 +749,10 @@ func (m *Backpack) cleanupStaleLocks(ctx context.Context, tradingModule TradingP
 		return
 	}
 
-	activeItems := make(map[uint64]bool)
+	activeItems := generic.NewSet[uint64]()
 	for _, off := range activeOffers {
 		for _, it := range off.ItemsToGive {
-			activeItems[it.AssetID] = true
+			activeItems.Add(it.AssetID)
 		}
 	}
 
@@ -756,7 +761,7 @@ func (m *Backpack) cleanupStaleLocks(ctx context.Context, tradingModule TradingP
 
 	cleanedCount := 0
 	for lockedID := range m.locked {
-		if !activeItems[lockedID] {
+		if !activeItems.Has(lockedID) {
 			delete(m.locked, lockedID)
 
 			cleanedCount++
@@ -766,13 +771,4 @@ func (m *Backpack) cleanupStaleLocks(ctx context.Context, tradingModule TradingP
 	if cleanedCount > 0 {
 		m.Logger.InfoContext(ctx, "Cleaned up stale item locks", log.Int("count", cleanedCount))
 	}
-}
-
-func (m *Backpack) getLockedMap() map[uint64]bool {
-	locked := make(map[uint64]bool, len(m.locked))
-	for id := range m.locked {
-		locked[id] = true
-	}
-
-	return locked
 }

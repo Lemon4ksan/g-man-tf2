@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lemon4ksan/g-man/pkg/bus"
 	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/community/inventory"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 	"github.com/lemon4ksan/g-man/test/module"
+	"github.com/lemon4ksan/miyako/bus"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
@@ -522,10 +522,10 @@ func TestCoverage_MapCEconToTF2_Extra(t *testing.T) {
 
 	s := mockSchemaForCoverage()
 
-	// 1. desc == nil
+	// 1. desc is zero value
 	econNilDesc := inventory.CEconItem{
 		Asset:       inventory.Asset{AssetID: "100", Amount: "abc"},
-		Description: nil,
+		Description: inventory.Description{},
 	}
 	itemNilDesc := mapCEconToTF2(econNilDesc, s)
 	assert.Equal(t, uint64(100), itemNilDesc.ID)
@@ -533,7 +533,7 @@ func TestCoverage_MapCEconToTF2_Extra(t *testing.T) {
 	// 2. defindex == 0 or quality == 0 tags matching Category "Quality"
 	econTags := inventory.CEconItem{
 		Asset: inventory.Asset{AssetID: "101", Amount: "2"},
-		Description: &inventory.Description{
+		Description: inventory.Description{
 			Tags: []inventory.Tag{
 				{Category: "Quality", LocalizedTagName: "Unique"},
 			},
@@ -545,7 +545,7 @@ func TestCoverage_MapCEconToTF2_Extra(t *testing.T) {
 	// 3. Various descriptions: Exterior, Effect, Killstreak, Paint, Crate, Strange Parts, Spells, Festive
 	econDesc := inventory.CEconItem{
 		Asset: inventory.Asset{AssetID: "102"},
-		Description: &inventory.Description{
+		Description: inventory.Description{
 			Name:           "Festivized Sunbeams Rocket Launcher",
 			MarketHashName: "Australium Rocket Launcher",
 			Descriptions: []struct {
@@ -576,7 +576,7 @@ func TestCoverage_MapCEconToTF2_Extra(t *testing.T) {
 	// 4. Quality Decorated (15) for Paint Kits, Native Festive (654), and AppData attributes with Australium
 	econExtra := inventory.CEconItem{
 		Asset: inventory.Asset{AssetID: "103"},
-		Description: &inventory.Description{
+		Description: inventory.Description{
 			Name:           "Festivized Sunbeams Skin",
 			MarketHashName: "Sunbeams Skin",
 			AppData: map[string]any{
@@ -638,7 +638,8 @@ func TestCoverage_GetStock_Valid(t *testing.T) {
 func TestCoverage_RemoteOptions(t *testing.T) {
 	t.Parallel()
 
-	inv := NewRemote(12345, nil, WithLogger(log.Discard), WithCommunityBackoff(nil))
+	s := schema.New(&schema.Raw{})
+	inv := NewRemote(12345, nil, nil, s, WithLogger(log.Discard))
 	assert.NotNil(t, inv)
 }
 

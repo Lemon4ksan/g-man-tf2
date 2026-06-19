@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"github.com/lemon4ksan/g-man/pkg/behavior"
-	"github.com/lemon4ksan/g-man/pkg/bus"
 	"github.com/lemon4ksan/g-man/pkg/log"
+	"github.com/lemon4ksan/miyako/bus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
@@ -159,9 +159,8 @@ func TestCoverage_Auto_Options_Name_Run(t *testing.T) {
 	assert.Equal(t, "pure_liquidator", a.Name())
 
 	b := bus.New()
-	orch := behavior.NewOrchestrator(logger, b)
-	optBeh := WithPureLiquidator(mgr, inv)
-	optBeh(orch)
+	orch := behavior.NewOrchestrator(b, logger)
+	WithPureLiquidator(orch, mgr, inv)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()

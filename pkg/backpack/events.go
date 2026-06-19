@@ -4,7 +4,7 @@
 
 package backpack
 
-import "github.com/lemon4ksan/g-man/pkg/bus"
+import "github.com/lemon4ksan/miyako/bus"
 
 // FullEvent is published when the backpack storage reaches its maximum capacity.
 type FullEvent struct {

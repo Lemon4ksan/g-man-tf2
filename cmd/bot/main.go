@@ -19,7 +19,6 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/behavior"
 	"github.com/lemon4ksan/g-man/pkg/behavior/achievements"
 	"github.com/lemon4ksan/g-man/pkg/behavior/guard"
-	"github.com/lemon4ksan/g-man/pkg/bus"
 	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/auth"
@@ -33,6 +32,8 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/storage/jsonfile"
 	"github.com/lemon4ksan/g-man/pkg/trading/engine"
 	webtrading "github.com/lemon4ksan/g-man/pkg/trading/web"
+	"github.com/lemon4ksan/miyako/bus"
+	"github.com/lemon4ksan/miyako/generic"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 	"github.com/lemon4ksan/g-man-tf2/pkg/crafting"
@@ -232,7 +233,7 @@ func (b *Bot) discoverCMServer(ctx context.Context) (socket.CMServer, error) {
 }
 
 func (b *Bot) setupOrchestrator() {
-	b.orchestrator = behavior.NewOrchestrator(b.logger, b.client.Bus())
+	b.orchestrator = behavior.NewOrchestrator(b.client.Bus(), b.logger)
 	b.orchestrator.Register(b.pdbManager)
 
 	bp := backpack.From(b.client)
@@ -244,17 +245,12 @@ func (b *Bot) setupOrchestrator() {
 	metalManager := crafting.NewMetalManager(bp, craftingManager, b.logger)
 
 	guardBehaviorCfg := guard.Config{
-		AutoAcceptTypes: []guard.ConfirmationType{
-			guard.ConfTypeTrade,
-			guard.ConfTypeLogin,
-		},
-		PollOnStart: true,
+		AutoAcceptTypes: generic.NewSet(guard.ConfTypeTrade, guard.ConfTypeLogin),
+		PollOnStart:     true,
 	}
 
-	b.orchestrator.Install(
-		guard.AutoAccept(guardian, guardBehaviorCfg),
-		achievements.Simulate(tf2Mod, tf2.AchievementConfig()),
-	)
+	guard.AutoAccept(b.orchestrator, guardian, guardBehaviorCfg)
+	achievements.Simulate(b.orchestrator, tf2Mod, tf2.AchievementConfig())
 
 	// 5. Setup the TF2 Trading Engine Middlewares
 	tradeEngine := engine.New()
@@ -279,13 +275,20 @@ func (b *Bot) setupOrchestrator() {
 	}
 
 	tradeEngine.Use(
+		tf2trading.ItemEnrichmentMiddleware(schemaFunc, b.logger),
 		tf2trading.EscrowMiddleware(webTradeManager, b.logger),
 		tf2trading.BanCheckMiddleware(b.bansManager, b.logger),
 		tf2trading.PricerMiddleware(b.pdbManager, schemaFunc, b.logger),
 		tf2trading.HalloweenSpellMiddleware(b.pdbClient, schemaFunc, b.tradeCfgManager.GetConfig, b.logger),
 		tf2trading.DupeCheckMiddleware(b.bptfChecker, b.logger),
 		tf2trading.StockLimitMiddleware(bp, stockCfg, b.logger),
-		tf2trading.SmartCounterMiddleware(b.tradeCfgManager, metalManager, bp, webTradeManager, b.logger),
+		tf2trading.SmartCounterMiddleware(
+			b.tradeCfgManager,
+			metalManager,
+			bp,
+			tf2trading.NewPartnerInventoryProvider(webTradeManager, schemaFunc),
+			b.logger,
+		),
 	)
 
 	// 6. Connect the Engine to the Trade Manager
@@ -331,10 +334,7 @@ func loadEnvConfig() (Config, error) {
 		return Config{}, errors.New("STEAM_USER and STEAM_PASS environment variables are required")
 	}
 
-	storagePath := os.Getenv("STEAM_STORAGE_PATH")
-	if storagePath == "" {
-		storagePath = "storage.json"
-	}
+	storagePath := generic.Coalesce(os.Getenv("STEAM_STORAGE_PATH"), "storage.json")
 
 	return Config{
 		Username:                   username,

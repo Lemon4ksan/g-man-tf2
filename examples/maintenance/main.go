@@ -22,6 +22,7 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/directory"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/gc"
 	"github.com/lemon4ksan/g-man/pkg/storage/jsonfile"
+	"github.com/lemon4ksan/miyako/generic"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 	"github.com/lemon4ksan/g-man-tf2/pkg/crafting"
@@ -58,10 +59,7 @@ func run() error {
 		return errors.New("STEAM_USER and STEAM_PASS environment variables are required")
 	}
 
-	storagePath := os.Getenv("STEAM_STORAGE_PATH")
-	if storagePath == "" {
-		storagePath = "storage.json"
-	}
+	storagePath := generic.Coalesce(os.Getenv("STEAM_STORAGE_PATH"), "storage.json")
 
 	// 3. Initialize session storage for auth tokens
 	store, err := jsonfile.New(storagePath)

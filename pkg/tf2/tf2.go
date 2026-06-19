@@ -10,12 +10,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"slices"
-	"sync/atomic"
 	"time"
 
 	"github.com/lemon4ksan/g-man/pkg/behavior/achievements"
-	"github.com/lemon4ksan/g-man/pkg/bus"
-	"github.com/lemon4ksan/g-man/pkg/jobs"
 	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/protobuf/custom"
 	pb_steam "github.com/lemon4ksan/g-man/pkg/protobuf/steam"
@@ -27,6 +24,9 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/steam/service"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/apps"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/gc"
+	"github.com/lemon4ksan/miyako/bus"
+	"github.com/lemon4ksan/miyako/jobs"
+	"github.com/lemon4ksan/miyako/kata"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/protoadapt"
 
@@ -96,6 +96,20 @@ const (
 	Connected
 )
 
+// Event represents a trigger that drives a TF2 client state transition.
+type Event int32
+
+const (
+	// EventConnect indicates a new connection is being established.
+	EventConnect Event = iota
+	// EventConnected indicates the connection is fully established.
+	EventConnected
+	// EventServerGoodbye indicates the server is shutting down.
+	EventServerGoodbye
+	// EventDisconnect indicates the connection is being terminated.
+	EventDisconnect
+)
+
 // CoordinatorProvider defines the interface for communicating with the Game Coordinator.
 type CoordinatorProvider interface {
 	Send(ctx context.Context, appID, msgType uint32, msg proto.Message) error
@@ -124,7 +138,7 @@ type TF2 struct {
 	service service.Doer
 	apps    AppsProvider
 
-	state      atomic.Int32
+	fsm        *kata.FSM[State, Event]
 	cache      *SOCache
 	schema     SchemaProvider
 	keepActive bool
@@ -132,8 +146,21 @@ type TF2 struct {
 
 // New creates a new TF2 module.
 func New() *TF2 {
+	fsm := kata.NewFSM[State, Event](Disconnected)
+	fsm.AddRules(
+		kata.TransitionRule[State, Event]{From: Disconnected, Event: EventConnect, To: Connecting},
+		kata.TransitionRule[State, Event]{From: Connecting, Event: EventConnected, To: Connected},
+		kata.TransitionRule[State, Event]{From: Connected, Event: EventServerGoodbye, To: Connecting},
+		kata.TransitionRule[State, Event]{From: Connecting, Event: EventDisconnect, To: Disconnected},
+		kata.TransitionRule[State, Event]{From: Connected, Event: EventDisconnect, To: Disconnected},
+		kata.TransitionRule[State, Event]{From: Disconnected, Event: EventDisconnect, To: Disconnected},
+		kata.TransitionRule[State, Event]{From: Connecting, Event: EventConnect, To: Connecting},
+		kata.TransitionRule[State, Event]{From: Connected, Event: EventConnect, To: Connecting},
+	)
+
 	return &TF2{
 		Base: module.New(ModuleName).WithDeps(gc.ModuleName, apps.ModuleName, schema.ModuleName),
+		fsm:  fsm,
 	}
 }
 
@@ -197,7 +224,7 @@ func (t *TF2) StartAuthed(ctx context.Context, authCtx module.AuthContext) error
 		return err
 	}
 
-	t.state.Store(int32(Connecting))
+	_ = t.fsm.Transition(ctx, EventConnect)
 	t.Go(func(ctx context.Context) {
 		t.helloLoop(ctx)
 	})
@@ -207,13 +234,13 @@ func (t *TF2) StartAuthed(ctx context.Context, authCtx module.AuthContext) error
 
 // Close terminates the session and cleans up active background loops.
 func (t *TF2) Close() error {
-	t.state.Store(int32(Disconnected))
+	_ = t.fsm.Transition(context.Background(), EventDisconnect)
 	return t.Base.Close()
 }
 
 // Connected returns true if the module has established a session with the Game Coordinator.
 func (t *TF2) Connected() bool {
-	return t.state.Load() == int32(Connected)
+	return t.fsm.CurrentState() == Connected
 }
 
 // Cache returns the active [SOCache] inventory instance.
@@ -224,7 +251,7 @@ func (t *TF2) Cache() *SOCache {
 // AwardAchievement requests Steam to unlock the specified TF2 achievement.
 // Returns an error if the GC is disconnected or the API request fails.
 func (t *TF2) AwardAchievement(ctx context.Context, achievementID uint32) error {
-	if t.state.Load() != int32(Connected) {
+	if t.fsm.CurrentState() != Connected {
 		return errors.New("tf2: GC is not connected")
 	}
 
@@ -252,7 +279,7 @@ func (t *TF2) AwardAchievement(ctx context.Context, achievementID uint32) error 
 // SetStat requests Steam to update the specified TF2 gameplay statistic.
 // Returns an error if the GC is disconnected or the API request fails.
 func (t *TF2) SetStat(ctx context.Context, statID, value uint32) error {
-	if t.state.Load() != int32(Connected) {
+	if t.fsm.CurrentState() != Connected {
 		return errors.New("tf2: GC is not connected")
 	}
 
@@ -280,7 +307,7 @@ func (t *TF2) SetStat(ctx context.Context, statID, value uint32) error {
 // GetCurrentAchievements retrieves a map of currently unlocked achievements.
 // Returns an error if the GC is disconnected, or if the request fails.
 func (t *TF2) GetCurrentAchievements(ctx context.Context) (map[uint32]bool, error) {
-	if t.state.Load() != int32(Connected) {
+	if t.fsm.CurrentState() != Connected {
 		return nil, errors.New("tf2: GC is not connected")
 	}
 
@@ -360,18 +387,22 @@ func (t *TF2) PlayGames(ctx context.Context, appIDs []uint32) error {
 		hasTF2 := slices.Contains(appIDs, AppID)
 
 		if !hasTF2 {
-			oldState := t.state.Swap(int32(Disconnected))
-			if oldState != int32(Disconnected) {
+			oldState := t.fsm.CurrentState()
+			if oldState != Disconnected {
+				_ = t.fsm.Transition(ctx, EventDisconnect)
 				t.Logger.Info("Game quit requested, disconnecting from TF2 GC")
 				t.Bus.Publish(&DisconnectedEvent{})
 			}
 		} else {
-			oldState := t.state.Swap(int32(Connecting))
-			if oldState == int32(Disconnected) {
+			oldState := t.fsm.CurrentState()
+			if oldState == Disconnected {
+				_ = t.fsm.Transition(ctx, EventConnect)
 				t.Logger.Info("Game launch requested, connecting to TF2 GC")
 				t.Go(func(ctx context.Context) {
 					t.helloLoop(ctx)
 				})
+			} else {
+				_ = t.fsm.Transition(ctx, EventConnect)
 			}
 		}
 	}
@@ -383,7 +414,7 @@ func (t *TF2) PlayGames(ctx context.Context, appIDs []uint32) error {
 // It times out after 15 seconds if no response is received.
 // Returns the asset IDs of the newly created items, or an error.
 func (t *TF2) Craft(ctx context.Context, items []uint64, recipe int16) ([]uint64, error) {
-	if t.state.Load() != int32(Connected) {
+	if t.fsm.CurrentState() != Connected {
 		return nil, errors.New("tf2: GC is not connected")
 	}
 
@@ -440,7 +471,7 @@ func (t *TF2) helloLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if t.state.Load() != int32(Connecting) {
+			if t.fsm.CurrentState() != Connecting {
 				continue
 			}
 
@@ -527,7 +558,7 @@ func (t *TF2) handleWelcome(pkt *protocol.GCPacket) {
 		return
 	}
 
-	if t.state.CompareAndSwap(int32(Connecting), int32(Connected)) {
+	if t.fsm.Transition(context.Background(), EventConnected) == nil {
 		t.Logger.Info("Connected to TF2 Game Coordinator", log.Uint32("version", msg.GetVersion()))
 		t.Bus.Publish(&ConnectedEvent{Version: msg.GetVersion()})
 	}
@@ -536,7 +567,7 @@ func (t *TF2) handleWelcome(pkt *protocol.GCPacket) {
 func (t *TF2) handleGoodbye(_ *protocol.GCPacket) {
 	t.Logger.Warn("Disconnected from TF2 Game Coordinator (Server Goodbye)")
 
-	if t.state.CompareAndSwap(int32(Connected), int32(Connecting)) {
+	if t.fsm.Transition(context.Background(), EventServerGoodbye) == nil {
 		t.Bus.Publish(&DisconnectedEvent{})
 	}
 }

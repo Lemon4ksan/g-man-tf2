@@ -41,7 +41,7 @@ func TestMapCEconToTF2_EconMapping_ReturnsNormalizedTF2Item(t *testing.T) {
 				AssetID: "100",
 				Amount:  "1",
 			},
-			Description: &inventory.Description{
+			Description: inventory.Description{
 				Tradable: 1,
 				AppData: map[string]any{
 					"def_index": "1",
@@ -61,7 +61,7 @@ func TestMapCEconToTF2_EconMapping_ReturnsNormalizedTF2Item(t *testing.T) {
 	t.Run("uncraftable_item", func(t *testing.T) {
 		econ := inventory.CEconItem{
 			Asset: inventory.Asset{AssetID: "101"},
-			Description: &inventory.Description{
+			Description: inventory.Description{
 				Descriptions: []struct {
 					Value string `json:"value"`
 					Color string `json:"color,omitempty"`
@@ -78,7 +78,7 @@ func TestMapCEconToTF2_EconMapping_ReturnsNormalizedTF2Item(t *testing.T) {
 	t.Run("unusual_item_with_effect", func(t *testing.T) {
 		econ := inventory.CEconItem{
 			Asset: inventory.Asset{AssetID: "102"},
-			Description: &inventory.Description{
+			Description: inventory.Description{
 				Descriptions: []struct {
 					Value string `json:"value"`
 					Color string `json:"color,omitempty"`

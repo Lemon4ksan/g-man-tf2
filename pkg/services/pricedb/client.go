@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/lemon4ksan/aoni"
+	"github.com/lemon4ksan/miyako/yumi"
 )
 
 const (
@@ -29,6 +30,10 @@ type Client struct {
 // NewClient creates a new PriceDB API client.
 // If httpClient is nil, a default robust client is created.
 func NewClient(client *aoni.Client) *Client {
+	if client == nil {
+		client = aoni.NewClient(nil)
+	}
+
 	return &Client{
 		restClient:  client.WithBaseURL(BaseURL).WithUserAgent("G-man Bot/1.0"),
 		skuClient:   client.WithBaseURL(SKUURL).WithUserAgent("G-man Bot/1.0"),
@@ -72,22 +77,37 @@ func (c *Client) GetItemsBulk(ctx context.Context, skus []string) ([]*Price, err
 
 	const batchSize = 100
 
-	var allPrices []*Price
-
+	var batches [][]string
 	for i := 0; i < len(validSKUs); i += batchSize {
 		end := min(i+batchSize, len(validSKUs))
-		batch := validSKUs[i:end]
+		batches = append(batches, validSKUs[i:end])
+	}
 
+	results, err := yumi.Map(ctx, yumi.PipelineConfig{
+		Workers: 3,
+		RPS:     5,
+		Burst:   2,
+	}, batches, func(chunkCtx context.Context, batch []string) ([]*Price, error) {
 		req := bulkRequest{SKUs: batch}
 
-		resp, err := aoni.PostJSON[bulkRequest, []*Price](ctx, c.restClient, "/api/items-bulk", req)
+		resp, err := aoni.PostJSON[bulkRequest, []*Price](chunkCtx, c.restClient, "/api/items-bulk", req)
 		if err != nil {
 			return nil, err
 		}
 
 		if resp != nil {
-			allPrices = append(allPrices, *resp...)
+			return *resp, nil
 		}
+
+		return nil, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var allPrices []*Price
+	for _, batch := range results {
+		allPrices = append(allPrices, batch...)
 	}
 
 	return allPrices, nil

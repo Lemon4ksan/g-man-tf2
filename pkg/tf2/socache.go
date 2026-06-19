@@ -7,16 +7,18 @@ package tf2
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"math"
 	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/lemon4ksan/g-man/pkg/bus"
 	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/steam/protocol"
 	"github.com/lemon4ksan/g-man/pkg/trading"
+	"github.com/lemon4ksan/miyako/bus"
+	"github.com/lemon4ksan/miyako/generic"
 	"google.golang.org/protobuf/proto"
 
 	pb "github.com/lemon4ksan/g-man-tf2/pkg/protobuf/tf2"
@@ -366,17 +368,76 @@ func (i *Item) IsWeapon(s *schema.Schema) bool {
 
 // ToEconItem maps the item fields into a universal exchange [trading.Item] format.
 func (i Item) ToEconItem() *trading.Item {
-	return &trading.Item{
+	item := &trading.Item{
 		AppID:          AppID,
 		ContextID:      2,
 		AssetID:        i.ID,
+		ClassID:        uint64(i.DefIndex),
 		Amount:         int64(i.Quantity),
 		Name:           i.CustomName,
 		MarketName:     i.CustomName,
 		MarketHashName: i.CustomName,
 		Tradable:       i.IsTradable,
 		Marketable:     i.IsMarketable,
+		SKU:            i.SKU,
 	}
+
+	attrs := make([]trading.Attribute, 0)
+	addAttr := func(defindex int, val float64) {
+		attrs = append(attrs, trading.Attribute{
+			Defindex:   defindex,
+			Value:      fmt.Sprintf("%g", val),
+			FloatValue: val,
+		})
+	}
+
+	if i.Effect != 0 {
+		addAttr(134, float64(i.Effect))
+	}
+
+	if i.Wear != 0 {
+		addAttr(725, float64(i.Wear))
+	}
+
+	if i.Australium {
+		addAttr(2027, 1.0)
+	}
+
+	if i.Paintkit != 0 {
+		addAttr(834, float64(i.Paintkit))
+	}
+
+	if i.KillstreakTier != 0 {
+		addAttr(2025, float64(i.KillstreakTier))
+	}
+
+	if i.Festivized {
+		addAttr(2053, 1.0)
+	}
+
+	if i.Paint != 0 {
+		addAttr(142, float64(i.Paint))
+	}
+
+	if i.CrateSeries != 0 {
+		addAttr(187, float64(i.CrateSeries))
+	}
+
+	if i.IsElevated || i.Quality == 11 {
+		addAttr(214, 1.0)
+	}
+
+	for _, spell := range i.Spells {
+		addAttr(spell.Attribute, float64(spell.Value))
+	}
+
+	for idx, part := range i.Parts {
+		addAttr(10000+idx, float64(part))
+	}
+
+	item.Attributes = attrs
+
+	return item
 }
 
 // ToSKUObject converts the item parameters to a [sku.Item] representation.
@@ -494,7 +555,7 @@ const (
 )
 
 // Option defines configuration setter functions for [SOCache] instances.
-type Option = bus.Option[*SOCache]
+type Option = generic.Option[*SOCache]
 
 // WithLogger configures a custom [log.Logger] for logging [SOCache] operations.
 func WithLogger(l log.Logger) Option {

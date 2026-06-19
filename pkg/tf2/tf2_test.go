@@ -13,12 +13,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lemon4ksan/g-man/pkg/jobs"
 	bm "github.com/lemon4ksan/g-man/pkg/steam/module"
 	"github.com/lemon4ksan/g-man/pkg/steam/protocol"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/apps"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/gc"
 	"github.com/lemon4ksan/g-man/test/module"
+	"github.com/lemon4ksan/miyako/jobs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -256,7 +256,7 @@ func TestTF2_Lifecycle_ConnectionHandshakes_EmitsExpectedEvents(t *testing.T) {
 
 	select {
 	case <-subConn.C():
-		assert.Equal(t, int32(Connected), tf.state.Load())
+		assert.Equal(t, Connected, tf.fsm.CurrentState())
 	case <-time.After(1 * time.Second):
 		t.Fatal("GCConnectedEvent not received")
 	}
@@ -270,14 +270,14 @@ func TestTF2_Lifecycle_ConnectionHandshakes_EmitsExpectedEvents(t *testing.T) {
 
 	select {
 	case <-subDisc.C():
-		assert.Equal(t, int32(Connecting), tf.state.Load())
+		assert.Equal(t, Connecting, tf.fsm.CurrentState())
 	case <-time.After(1 * time.Second):
 		t.Fatal("GCDisconnectedEvent not received")
 	}
 
 	err = tf.Close()
 	require.NoError(t, err)
-	assert.Equal(t, int32(Disconnected), tf.state.Load())
+	assert.Equal(t, Disconnected, tf.fsm.CurrentState())
 }
 
 func TestTF2_AcknowledgeAll_UnacknowledgedItems_TriggersGCBatchMoves(t *testing.T) {
@@ -386,7 +386,7 @@ func TestTF2_Crafting_BlueprintRecipe_ExecutesSynchronousCraft(t *testing.T) {
 	t.Parallel()
 
 	tf, _, mCoord := setupTF2(t)
-	tf.state.Store(int32(Connected))
+	tf.fsm.ForceSet(Connected)
 
 	mCoord.onSendRaw = func(msgType uint32, p []byte) error {
 		if msgType != uint32(pb.EGCItemMsg_k_EMsgGCCraft) {
@@ -534,7 +534,7 @@ func TestTF2_SimpleGetters_ReturnsExpected(t *testing.T) {
 	assert.Equal(t, "tf2", tf.Name())
 
 	assert.False(t, tf.Connected())
-	tf.state.Store(int32(Connected))
+	tf.fsm.ForceSet(Connected)
 	assert.True(t, tf.Connected())
 
 	cfg := AchievementConfig()
@@ -597,7 +597,7 @@ func TestTF2_PlayGames_TransitionsStateAndPublishesEvents(t *testing.T) {
 
 	sub := ictx.Bus().Subscribe(&DisconnectedEvent{})
 
-	tf.state.Store(int32(Connected))
+	tf.fsm.ForceSet(Connected)
 	err := tf.PlayGames(t.Context(), []uint32{730})
 	require.NoError(t, err)
 	assert.False(t, tf.Connected())
@@ -610,7 +610,7 @@ func TestTF2_PlayGames_TransitionsStateAndPublishesEvents(t *testing.T) {
 
 	err = tf.PlayGames(t.Context(), []uint32{AppID})
 	require.NoError(t, err)
-	assert.Equal(t, int32(Connecting), tf.state.Load())
+	assert.Equal(t, Connecting, tf.fsm.CurrentState())
 }
 
 func TestSOCache_FindWeaponsByClass_WithWeapon(t *testing.T) {

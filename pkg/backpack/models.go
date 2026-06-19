@@ -38,16 +38,6 @@ type DupeChecker interface {
 	CheckHistory(ctx context.Context, assetID uint64) (HistoryStatus, error)
 }
 
-// PlayerItemsResponse represents the parsed payload returned by the Steam inventory API.
-type PlayerItemsResponse struct {
-	Result struct {
-		Status           int       `json:"status"`
-		StatusDetail     string    `json:"statusDetail"`
-		NumBackpackSlots int       `json:"num_backpack_slots"`
-		Items            []TF2Item `json:"items"`
-	} `json:"result"`
-}
-
 // TF2Item represents a single item structure in the remote Team Fortress 2 inventory.
 type TF2Item struct {
 	// ID represents the unique asset identifier.
@@ -94,7 +84,7 @@ func mapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 		item.Quantity = amount
 	}
 
-	if desc == nil {
+	if len(desc.AppData) == 0 && len(desc.Tags) == 0 && len(desc.Descriptions) == 0 && desc.Name == "" {
 		return item
 	}
 
@@ -105,6 +95,30 @@ func mapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 
 		if q, ok := desc.AppData["quality"].(string); ok {
 			item.Quality = mustParseInt(q)
+		}
+
+		if oi, ok := desc.AppData["original_id"].(string); ok {
+			item.OriginalID = mustParseUint64(oi)
+		} else if oi, ok := desc.AppData["original_id"].(float64); ok {
+			item.OriginalID = uint64(oi)
+		}
+	}
+
+	if item.Defindex == 0 && s != nil &&
+		(len(desc.AppData) > 0 || len(desc.Tags) > 0 || len(desc.Descriptions) > 0 || desc.Name != "") {
+		nameToParse := desc.MarketHashName
+		if nameToParse == "" {
+			nameToParse = desc.Name
+		}
+
+		if nameToParse != "" {
+			parsed := s.ItemFromName(nameToParse)
+			if parsed != nil && parsed.Defindex > 0 {
+				item.Defindex = parsed.Defindex
+				if item.Quality == 0 {
+					item.Quality = parsed.Quality
+				}
+			}
 		}
 	}
 
@@ -375,6 +389,7 @@ func (it *TF2Item) ToEconItem() *trading.Item {
 		Amount:    int64(it.Quantity),
 		Tradable:  !it.FlagCannotTrade,
 		Name:      it.CustomName,
+		SKU:       it.ToSKU(),
 	}
 
 	if len(it.Attributes) > 0 {

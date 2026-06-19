@@ -11,18 +11,17 @@ import (
 
 	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/g-man/pkg/behavior"
-	"github.com/lemon4ksan/g-man/pkg/bus"
 	"github.com/lemon4ksan/g-man/pkg/log"
+	"github.com/lemon4ksan/miyako/bus"
+	"github.com/lemon4ksan/miyako/yumi"
 )
 
 // BehaviorName is the unique name of the behavior.
 const BehaviorName = "pricedb_sync"
 
-// WithPriceManager returns an option that registers the pricedb manager behavior with the orchestrator.
-func WithPriceManager(client *Client) behavior.Option {
-	return func(o *behavior.Orchestrator) {
-		o.Register(NewManager(client, o.Logger()).WithBus(o.Bus()))
-	}
+// WithPriceManager registers the pricedb manager behavior with the orchestrator.
+func WithPriceManager(orch *behavior.Orchestrator, client *Client) {
+	orch.Register(NewManager(client, orch.Logger()).WithBus(orch.Bus()))
 }
 
 // Manager handles caching and background updates for PriceDB prices.
@@ -199,24 +198,44 @@ func (m *Manager) Fetch(ctx context.Context, skus []string) (map[string]*Price, 
 		return make(map[string]*Price), nil
 	}
 
-	prices, err := m.client.GetItemsBulk(ctx, skus)
+	type result struct {
+		sku   string
+		price *Price
+	}
+
+	results, err := yumi.Map(ctx, yumi.PipelineConfig{
+		Workers: 5,
+		RPS:     10,
+		Burst:   3,
+	}, skus, func(chunkCtx context.Context, sku string) (result, error) {
+		prices, err := m.client.GetItemsBulk(chunkCtx, []string{sku})
+		if err != nil {
+			return result{sku: sku}, err
+		}
+
+		if len(prices) > 0 && prices[0].Validate() {
+			return result{sku: sku, price: prices[0]}, nil
+		}
+
+		return result{sku: sku}, nil
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	result := make(map[string]*Price)
+	resultMap := make(map[string]*Price)
 
 	m.mu.Lock()
-	for _, p := range prices {
-		if p.Validate() {
-			m.cache[p.SKU] = p
-			result[p.SKU] = p
+	for _, r := range results {
+		if r.price != nil {
+			m.cache[r.sku] = r.price
+			resultMap[r.sku] = r.price
 		}
 	}
 
 	m.mu.Unlock()
 
-	return result, nil
+	return resultMap, nil
 }
 
 // SeedFromBackpack populates the watched SKUs from the given inventory.

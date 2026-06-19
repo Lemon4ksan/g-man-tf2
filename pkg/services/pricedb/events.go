@@ -4,7 +4,7 @@
 
 package pricedb
 
-import "github.com/lemon4ksan/g-man/pkg/bus"
+import "github.com/lemon4ksan/miyako/bus"
 
 // PricelistUpdatedEvent is published when a price in the database is set or changed.
 type PricelistUpdatedEvent struct {

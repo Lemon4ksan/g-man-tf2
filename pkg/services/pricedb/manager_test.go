@@ -16,8 +16,8 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/lemon4ksan/g-man/pkg/behavior"
-	"github.com/lemon4ksan/g-man/pkg/bus"
 	"github.com/lemon4ksan/g-man/pkg/log"
+	"github.com/lemon4ksan/miyako/bus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -184,11 +184,11 @@ func TestPriceManager_OrchestratorOption(t *testing.T) {
 	logger := log.New(log.DefaultConfig(log.LevelError))
 	client := NewClient(nil)
 
-	orchestrator := behavior.NewOrchestrator(logger, bus.New())
-	opt := WithPriceManager(client)
+	b := bus.New()
+	orchestrator := behavior.NewOrchestrator(b, logger)
 
 	assert.NotPanics(t, func() {
-		orchestrator.Install(opt)
+		WithPriceManager(orchestrator, client)
 	})
 }
 

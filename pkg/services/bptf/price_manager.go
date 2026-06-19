@@ -25,11 +25,9 @@ import (
 // BehaviorName is the name of the price manager behavior.
 const BehaviorName = "bptf_prices"
 
-// WithPriceManager returns an option that registers the price manager behavior with the orchestrator.
-func WithPriceManager(client *Client, cfg Config) behavior.Option {
-	return func(o *behavior.Orchestrator) {
-		o.Register(NewPriceManager(client, o.Logger(), cfg))
-	}
+// WithPriceManager registers the price manager behavior with the orchestrator.
+func WithPriceManager(orch *behavior.Orchestrator, client *Client, cfg Config) {
+	orch.Register(NewPriceManager(client, orch.Logger(), cfg))
 }
 
 // Config holds the configuration for the price manager.

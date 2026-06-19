@@ -7,7 +7,7 @@ package schema
 import (
 	"time"
 
-	"github.com/lemon4ksan/g-man/pkg/bus"
+	"github.com/lemon4ksan/miyako/bus"
 )
 
 // ReadyEvent is emitted when the schema has loaded and is ready for use.

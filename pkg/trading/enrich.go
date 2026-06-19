@@ -12,6 +12,7 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 	"github.com/lemon4ksan/g-man/pkg/trading/engine"
+
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 )
 
@@ -44,27 +45,35 @@ func EnrichItem(item *trading.Item, s *schema.Schema) {
 	if skuItem.Effect != 0 {
 		addAttr(schema.AttrUnusualEffect, float64(skuItem.Effect))
 	}
+
 	if skuItem.Wear != 0 {
 		addAttr(schema.AttrWear, float64(skuItem.Wear)/5.0)
 	}
+
 	if skuItem.Australium {
 		addAttr(schema.AttrAustralium, 1.0)
 	}
+
 	if skuItem.Paintkit != 0 {
 		addAttr(schema.AttrPaintkit, float64(skuItem.Paintkit))
 	}
+
 	if skuItem.Killstreak != 0 {
 		addAttr(schema.AttrKillstreak, float64(skuItem.Killstreak))
 	}
+
 	if skuItem.Festivized {
 		addAttr(schema.AttrFestivized, 1.0)
 	}
+
 	if skuItem.Paint != 0 {
 		addAttr(schema.AttrPaintColor, float64(skuItem.Paint))
 	}
+
 	if skuItem.Crateseries != 0 {
 		addAttr(schema.AttrCrateSeries, float64(skuItem.Crateseries))
 	}
+
 	if skuItem.Quality2 == schema.QualityStrange {
 		addAttr(schema.AttrStrangeScore, 1.0)
 	}
@@ -94,6 +103,7 @@ func ItemEnrichmentMiddleware(schemaProvider func() *schema.Schema, logger log.L
 			for _, it := range ctx.Offer.ItemsToGive {
 				EnrichItem(it, s)
 			}
+
 			for _, it := range ctx.Offer.ItemsToReceive {
 				EnrichItem(it, s)
 			}
@@ -111,7 +121,10 @@ type TF2PartnerInventoryProvider struct {
 }
 
 // NewPartnerInventoryProvider creates a new TF2PartnerInventoryProvider wrapper.
-func NewPartnerInventoryProvider(provider trading.PartnerInventoryProvider, schemaProvider func() *schema.Schema) trading.PartnerInventoryProvider {
+func NewPartnerInventoryProvider(
+	provider trading.PartnerInventoryProvider,
+	schemaProvider func() *schema.Schema,
+) trading.PartnerInventoryProvider {
 	return &TF2PartnerInventoryProvider{
 		provider:       provider,
 		schemaProvider: schemaProvider,
@@ -119,16 +132,21 @@ func NewPartnerInventoryProvider(provider trading.PartnerInventoryProvider, sche
 }
 
 // GetPartnerInventory fetches partner inventory and enriches its items.
-func (p *TF2PartnerInventoryProvider) GetPartnerInventory(ctx context.Context, partnerID id.ID) ([]*trading.Item, error) {
+func (p *TF2PartnerInventoryProvider) GetPartnerInventory(
+	ctx context.Context,
+	partnerID id.ID,
+) ([]*trading.Item, error) {
 	items, err := p.provider.GetPartnerInventory(ctx, partnerID)
 	if err != nil {
 		return nil, err
 	}
+
 	s := p.schemaProvider()
 	if s != nil {
 		for _, it := range items {
 			EnrichItem(it, s)
 		}
 	}
+
 	return items, nil
 }

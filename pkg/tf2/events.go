@@ -5,7 +5,7 @@
 package tf2
 
 import (
-	"github.com/lemon4ksan/g-man/pkg/bus"
+	"github.com/lemon4ksan/miyako/bus"
 )
 
 // ConnectedEvent is emitted when the client establishes a session with the Game Coordinator.

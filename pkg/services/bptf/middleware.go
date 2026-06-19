@@ -9,14 +9,14 @@ import (
 
 	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
-	"github.com/lemon4ksan/g-man/pkg/storage/memory"
 	"github.com/lemon4ksan/g-man/pkg/trading/engine"
+	"github.com/lemon4ksan/miyako/generic"
 
 	tf2reason "github.com/lemon4ksan/g-man-tf2/pkg/reason"
 )
 
 // SafetyMiddleware checks bans and user trust levels on backpack.tf.
-func SafetyMiddleware(bptfClient *Client, cache *memory.TTLCache, logger log.Logger) engine.Middleware {
+func SafetyMiddleware(bptfClient *Client, cache *generic.Cache[string, any], logger log.Logger) engine.Middleware {
 	return func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
 			steamID := ctx.Offer.OtherSteamID
