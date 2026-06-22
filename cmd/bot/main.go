@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -50,6 +51,7 @@ import (
 type Config struct {
 	Username       string
 	Password       string
+	RefreshToken   string
 	SharedSecret   string
 	IdentitySecret string
 	DeviceID       string
@@ -90,6 +92,21 @@ func NewBot(cfg Config, store storage.Provider, logger log.Logger) (*Bot, error)
 	tradeCfgManager, err := tf2trading.NewConfigManager("trading_config.json")
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize trade config: %w", err)
+	}
+
+	var logFields []log.Field
+	if cfg.Username != "" {
+		logFields = append(logFields, log.String("account", cfg.Username))
+	}
+
+	if cfg.RefreshToken != "" {
+		if id := auth.ExtractSteamIDFromJWT(cfg.RefreshToken); id != 0 {
+			logFields = append(logFields, log.SteamID(id.Uint64()))
+		}
+	}
+
+	if len(logFields) > 0 {
+		logger = logger.With(logFields...)
 	}
 
 	logger = logger.With(log.String("module", "bot"))
@@ -172,16 +189,29 @@ func (b *Bot) Run(ctx context.Context) error {
 		b.handleEvents(ctx)
 	})
 
+	username := b.cfg.Username
+	if username == "" && b.cfg.RefreshToken != "" {
+		if id := auth.ExtractSteamIDFromJWT(b.cfg.RefreshToken); id != 0 {
+			username = strconv.FormatUint(id.Uint64(), 10)
+		}
+	}
+
 	b.logger.Info("Connecting and authenticating with Steam...",
-		log.String("username", b.cfg.Username),
+		log.String("username", username),
+		log.Bool("use_refresh_token", b.cfg.RefreshToken != ""),
 	)
 
 	details := &auth.LogOnDetails{
-		AccountName: b.cfg.Username,
-		Password:    b.cfg.Password,
+		AccountName:  username,
+		Password:     b.cfg.Password,
+		RefreshToken: b.cfg.RefreshToken,
 	}
 	if err := b.client.ConnectAndLogin(ctx, server, details); err != nil {
 		return fmt.Errorf("connect and login failed: %w", err)
+	}
+
+	if steamID := b.client.SteamID(); steamID != 0 {
+		b.logger = b.logger.With(log.SteamID(steamID.Uint64()))
 	}
 
 	b.logger.Info("Bot logged in. Starting background behaviors...")
@@ -329,9 +359,16 @@ func (b *Bot) waitForShutdown(ctx context.Context) {
 }
 
 func loadEnvConfig() (Config, error) {
-	username, password := os.Getenv("STEAM_USER"), os.Getenv("STEAM_PASS")
-	if username == "" || password == "" {
-		return Config{}, errors.New("STEAM_USER and STEAM_PASS environment variables are required")
+	username := os.Getenv("STEAM_USER")
+	password := os.Getenv("STEAM_PASS")
+	refreshToken := os.Getenv("STEAM_REFRESH_TOKEN")
+
+	if username == "" && refreshToken == "" {
+		return Config{}, errors.New("STEAM_USER environment variable is required when refresh token is missing")
+	}
+
+	if password == "" && refreshToken == "" {
+		return Config{}, errors.New("either STEAM_PASS or STEAM_REFRESH_TOKEN environment variable is required")
 	}
 
 	storagePath := generic.Coalesce(os.Getenv("STEAM_STORAGE_PATH"), "storage.json")
@@ -339,6 +376,7 @@ func loadEnvConfig() (Config, error) {
 	return Config{
 		Username:                   username,
 		Password:                   password,
+		RefreshToken:               refreshToken,
 		SharedSecret:               os.Getenv("STEAM_SHARED_SECRET"),
 		IdentitySecret:             os.Getenv("STEAM_IDENTITY_SECRET"),
 		DeviceID:                   os.Getenv("STEAM_DEVICE_ID"),
