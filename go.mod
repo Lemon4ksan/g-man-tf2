@@ -7,7 +7,7 @@ require (
 	github.com/andygrunwald/vdf v1.1.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/lemon4ksan/aoni v0.1.1
-	github.com/lemon4ksan/g-man v0.7.0
+	github.com/lemon4ksan/g-man v0.8.0
 	github.com/lemon4ksan/miyako v0.1.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/stretchr/testify v1.11.1

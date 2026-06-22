@@ -118,9 +118,12 @@ func (m *Manager) Init(init module.InitContext) error {
 	m.restClient = init.Rest()
 
 	if aoniClient := aoni.UnwrapClient(m.restClient); aoniClient != nil {
-		m.pricedbClient = pricedb.NewClient(aoniClient)
+		unlimitedClient := aoniClient.WithMaxResponseSize(0)
+		m.restClient = unlimitedClient
+		m.pricedbClient = pricedb.NewClient(unlimitedClient)
 	} else {
-		m.pricedbClient = pricedb.NewClient(aoni.NewClient(nil))
+		unlimitedClient := aoni.NewClient(nil).WithMaxResponseSize(0)
+		m.pricedbClient = pricedb.NewClient(unlimitedClient)
 	}
 
 	return nil
