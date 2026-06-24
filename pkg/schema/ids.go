@@ -150,6 +150,27 @@ const (
 	WearBattleScarred = 5
 )
 
+// WearToTier converts a raw wear float (0.0–1.0) to the SKU tier index (1–5).
+// Returns 0 if wear is 0 (unset).
+func WearToTier(wear float32) int {
+	if wear == 0 {
+		return 0
+	}
+
+	switch {
+	case wear < 0.07:
+		return WearFactoryNew
+	case wear < 0.15:
+		return WearMinimalWear
+	case wear < 0.38:
+		return WearFieldTested
+	case wear < 0.45:
+		return WearWellWorn
+	default:
+		return WearBattleScarred
+	}
+}
+
 // Classes is a complete list of TF2 class names.
 var Classes = []string{"Scout", "Soldier", "Pyro", "Demoman", "Heavy", "Engineer", "Medic", "Sniper", "Spy"}
 

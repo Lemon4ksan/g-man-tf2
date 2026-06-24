@@ -183,7 +183,7 @@ func TestTF2Item_ToSKU_AttributesAndQualities_GeneratesCorrectSKU(t *testing.T) 
 					{Defindex: 725, Value: float64(0.2)},
 				},
 			},
-			want: "100;15;w1;pk10",
+			want: "100;15;w3;pk10",
 		},
 	}
 

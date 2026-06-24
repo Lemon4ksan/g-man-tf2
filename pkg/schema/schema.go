@@ -82,7 +82,7 @@ type Item struct {
 	// ImageURL represents the URL of the small (128x128) backpack icon.
 	ImageURL string `json:"image_url"`
 	// ImageURLLarge represents the URL of the large (512x512) backpack image.
-	ImageURLLarge string `json:"image_image_url_large"`
+	ImageURLLarge string `json:"image_url_large"`
 	// Flags represents item flags bitmask (trade/craft restrictions).
 	Flags int `json:"flags,omitempty"`
 	// Origin represents the item origin/provenance ID.
@@ -92,7 +92,7 @@ type Item struct {
 	// ItemClass specifies the item class for equipping.
 	ItemSlot string `json:"item_slot,omitempty"`
 	// StyleCount represents the number of available styles.
-	StyleCount int `json:"styles,omitempty"`
+	StyleCount any `json:"styles,omitempty"`
 	// UsedByClassesRaw is the raw class usability bitmask (if present).
 	UsedByClassesRaw int `json:"used_by_classes_mask,omitempty"`
 }
@@ -1569,8 +1569,10 @@ func (s *Schema) ItemName(item *sku.Item, proper, usePipeForSkin, scmFormat bool
 	baseName := ""
 	if info, ok := retiredKeys[item.Defindex]; ok {
 		baseName = info.Name
-	} else {
+	} else if schemaItem.ItemName != "" {
 		baseName = schemaItem.ItemName
+	} else {
+		baseName = schemaItem.Name
 	}
 
 	if proper && len(parts) == 0 && schemaItem.ProperName {

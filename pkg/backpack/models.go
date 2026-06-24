@@ -321,7 +321,7 @@ func (it *TF2Item) ToSKU() string {
 			}
 		case schema.AttrWear:
 			if val, ok := attr.Value.(float64); ok {
-				wear = int(val * 5)
+				wear = schema.WearToTier(float32(val))
 			}
 		case schema.AttrAustralium:
 			isAustralium = true

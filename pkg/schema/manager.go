@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -26,7 +27,6 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/steam/module"
 	"github.com/lemon4ksan/g-man/pkg/steam/service"
 	"github.com/mitchellh/mapstructure"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 )
@@ -283,10 +283,10 @@ func (m *Manager) refreshSchema(ctx context.Context, itemsGameURL string) error 
 			return err
 		}
 
-		m.Logger.WarnContext(ctx, "PriceDB schema fetch failed, falling back to Steam API", log.Err(err))
+		m.Logger.WarnContext(ctx, "PriceDB schema fetch failed, falling back to items_game.txt", log.Err(err))
 	}
 
-	return m.refreshLegacy(ctx, itemsGameURL)
+	return m.refreshFromGame(ctx, itemsGameURL)
 }
 
 func (m *Manager) refreshPriceDB(ctx context.Context) error {
@@ -324,6 +324,35 @@ func (m *Manager) refreshPriceDB(ctx context.Context) error {
 	itemsGame, err := m.getItemsGame(ctx, itemsGameURL)
 	if err != nil {
 		return fmt.Errorf("failed to fetch items_game.txt: %w", err)
+	}
+
+	existingDefindexes := make(map[int]bool, len(items))
+	for _, it := range items {
+		if item, ok := it.(map[string]any); ok {
+			if di, ok := item["defindex"].(float64); ok {
+				existingDefindexes[int(di)] = true
+			}
+		}
+	}
+
+	extraItems := m.parseItemsGameItems(ctx, itemsGameURL)
+	mergedCount := 0
+
+	if len(extraItems) == 0 {
+		m.Logger.WarnContext(ctx, "No extra items parsed from items_game.txt")
+	}
+
+	for _, extra := range extraItems {
+		if item, ok := extra.(map[string]any); ok {
+			if di, ok := item["defindex"].(float64); ok && !existingDefindexes[int(di)] {
+				items = append(items, extra)
+				mergedCount++
+			}
+		}
+	}
+
+	if mergedCount > 0 {
+		m.Logger.InfoContext(ctx, "Enriched schema with items from items_game.txt", log.Int("added", mergedCount))
 	}
 
 	overview, err := m.getSchemaOverview(ctx)
@@ -365,47 +394,59 @@ func (m *Manager) refreshPriceDB(ctx context.Context) error {
 	return nil
 }
 
-func (m *Manager) refreshLegacy(ctx context.Context, itemsGameURL string) error {
-	m.Logger.DebugContext(ctx, "Fetching schema components from Steam and GitHub (Legacy)...")
+func (m *Manager) refreshFromGame(ctx context.Context, itemsGameURL string) error {
+	m.Logger.InfoContext(ctx, "Building schema from Steam API and items_game.txt...")
 
-	overview, err := m.getSchemaOverview(ctx)
+	itemsGame, err := m.getItemsGame(ctx, itemsGameURL)
 	if err != nil {
-		return err
+		m.Logger.WarnContext(ctx, "Failed to parse items_game.txt, continuing without it", log.Err(err))
+
+		itemsGame = map[string]any{}
 	}
 
 	items, err := m.getSchemaItems(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to fetch schema items: %w", err)
 	}
 
-	var (
-		paintkits map[string]string
-		itemsGame map[string]any
-	)
-
-	g, gCtx := errgroup.WithContext(ctx)
-
-	g.Go(func() error {
-		var err error
-
-		paintkits, err = m.getPaintKits(gCtx)
-
-		return err
-	})
-	g.Go(func() error {
-		var err error
-
-		itemsGame, err = m.getItemsGame(gCtx, itemsGameURL)
-
-		return err
-	})
-
-	if err := g.Wait(); err != nil {
-		m.Bus.Publish(&UpdateFailedEvent{Error: err})
-		return fmt.Errorf("parallel legacy fetch failed: %w", err)
+	existingDefindexes := make(map[int]bool, len(items))
+	for _, it := range items {
+		if item, ok := it.(map[string]any); ok {
+			if di, ok := item["defindex"].(float64); ok {
+				existingDefindexes[int(di)] = true
+			}
+		}
 	}
 
-	if err := m.buildSchema(overview, items, paintkits, itemsGame); err != nil {
+	extraItems := m.parseItemsGameItems(ctx, itemsGameURL)
+	if len(extraItems) == 0 {
+		m.Logger.WarnContext(ctx, "No extra items parsed from items_game.txt")
+	}
+
+	for _, extra := range extraItems {
+		if item, ok := extra.(map[string]any); ok {
+			if di, ok := item["defindex"].(float64); ok && !existingDefindexes[int(di)] {
+				items = append(items, extra)
+			}
+		}
+	}
+
+	paintKits, _ := m.getPaintKits(ctx)
+	if paintKits == nil {
+		paintKits = make(map[string]string)
+	}
+
+	overview, err := m.getSchemaOverview(ctx)
+	if err != nil {
+		m.Logger.WarnContext(ctx, "Schema overview unavailable, using minimal overview", log.Err(err))
+
+		overview = map[string]any{"result": map[string]any{
+			"qualities":     map[string]any{},
+			"quality_names": map[string]any{},
+		}}
+	}
+
+	if err := m.buildSchema(overview, items, paintKits, itemsGame); err != nil {
 		return err
 	}
 
@@ -413,14 +454,297 @@ func (m *Manager) refreshLegacy(ctx context.Context, itemsGameURL string) error 
 		m.Logger.WarnContext(ctx, "Failed to save schema to cache", log.Err(err))
 	}
 
-	m.Logger.InfoContext(
-		ctx,
-		"TF2 Schema updated successfully via Legacy API",
+	m.Logger.InfoContext(ctx, "TF2 Schema updated via items_game.txt",
 		log.Int("items", len(m.schema.Raw.Schema.Items)),
+		log.Int("paintkits", len(paintKits)),
 	)
 	m.Bus.Publish(&UpdatedEvent{Timestamp: time.Now()})
 
 	return nil
+}
+
+func (m *Manager) parseTfEnglish(ctx context.Context) map[string]string {
+	url := "https://raw.githubusercontent.com/SteamDatabase/GameTracking-TF2/master/tf/resource/tf_english.txt"
+
+	m.Logger.InfoContext(ctx, "Fetching tf_english.txt for localization...")
+
+	var resp *http.Response
+
+	err := m.withRetry(ctx, func() error {
+		var rerr error
+
+		resp, rerr = m.restClient.Request(ctx, "GET", url, nil, nil)
+		return rerr
+	})
+
+	if err != nil || resp == nil || resp.StatusCode != 200 {
+		m.Logger.WarnContext(ctx, "Failed to fetch tf_english.txt", log.Err(err))
+		return nil
+	}
+
+	defer resp.Body.Close()
+
+	m.Logger.InfoContext(ctx, "tf_english.txt downloaded, parsing...")
+
+	result := make(map[string]string)
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
+
+	inTokens := false
+	bracketCount := 0
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+
+		if trimmed == "{" {
+			bracketCount++
+			if bracketCount == 2 {
+				inTokens = true
+			}
+
+			continue
+		}
+
+		if trimmed == "}" {
+			bracketCount--
+			if bracketCount < 2 {
+				inTokens = false
+			}
+
+			continue
+		}
+
+		if bracketCount == 1 && trimmed == "\"Tokens\"" {
+			inTokens = true
+			continue
+		}
+
+		if !inTokens {
+			continue
+		}
+
+		parts := strings.SplitN(trimmed, "\t", 2)
+		if len(parts) < 2 {
+			parts = strings.SplitN(trimmed, " ", 2)
+		}
+
+		if len(parts) < 2 {
+			continue
+		}
+
+		key := strings.Trim(parts[0], "\"")
+		val := strings.Trim(parts[1], "\"")
+
+		if key != "" && val != "" {
+			result[key] = val
+		}
+	}
+
+	m.Logger.InfoContext(ctx, "Loaded tf_english.txt translations", log.Int("count", len(result)))
+
+	return result
+}
+
+func (m *Manager) parseItemsGameItems(ctx context.Context, url string) []any {
+	if url == "" {
+		url = m.config.ItemsGameMirrorURL
+	}
+
+	var resp *http.Response
+
+	err := m.withRetry(ctx, func() error {
+		var rerr error
+
+		resp, rerr = m.restClient.Request(ctx, "GET", url, nil, nil)
+		return rerr
+	})
+
+	if err != nil || resp == nil || resp.StatusCode != 200 {
+		m.Logger.WarnContext(ctx, "Failed to download items_game.txt for item parsing", log.Err(err))
+		return nil
+	}
+
+	defer resp.Body.Close()
+
+	type gameItem struct {
+		defindex      int
+		name          string
+		localizedName string
+		itemClass     string
+		itemSlot      string
+		properName    bool
+		craftClass    string
+	}
+
+	translations := m.parseTfEnglish(ctx)
+
+	var found []gameItem
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
+
+	inItemsSection := false
+	bracketCount := 0
+	pendingDefindex := -1
+
+	var current gameItem
+
+	inItemBlock := false
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+
+		if trimmed == "{" {
+			bracketCount++
+			if inItemsSection && bracketCount == 3 && pendingDefindex > 0 {
+				inItemBlock = true
+				current = gameItem{defindex: pendingDefindex}
+				pendingDefindex = -1
+			}
+
+			continue
+		}
+
+		if trimmed == "}" {
+			if inItemBlock && bracketCount == 3 {
+				if current.defindex > 0 && current.name != "" {
+					found = append(found, current)
+				}
+
+				inItemBlock = false
+			}
+
+			bracketCount--
+			if bracketCount <= 1 {
+				inItemsSection = false
+			}
+
+			continue
+		}
+
+		if bracketCount == 1 && trimmed == "\"items\"" {
+			inItemsSection = true
+			continue
+		}
+
+		if !inItemsSection {
+			continue
+		}
+
+		if bracketCount == 2 && !inItemBlock {
+			if m := rxDefindex.FindStringSubmatch(trimmed); len(m) == 2 {
+				if di, e := strconv.Atoi(m[1]); e == nil {
+					pendingDefindex = di
+				}
+			}
+
+			continue
+		}
+
+		if !inItemBlock {
+			continue
+		}
+
+		parts := strings.SplitN(trimmed, "\t", 2)
+		if len(parts) < 2 {
+			parts = strings.SplitN(trimmed, " ", 2)
+		}
+
+		if len(parts) < 2 {
+			continue
+		}
+
+		key := strings.Trim(parts[0], "\"")
+		val := strings.Trim(parts[1], "\"")
+
+		switch key {
+		case "name":
+			current.name = val
+		case "localizedname":
+			current.localizedName = val
+		case "item_class":
+			current.itemClass = val
+		case "item_slot":
+			current.itemSlot = val
+		case "proper_name":
+			current.properName = val == "1"
+		case "craft_class":
+			current.craftClass = val
+		}
+	}
+
+	var result []any
+	for _, gi := range found {
+		displayName := gi.name
+
+		if gi.localizedName != "" {
+			if translations != nil {
+				if loc, ok := translations[gi.localizedName]; ok {
+					displayName = loc
+				} else {
+					baseToken := stripStyleSuffix(gi.localizedName)
+					if baseToken != gi.localizedName {
+						if loc, ok := translations[baseToken]; ok {
+							displayName = loc
+						} else {
+							displayName = gi.localizedName
+						}
+					} else {
+						displayName = gi.localizedName
+					}
+				}
+			} else {
+				displayName = gi.localizedName
+			}
+		} else if translations != nil {
+			token := "#" + gi.name
+			if loc, ok := translations[token]; ok {
+				displayName = loc
+			} else {
+				camelName := toCamelCase(gi.name)
+
+				token2 := "#TF_" + camelName
+				if loc, ok := translations[token2]; ok {
+					displayName = loc
+				}
+			}
+		}
+
+		item := map[string]any{
+			"defindex":    float64(gi.defindex),
+			"item_name":   displayName,
+			"item_class":  gi.itemClass,
+			"item_slot":   gi.itemSlot,
+			"proper_name": gi.properName,
+		}
+		if gi.craftClass != "" {
+			item["craft_class"] = gi.craftClass
+		}
+
+		result = append(result, item)
+	}
+
+	m.Logger.InfoContext(ctx, "Parsed items from items_game.txt", log.Int("count", len(result)))
+
+	return result
+}
+
+func toCamelCase(s string) string {
+	parts := strings.Split(s, "_")
+	for i, p := range parts {
+		if len(p) > 0 {
+			parts[i] = strings.ToUpper(p[:1]) + p[1:]
+		}
+	}
+
+	return strings.Join(parts, "")
+}
+
+func stripStyleSuffix(s string) string {
+	re := regexp.MustCompile(`_Style\d+$`)
+	return re.ReplaceAllString(s, "")
 }
 
 func (m *Manager) refreshLoop(ctx context.Context) {
@@ -569,7 +893,7 @@ func (m *Manager) getSchemaOverview(ctx context.Context) (map[string]any, error)
 	if err != nil {
 		if m.isForbiddenError(err) {
 			m.Logger.Warn("WebAPI returned 403. Attempting to fetch Overview from community mirror...")
-			return m.fetchFromMirror(ctx, "overview")
+			return m.fetchFromMirror(ctx)
 		}
 
 		return nil, fmt.Errorf("overview fetch failed: %w", err)
@@ -636,7 +960,14 @@ func (m *Manager) getSchemaItems(ctx context.Context) ([]any, error) {
 }
 
 func (m *Manager) getPaintKits(ctx context.Context) (map[string]string, error) {
-	resp, err := m.restClient.Request(ctx, "GET", m.config.PaintKitURL, nil, nil)
+	var resp *http.Response
+
+	err := m.withRetry(ctx, func() error {
+		var rerr error
+
+		resp, rerr = m.restClient.Request(ctx, "GET", m.config.PaintKitURL, nil, nil)
+		return rerr
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch paint kits: %w", err)
 	}
@@ -712,7 +1043,14 @@ func (m *Manager) getItemsGame(ctx context.Context, url string) (map[string]any,
 		url = m.config.ItemsGameMirrorURL
 	}
 
-	resp, err := m.restClient.Request(ctx, "GET", url, nil, nil)
+	var resp *http.Response
+
+	err := m.withRetry(ctx, func() error {
+		var rerr error
+
+		resp, rerr = m.restClient.Request(ctx, "GET", url, nil, nil)
+		return rerr
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch items_game.txt: %w", err)
 	}
@@ -889,18 +1227,11 @@ func (m *Manager) isForbiddenError(err error) bool {
 	return strings.Contains(err.Error(), "403")
 }
 
-func (m *Manager) fetchFromMirror(ctx context.Context, component string) (map[string]any, error) {
-	var url string
-
-	switch component {
-	case "overview":
-		url = m.config.SchemaMirrorURL
-	default:
-		return nil, fmt.Errorf("unknown mirror component: %s", component)
-	}
+func (m *Manager) fetchFromMirror(ctx context.Context) (map[string]any, error) {
+	url := m.config.SchemaMirrorURL
 
 	if url == "" {
-		return nil, fmt.Errorf("mirror URL for %s not configured", component)
+		return nil, errors.New("mirror URL for schemanot configured")
 	}
 
 	res, err := aoni.GetJSON[map[string]any](ctx, m.restClient, url)

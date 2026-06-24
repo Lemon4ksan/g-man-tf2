@@ -466,7 +466,7 @@ func (i Item) ToSKUObject() *sku.Item {
 		Festivized:  i.Festivized,
 		Paintkit:    int(i.Paintkit),
 		Seed:        int(i.PaintkitSeed),
-		Wear:        int(i.Wear * 100),
+		Wear:        schema.WearToTier(i.Wear),
 		Craftnumber: int(i.CraftNumber),
 		Crateseries: int(i.CrateSeries),
 		Target:      int(i.Target),

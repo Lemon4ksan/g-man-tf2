@@ -1622,18 +1622,13 @@ func TestCoverage_MirrorFetch(t *testing.T) {
 
 	sm, _ := setupSchema(t, Config{
 		SchemaMirrorURL: "",
-		ItemsMirrorURL:  "",
 	})
 
-	_, err := sm.fetchFromMirror(t.Context(), "overview")
+	_, err := sm.fetchFromMirror(t.Context())
 	assert.ErrorContains(t, err, "not configured")
-
-	_, err = sm.fetchFromMirror(t.Context(), "unknown")
-	assert.ErrorContains(t, err, "unknown mirror component")
 
 	sm2, mockAPI2 := setupSchema(t, Config{
 		SchemaMirrorURL: "http://mirror/overview",
-		ItemsMirrorURL:  "http://mirror/items",
 	})
 
 	mockAPI2.OnRest = func(method, path string, body any) (*http.Response, error) {
@@ -1654,13 +1649,9 @@ func TestCoverage_MirrorFetch(t *testing.T) {
 		return nil, fmt.Errorf("unexpected path: %s", path)
 	}
 
-	res, err := sm2.fetchFromMirror(t.Context(), "overview")
+	res, err := sm2.fetchFromMirror(t.Context())
 	assert.NoError(t, err)
 	assert.NotNil(t, res)
-
-	items, err := sm2.fetchItemsFromMirror(t.Context())
-	assert.NoError(t, err)
-	assert.NotNil(t, items)
 }
 
 func TestCoverage_StartAuthed(t *testing.T) {

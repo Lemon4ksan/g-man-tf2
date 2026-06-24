@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	tr "github.com/lemon4ksan/g-man/pkg/steam/transport"
 	"github.com/lemon4ksan/g-man/test/module"
 	"github.com/lemon4ksan/g-man/test/requester"
 )
@@ -248,27 +247,9 @@ func TestManager_Refresh_APIErrors_ReturnsError(t *testing.T) {
 		mockSetup func(m *requester.Mock)
 	}{
 		{
-			name: "overview_webapi_error",
-			mockSetup: func(m *requester.Mock) {
-				m.ResponseErrs["IEconItems_440/GetSchemaOverview"] = errors.New("steam api down")
-			},
-		},
-		{
 			name: "items_webapi_error",
 			mockSetup: func(m *requester.Mock) {
 				m.ResponseErrs["IEconItems_440/GetSchemaItems"] = errors.New("steam api timeout")
-			},
-		},
-		{
-			name: "github_resource_down",
-			mockSetup: func(m *requester.Mock) {
-				m.OnDo = func(req *tr.Request) (*tr.Response, error) {
-					if strings.HasPrefix(req.Target().String(), "https://raw.githubusercontent.com") {
-						return nil, errors.New("github connection failed")
-					}
-
-					return nil, nil
-				}
 			},
 		},
 	}
@@ -294,6 +275,65 @@ func TestManager_Refresh_APIErrors_ReturnsError(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestManager_Refresh_APIErrors_FallbackSucceeds(t *testing.T) {
+	t.Parallel()
+
+	t.Run("overview_webapi_error", func(t *testing.T) {
+		t.Parallel()
+
+		sm, mockAPI := setupSchema(t, Config{})
+
+		mockAPI.SetJSONResponse(
+			"IEconItems_440",
+			"GetSchemaItems",
+			map[string]any{"result": map[string]any{"items": []any{}}},
+		)
+
+		mockAPI.ResponseErrs["IEconItems_440/GetSchemaOverview"] = errors.New("steam api down")
+
+		err := sm.Refresh(t.Context())
+		if err != nil {
+			t.Errorf("expected Refresh to succeed with fallback overview, got error: %v", err)
+		}
+	})
+
+	t.Run("github_resource_down", func(t *testing.T) {
+		t.Parallel()
+
+		sm, mockAPI := setupSchema(t, Config{})
+
+		mockAPI.SetJSONResponse("IEconItems_440", "GetSchemaOverview", map[string]any{"result": map[string]any{}})
+		mockAPI.SetJSONResponse(
+			"IEconItems_440",
+			"GetSchemaItems",
+			map[string]any{"result": map[string]any{"items": []any{}}},
+		)
+
+		mockAPI.OnRest = func(method, path string, body any) (*http.Response, error) {
+			if strings.Contains(path, "items_game") {
+				return nil, errors.New("github connection failed")
+			}
+
+			if strings.Contains(path, "proto_obj_defs") {
+				return &http.Response{
+					Body:       io.NopCloser(strings.NewReader("\"lang\"\n{\n\t\"Tokens\"\n\t{\n\t}\n}\n")),
+					StatusCode: 200,
+				}, nil
+			}
+
+			return &http.Response{
+				Body:       io.NopCloser(strings.NewReader("\"items_game\"\n{\n}\n")),
+				StatusCode: 200,
+			}, nil
+		}
+
+		err := sm.Refresh(t.Context())
+		if err != nil {
+			t.Errorf("expected Refresh to succeed when items_game is down, got error: %v", err)
+		}
+	})
 }
 
 func TestManager_HandleUpdateRequested_EventDispatched_RefreshesAsynchronously(t *testing.T) {
