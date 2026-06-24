@@ -33,7 +33,7 @@ func Parse(input string) (*Currency, error) {
 
 	for _, match := range matches {
 		val, err := strconv.ParseFloat(match[1], 64)
-		if err != nil {
+		if err != nil || math.IsNaN(val) || math.IsInf(val, 0) {
 			continue
 		}
 

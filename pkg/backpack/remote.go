@@ -115,7 +115,8 @@ func (r *Remote) GetItemsBySKU(ctx context.Context, targetSKU string) ([]TF2Item
 		}
 	}
 
-	items := r.items
+	items := make([]TF2Item, len(r.items))
+	copy(items, r.items)
 	r.mu.Unlock()
 
 	var result []TF2Item

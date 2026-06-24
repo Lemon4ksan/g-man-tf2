@@ -707,7 +707,21 @@ func (m *Manager) FetchMyListings(ctx context.Context) ([]Listing, error) {
 		return nil, err
 	}
 
-	return m.client.FetchMyListings(ctx)
+	listings, err := m.client.FetchMyListings(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	m.listingsMu.Lock()
+
+	m.listings = make(map[string]Listing)
+	for _, l := range listings {
+		m.listings[l.AssetID] = l
+	}
+
+	m.listingsMu.Unlock()
+
+	return listings, nil
 }
 
 // CreateListing creates a new listing on the crit.tf API.

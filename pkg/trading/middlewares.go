@@ -512,7 +512,9 @@ func SmartCounterMiddleware(
 
 			diff, err := calculateValueDiff(ctx, useSeparateKeyRates)
 			if err != nil {
-				return nil //nolint:nilerr
+				logger.Error("Failed to calculate value difference", log.Err(err))
+				ctx.Review(tf2reason.ReviewInvalidValue)
+				return err
 			}
 
 			if diff == 0 {
@@ -600,14 +602,14 @@ func FindPartnerCurrency(
 	)
 
 	for _, it := range items {
-		switch it.MarketHashName {
-		case "Mann Co. Supply Crate Key":
+		switch it.SKU {
+		case currency.SKUKey:
 			keys = append(keys, it)
-		case "Refined Metal":
+		case currency.SKURefined:
 			refined = append(refined, it)
-		case "Reclaimed Metal":
+		case currency.SKUReclaimed:
 			reclaimed = append(reclaimed, it)
-		case "Scrap Metal":
+		case currency.SKUScrap:
 			scrap = append(scrap, it)
 		default:
 			if sch != nil && isUniqueWeapon(it.SKU, sch) {
