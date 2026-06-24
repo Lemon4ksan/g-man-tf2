@@ -110,40 +110,41 @@ func (cm *ConfigManager) Load() error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
+	defaultCfg := Config{
+		GlobalMaxStock:              3000,
+		DefaultMaxStock:             5,
+		Items:                       make(map[string]ItemConfig),
+		EnableAutoCancelStaleOffers: false,
+		CancelStaleOffersAfter:      "15m",
+		BackpackSortingSections:     []BackpackSectionConfig{},
+		FallbackSpellPremiums: map[string]float64{
+			"Exorcism":                  3.0,
+			"Voices from Below":         5.0,
+			"Pumpkin Bombs":             10.0,
+			"Gourd Grenades":            10.0,
+			"Squash Rockets":            10.0,
+			"Sentry Quad-Pumpkins":      10.0,
+			"Halloween Fire":            15.0,
+			"Spectral Flame":            15.0,
+			"Die Job":                   10.0,
+			"Chromatic Corruption":      10.0,
+			"Putrescent Pigmentation":   10.0,
+			"Spectral Spectrum":         10.0,
+			"Sinister Staining":         10.0,
+			"Team Spirit Footprints":    40.0,
+			"Headless Horseshoes":       40.0,
+			"Gangreen Footprints":       40.0,
+			"Corpse Gray Footprints":    40.0,
+			"Violent Violet Footprints": 40.0,
+			"Rotten Orange Footprints":  40.0,
+			"Bruised Purple Footprints": 40.0,
+		},
+	}
+
 	data, err := os.ReadFile(cm.path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			cm.cfg = Config{
-				GlobalMaxStock:              3000,
-				DefaultMaxStock:             5,
-				Items:                       make(map[string]ItemConfig),
-				EnableAutoCancelStaleOffers: false,
-				CancelStaleOffersAfter:      "15m",
-				BackpackSortingSections:     []BackpackSectionConfig{},
-
-				FallbackSpellPremiums: map[string]float64{
-					"Exorcism":                  3.0,
-					"Voices from Below":         5.0,
-					"Pumpkin Bombs":             10.0,
-					"Gourd Grenades":            10.0,
-					"Squash Rockets":            10.0,
-					"Sentry Quad-Pumpkins":      10.0,
-					"Halloween Fire":            15.0,
-					"Spectral Flame":            15.0,
-					"Die Job":                   10.0,
-					"Chromatic Corruption":      10.0,
-					"Putrescent Pigmentation":   10.0,
-					"Spectral Spectrum":         10.0,
-					"Sinister Staining":         10.0,
-					"Team Spirit Footprints":    40.0,
-					"Headless Horseshoes":       40.0,
-					"Gangreen Footprints":       40.0,
-					"Corpse Gray Footprints":    40.0,
-					"Violent Violet Footprints": 40.0,
-					"Rotten Orange Footprints":  40.0,
-					"Bruised Purple Footprints": 40.0,
-				},
-			}
+			cm.cfg = defaultCfg
 
 			if err := os.MkdirAll(filepath.Dir(cm.path), 0o755); err != nil {
 				return err
@@ -168,24 +169,19 @@ func (cm *ConfigManager) Load() error {
 		return err
 	}
 
-	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	if err := json.Unmarshal(data, &defaultCfg); err != nil {
 		return err
 	}
 
-	if cfg.Items == nil {
-		cfg.Items = make(map[string]ItemConfig)
+	if defaultCfg.Items == nil {
+		defaultCfg.Items = make(map[string]ItemConfig)
 	}
 
-	if cfg.BackpackSortingSections == nil {
-		cfg.BackpackSortingSections = []BackpackSectionConfig{}
+	if defaultCfg.BackpackSortingSections == nil {
+		defaultCfg.BackpackSortingSections = []BackpackSectionConfig{}
 	}
 
-	if cfg.CancelStaleOffersAfter == "" {
-		cfg.CancelStaleOffersAfter = "15m"
-	}
-
-	cm.cfg = cfg
+	cm.cfg = defaultCfg
 
 	if info, err := os.Stat(cm.path); err == nil {
 		cm.lastModified = info.ModTime()
