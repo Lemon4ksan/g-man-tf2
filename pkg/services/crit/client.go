@@ -19,6 +19,9 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 )
 
+// BaseURL is the default base URL for the crit.tf API.
+const BaseURL = "https://crit.tf/api/v2"
+
 // Config defines the configuration for the crit.tf API client.
 type Config struct {
 	BaseURL string `json:"base_url"`
@@ -27,21 +30,13 @@ type Config struct {
 
 // Client interacts with the crit.tf v2 API.
 type Client struct {
-	config Config
-	rest   *aoni.Client
+	rest *aoni.Client
 }
 
 // NewClient creates a new crit.tf API client targeting v2 endpoints by default.
 func NewClient(httpClient aoni.HTTPDoer, apiKey string) *Client {
-	cfg := Config{
-		APIKey: apiKey,
-	}
-	if cfg.BaseURL == "" {
-		cfg.BaseURL = "https://crit.tf/api/v2"
-	}
-
 	restClient := aoni.NewClient(httpClient).
-		WithBaseURL(cfg.BaseURL).
+		WithBaseURL(BaseURL).
 		WithUserAgent("G-man Bot/1.0").
 		WithBaseResponse(func() aoni.BaseResponse {
 			return &critResponse{}
@@ -52,8 +47,7 @@ func NewClient(httpClient aoni.HTTPDoer, apiKey string) *Client {
 	}
 
 	return &Client{
-		config: cfg,
-		rest:   restClient,
+		rest: restClient,
 	}
 }
 
@@ -75,7 +69,7 @@ func (c *Client) CreateListing(ctx context.Context, assetID string, currencies p
 		"price_metal": currencies.Metal,
 	}
 
-	resp, err := aoni.PostJSON[any, ListingsResponse](ctx, c.rest, "/listings", payload)
+	resp, err := aoni.PostJSON[ListingsResponse](ctx, c.rest, "/listings", payload)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +88,7 @@ func (c *Client) UpdateListing(ctx context.Context, listingID string, currencies
 		"price_metal": currencies.Metal,
 	}
 
-	resp, err := aoni.PutJSON[any, ListingsResponse](
+	resp, err := aoni.PutJSON[ListingsResponse](
 		ctx, c.rest, "/listings/{listingID}", payload,
 		aoni.WithVar("listingID", listingID),
 	)
@@ -111,7 +105,7 @@ func (c *Client) UpdateListing(ctx context.Context, listingID string, currencies
 
 // DeleteListing deletes an active listing by its database ID.
 func (c *Client) DeleteListing(ctx context.Context, listingID string) error {
-	_, err := aoni.DeleteJSON[any, Response](
+	_, err := aoni.DeleteJSON[Response](
 		ctx, c.rest, "/listings/{listingID}", nil,
 		aoni.WithVar("listingID", listingID),
 	)
@@ -121,7 +115,7 @@ func (c *Client) DeleteListing(ctx context.Context, listingID string) error {
 
 // RefreshInventory requests crit.tf to sync the latest inventory status from Steam.
 func (c *Client) RefreshInventory(ctx context.Context) (*InventoryResponse, error) {
-	return aoni.PostJSON[any, InventoryResponse](ctx, c.rest, "/inventory/refresh", nil)
+	return aoni.PostJSON[InventoryResponse](ctx, c.rest, "/inventory/refresh", nil)
 }
 
 // GetMyGroup retrieves store group details of the authenticated bot.
@@ -140,7 +134,7 @@ func (c *Client) GetMyGroup(ctx context.Context) (*Group, error) {
 
 // InviteToGroup sends a store group membership invite to a user.
 func (c *Client) InviteToGroup(ctx context.Context, groupID int, targetSteamID id.ID) error {
-	_, err := aoni.PostJSON[any, Response](
+	_, err := aoni.PostJSON[Response](
 		ctx, c.rest, "/groups/{groupID}/invite",
 		map[string]string{"steam_id": targetSteamID.String()},
 		aoni.WithVar("groupID", groupID),
@@ -161,7 +155,7 @@ func (c *Client) GetPendingInvites(ctx context.Context) ([]Invite, error) {
 
 // AcceptGroupInvite accepts a pending group invite.
 func (c *Client) AcceptGroupInvite(ctx context.Context, groupID int) error {
-	_, err := aoni.PostJSON[any, Response](
+	_, err := aoni.PostJSON[Response](
 		ctx, c.rest, "/groups/{groupID}/accept", nil,
 		aoni.WithVar("groupID", groupID),
 	)
@@ -171,7 +165,7 @@ func (c *Client) AcceptGroupInvite(ctx context.Context, groupID int) error {
 
 // LeaveGroup leaves a store group.
 func (c *Client) LeaveGroup(ctx context.Context, groupID int) error {
-	_, err := aoni.PostJSON[any, Response](
+	_, err := aoni.PostJSON[Response](
 		ctx, c.rest, "/groups/{groupID}/leave", nil,
 		aoni.WithVar("groupID", groupID),
 	)
@@ -265,7 +259,7 @@ func (c *Client) GetInventory(ctx context.Context) ([]any, error) {
 func (c *Client) UpdateTradeURL(ctx context.Context, tradeURL string) (bool, error) {
 	payload := map[string]string{"trade_url": tradeURL}
 
-	resp, err := aoni.PutJSON[any, Response](ctx, c.rest, "/user/trade-url", payload)
+	resp, err := aoni.PutJSON[Response](ctx, c.rest, "/user/trade-url", payload)
 	if err != nil {
 		return false, err
 	}

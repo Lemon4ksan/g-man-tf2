@@ -90,7 +90,7 @@ func (c *Client) GetItemsBulk(ctx context.Context, skus []string) ([]*Price, err
 	}, batches, func(chunkCtx context.Context, batch []string) ([]*Price, error) {
 		req := bulkRequest{SKUs: batch}
 
-		resp, err := aoni.PostJSON[bulkRequest, []*Price](chunkCtx, c.restClient, "/api/items-bulk", req)
+		resp, err := aoni.PostJSON[[]*Price](chunkCtx, c.restClient, "/api/items-bulk", req)
 		if err != nil {
 			return nil, err
 		}
@@ -161,7 +161,7 @@ func (c *Client) Compare(ctx context.Context, sku1, sku2 string) (*CompareResult
 // TriggerPriceCheck requests PriceDB to update the price for a specific SKU.
 // This hits the Autobot integration endpoint.
 func (c *Client) TriggerPriceCheck(ctx context.Context, sku string) error {
-	_, err := aoni.PostJSON[any, any](ctx, c.restClient, "/api/autob/items/{sku}", nil, aoni.WithVar("sku", sku))
+	_, err := aoni.PostJSON[any](ctx, c.restClient, "/api/autob/items/{sku}", nil, aoni.WithVar("sku", sku))
 	return err
 }
 
@@ -453,7 +453,7 @@ func (c *Client) PredictSpellItem(
 ) (*PredictSpellItemResponse, error) {
 	req := PredictSpellItemRequest{ItemName: itemName, SpellIDs: spellIDs}
 
-	resp, err := aoni.PostJSON[PredictSpellItemRequest, PredictSpellItemResponse](
+	resp, err := aoni.PostJSON[PredictSpellItemResponse](
 		ctx, c.spellClient, "/api/spell/predict-spell-item", req,
 	)
 	if err != nil {

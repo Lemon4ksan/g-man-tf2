@@ -12,7 +12,7 @@ import (
 	"github.com/lemon4ksan/aoni"
 )
 
-// critResponse implements rest.BaseResponse to automatically parse API wrappers.
+// critResponse implements [aoni.BaseResponse] to automatically parse API wrappers.
 type critResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message,omitempty"`

@@ -201,37 +201,89 @@ func (r *Remote) IsDuped(ctx context.Context, assetID uint64) (*bool, error) {
 // FindMetalInPartnerInventory searches the partner's inventory to match the required scrap value.
 // It returns a slice of matching [trading.Item] currencies, or an error if the partner lacks change.
 func (r *Remote) FindMetalInPartnerInventory(ctx context.Context, amount currency.Scrap) ([]*trading.Item, error) {
-	skus := []string{currency.SKURefined, currency.SKUReclaimed, currency.SKUScrap}
-	values := map[string]currency.Scrap{
-		currency.SKURefined:   9,
-		currency.SKUReclaimed: 3,
-		currency.SKUScrap:     1,
+	refinedItems, err := r.GetItemsBySKU(ctx, currency.SKURefined)
+	if err != nil {
+		refinedItems = nil
 	}
 
-	var selected []*trading.Item
+	reclaimedItems, err := r.GetItemsBySKU(ctx, currency.SKUReclaimed)
+	if err != nil {
+		reclaimedItems = nil
+	}
 
-	remaining := amount
+	scrapItems, err := r.GetItemsBySKU(ctx, currency.SKUScrap)
+	if err != nil {
+		scrapItems = nil
+	}
 
-	for _, sku := range skus {
-		val := values[sku]
+	bestVal := -1
+	bestRef, bestRec, bestScr := 0, 0, 0
 
-		items, err := r.GetItemsBySKU(ctx, sku)
-		if err != nil {
+	lenRef := len(refinedItems)
+	lenRec := len(reclaimedItems)
+	lenScr := len(scrapItems)
+
+	limitRef := min((int(amount)+8)/9, lenRef)
+
+	for ref := 0; ref <= limitRef; ref++ {
+		rem1 := int(amount) - 9*ref
+		if rem1 <= 0 {
+			val := 9 * ref
+			if bestVal == -1 || val < bestVal {
+				bestVal = val
+				bestRef, bestRec, bestScr = ref, 0, 0
+			}
+
 			continue
 		}
 
-		for _, it := range items {
-			if remaining <= 0 {
-				break
+		limitRec := (rem1 + 2) / 3
+		if limitRec > lenRec {
+			limitRec = lenRec
+		}
+
+		for rec := 0; rec <= limitRec; rec++ {
+			rem2 := rem1 - 3*rec
+			if rem2 <= 0 {
+				val := 9*ref + 3*rec
+				if bestVal == -1 || val < bestVal {
+					bestVal = val
+					bestRef, bestRec, bestScr = ref, rec, 0
+				}
+
+				continue
 			}
 
-			selected = append(selected, it.ToEconItem())
-			remaining -= val
+			s := rem2
+			if s > lenScr {
+				s = lenScr
+			}
+
+			val := 9*ref + 3*rec + s
+			if val >= int(amount) {
+				if bestVal == -1 || val < bestVal {
+					bestVal = val
+					bestRef, bestRec, bestScr = ref, rec, s
+				}
+			}
 		}
 	}
 
-	if remaining > 0 {
-		return nil, fmt.Errorf("partner is missing %d scrap for counter-offer", remaining)
+	if bestVal == -1 {
+		return nil, fmt.Errorf("partner is missing %d scrap for counter-offer", amount)
+	}
+
+	var selected []*trading.Item
+	for i := 0; i < bestRef; i++ {
+		selected = append(selected, refinedItems[i].ToEconItem())
+	}
+
+	for i := 0; i < bestRec; i++ {
+		selected = append(selected, reclaimedItems[i].ToEconItem())
+	}
+
+	for i := 0; i < bestScr; i++ {
+		selected = append(selected, scrapItems[i].ToEconItem())
 	}
 
 	return selected, nil
