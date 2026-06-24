@@ -539,7 +539,6 @@ func New(raw *Raw) *Schema {
 		spellsByID:     make(map[string]string),
 	}
 	s.buildIndices()
-	s.buildSpellIndices()
 
 	return s
 }
@@ -787,6 +786,10 @@ func parseRecipeBlock(defindex int, block string) *RecipeDefinition {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			continue
+		}
+
+		if len(sectionStack) == 0 {
+			return nil
 		}
 
 		parent := sectionStack[len(sectionStack)-1]
@@ -1799,6 +1802,7 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 		"haunted metal scrap", "haunted hat", "unusual cap",
 		"vintage tyrolean", "vintage merryweather", "haunted kraken",
 		"haunted forever!", "haunted cremation", "haunted wick",
+		"haunted mist",
 	}
 
 	qualitySearch := name
@@ -1904,6 +1908,10 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 			}
 
 			if effName == "frostbite" && strings.Contains(name, "frostbite bonnet") {
+				continue
+			}
+
+			if effName == "sizzling" && strings.HasPrefix(name, "sizzling aroma") {
 				continue
 			}
 

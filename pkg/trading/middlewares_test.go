@@ -867,15 +867,15 @@ func TestMiddlewares_FindPartnerCurrency_Backtracking(t *testing.T) {
 	t.Parallel()
 
 	items1 := []*trading.Item{
-		{MarketHashName: "Refined Metal"},
+		{SKU: currency.SKURefined, MarketHashName: "Refined Metal"},
 	}
 	_, ok1 := FindPartnerCurrency(items1, 5, 0, nil)
 	assert.False(t, ok1)
 
 	items2 := []*trading.Item{
-		{MarketHashName: "Refined Metal"},
-		{MarketHashName: "Reclaimed Metal"},
-		{MarketHashName: "Reclaimed Metal"},
+		{SKU: currency.SKURefined, MarketHashName: "Refined Metal"},
+		{SKU: currency.SKUReclaimed, MarketHashName: "Reclaimed Metal"},
+		{SKU: currency.SKUReclaimed, MarketHashName: "Reclaimed Metal"},
 	}
 	res2, ok2 := FindPartnerCurrency(items2, 15, 0, nil)
 	assert.True(t, ok2)
