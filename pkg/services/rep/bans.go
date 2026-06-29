@@ -19,7 +19,7 @@ import (
 type BansManager struct {
 	bptfClient *bptf.Client
 	mptfAPIKey string
-	httpClient aoni.HTTPDoer
+	restClient *aoni.Client
 }
 
 // NewBansManager creates a new bans manager.
@@ -27,7 +27,7 @@ func NewBansManager(bptfClient *bptf.Client, mptfAPIKey string) *BansManager {
 	return &BansManager{
 		bptfClient: bptfClient,
 		mptfAPIKey: mptfAPIKey,
-		httpClient: bptfClient.REST().HTTP(),
+		restClient: bptfClient.REST(),
 	}
 }
 
@@ -96,7 +96,7 @@ func (m *BansManager) checkMarketplaceTF(ctx context.Context, steamID id.ID) (bo
 		} `json:"results"`
 	}
 
-	resp, err := aoni.PostJSON[MPTFResponse](ctx, aoni.NewClient(m.httpClient), url, req, nil)
+	resp, err := aoni.PostJSON[MPTFResponse](ctx, m.restClient, url, req, nil)
 	if err != nil {
 		return false, err
 	}

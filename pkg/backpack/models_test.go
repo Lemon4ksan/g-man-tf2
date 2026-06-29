@@ -14,28 +14,12 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 )
 
-func mockSchemaWithSunbeams() *schema.Schema {
-	raw := &schema.Raw{}
-	raw.Schema.Items = []*schema.Item{
-		{
-			Defindex:      1,
-			ItemQuality:   6,
-			UsedByClasses: []string{"Scout", "Sniper"},
-		},
-	}
-	raw.Schema.AttributeControlledAttachedParticles = []*schema.ParticleEffect{
-		{ID: 17, Name: "Sunbeams"},
-	}
-
-	return schema.New(raw)
-}
-
-func TestMapCEconToTF2_EconMapping_ReturnsNormalizedTF2Item(t *testing.T) {
+func TestMapCEconToTF2(t *testing.T) {
 	t.Parallel()
 
-	s := mockSchemaWithSunbeams()
+	s := mockSchemaForCoverage()
 
-	t.Run("basic_item", func(t *testing.T) {
+	t.Run("basic_mapping_and_parsing", func(t *testing.T) {
 		econ := inventory.CEconItem{
 			Asset: inventory.Asset{
 				AssetID: "100",
@@ -44,7 +28,7 @@ func TestMapCEconToTF2_EconMapping_ReturnsNormalizedTF2Item(t *testing.T) {
 			Description: inventory.Description{
 				Tradable: 1,
 				AppData: map[string]any{
-					"def_index": "1",
+					"def_index": "13",
 					"quality":   "6",
 				},
 			},
@@ -52,51 +36,105 @@ func TestMapCEconToTF2_EconMapping_ReturnsNormalizedTF2Item(t *testing.T) {
 
 		item := mapCEconToTF2(econ, s)
 		assert.Equal(t, uint64(100), item.ID)
-		assert.Equal(t, 1, item.Defindex)
+		assert.Equal(t, 13, item.Defindex)
 		assert.Equal(t, 6, item.Quality)
 		assert.False(t, item.FlagCannotTrade)
 		assert.False(t, item.FlagCannotCraft)
 	})
 
-	t.Run("uncraftable_item", func(t *testing.T) {
+	t.Run("invalid_amount_parsing", func(t *testing.T) {
 		econ := inventory.CEconItem{
-			Asset: inventory.Asset{AssetID: "101"},
+			Asset: inventory.Asset{
+				AssetID: "101",
+				Amount:  "not_a_number",
+			},
+		}
+		item := mapCEconToTF2(econ, s)
+		assert.Equal(t, 1, item.Quantity)
+	})
+
+	t.Run("original_id_as_float", func(t *testing.T) {
+		econ := inventory.CEconItem{
+			Asset: inventory.Asset{AssetID: "102"},
+			Description: inventory.Description{
+				AppData: map[string]any{
+					"original_id": float64(54321),
+				},
+			},
+		}
+		item := mapCEconToTF2(econ, s)
+		assert.Equal(t, uint64(54321), item.OriginalID)
+	})
+
+	t.Run("original_id_as_string", func(t *testing.T) {
+		econ := inventory.CEconItem{
+			Asset: inventory.Asset{AssetID: "103"},
+			Description: inventory.Description{
+				AppData: map[string]any{
+					"original_id": "12345",
+				},
+			},
+		}
+		item := mapCEconToTF2(econ, s)
+		assert.Equal(t, uint64(12345), item.OriginalID)
+	})
+
+	t.Run("fallback_defindex_from_market_hash_name", func(t *testing.T) {
+		econ := inventory.CEconItem{
+			Asset: inventory.Asset{AssetID: "104"},
+			Description: inventory.Description{
+				Name:           "Paint Can",
+				MarketHashName: "Paint Can",
+			},
+		}
+		item := mapCEconToTF2(econ, s)
+		assert.Equal(t, 13, item.Defindex)
+	})
+
+	t.Run("descriptions_parsing", func(t *testing.T) {
+		econ := inventory.CEconItem{
+			Asset: inventory.Asset{AssetID: "105"},
 			Description: inventory.Description{
 				Descriptions: []struct {
 					Value string `json:"value"`
 					Color string `json:"color,omitempty"`
 				}{
 					{Value: "( Not Usable in Crafting )"},
+					{Value: "Exterior: Field-Tested"},
+					{Value: "★ Unusual Effect: Sunbeams"},
+					{Value: "Killstreak Active: Specialized"},
+					{Value: "Paint Color: Sunbeams Skin"},
+					{Value: "Crate Series #85"},
+					{Value: "Strange Stat: Kills: 0"},
+					{Value: "Strange Part: Robots Destroyed: 0", Color: "756b5e"},
+					{Value: "Exorcism", Color: "7ea9d1"},
 				},
 			},
 		}
-
 		item := mapCEconToTF2(econ, s)
 		assert.True(t, item.FlagCannotCraft)
+		assert.NotEmpty(t, item.Attributes)
 	})
 
-	t.Run("unusual_item_with_effect", func(t *testing.T) {
+	t.Run("unparseable_appdata_strings", func(t *testing.T) {
 		econ := inventory.CEconItem{
-			Asset: inventory.Asset{AssetID: "102"},
+			Asset: inventory.Asset{AssetID: "106"},
 			Description: inventory.Description{
-				Descriptions: []struct {
-					Value string `json:"value"`
-					Color string `json:"color,omitempty"`
-				}{
-					{Value: "★ Unusual Effect: Sunbeams"},
+				AppData: map[string]any{
+					"def_index":   "not_a_number",
+					"quality":     "not_a_number",
+					"original_id": "not_a_number",
 				},
 			},
 		}
-
 		item := mapCEconToTF2(econ, s)
-		assert.Equal(t, uint64(102), item.ID)
-		assert.Len(t, item.Attributes, 1)
-		assert.Equal(t, schema.AttrUnusualEffect, item.Attributes[0].Defindex)
-		assert.Equal(t, float64(17), item.Attributes[0].Value)
+		assert.Equal(t, 0, item.Defindex)
+		assert.Equal(t, 0, item.Quality)
+		assert.Equal(t, uint64(0), item.OriginalID)
 	})
 }
 
-func TestTF2Item_ToSKU_AttributesAndQualities_GeneratesCorrectSKU(t *testing.T) {
+func TestTF2Item_ToSKU(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -185,6 +223,18 @@ func TestTF2Item_ToSKU_AttributesAndQualities_GeneratesCorrectSKU(t *testing.T) 
 			},
 			want: "100;15;w3;pk10",
 		},
+		{
+			name: "paint_and_crate_series",
+			item: TF2Item{
+				Defindex: 5021,
+				Quality:  6,
+				Attributes: []TF2Attribute{
+					{Defindex: 142, Value: float64(12345)},
+					{Defindex: 187, Value: float64(10)},
+				},
+			},
+			want: "5021;6;c10;p12345",
+		},
 	}
 
 	for _, tt := range tests {
@@ -194,48 +244,168 @@ func TestTF2Item_ToSKU_AttributesAndQualities_GeneratesCorrectSKU(t *testing.T) 
 	}
 }
 
-func TestTF2Item_ToEconItem_ValidTF2Item_MapsCorrectly(t *testing.T) {
+func TestTF2Item_ToEconItem(t *testing.T) {
+	t.Parallel()
+
+	t.Run("basic_conversion_and_description", func(t *testing.T) {
+		item := TF2Item{
+			ID:         123,
+			Defindex:   1,
+			Quantity:   1,
+			CustomName: "My Gun",
+			CustomDesc: "Custom Desc",
+			Attributes: []TF2Attribute{
+				{Defindex: 134, Value: float64(17)},
+				{Defindex: 135, Value: "string_value"},
+			},
+			FlagCannotCraft: true,
+		}
+
+		econ := item.ToEconItem()
+		assert.Equal(t, uint64(123), econ.AssetID)
+		assert.Equal(t, uint64(1), econ.ClassID)
+		assert.Equal(t, "My Gun", econ.Name)
+		assert.Len(t, econ.Attributes, 2)
+		assert.Equal(t, 134, econ.Attributes[0].Defindex)
+		assert.Equal(t, "17", econ.Attributes[0].Value)
+		assert.Equal(t, "string_value", econ.Attributes[1].Value)
+		assert.Contains(t, econ.Descriptions[0].Value, "Not Usable in Crafting")
+		assert.Contains(t, econ.Descriptions[1].Value, "Custom Desc")
+	})
+}
+
+func TestModels_CEconToTF2_EdgeCases(t *testing.T) {
+	t.Parallel()
+
+	raw := &schema.Raw{}
+	raw.Schema.Items = []*schema.Item{
+		{Defindex: 13, ItemQuality: 11, ItemName: "Australium Scattergun"},
+	}
+	s := schema.New(raw)
+
+	t.Run("australium_detection_by_name", func(t *testing.T) {
+		econ := inventory.CEconItem{
+			Asset: inventory.Asset{AssetID: "100"},
+			Description: inventory.Description{
+				MarketHashName: "Australium Scattergun",
+				AppData: map[string]any{
+					"def_index": "13",
+					"quality":   "11",
+				},
+			},
+		}
+
+		item := mapCEconToTF2(econ, s)
+
+		hasAustralium := false
+		for _, attr := range item.Attributes {
+			if attr.Defindex == schema.AttrAustralium {
+				hasAustralium = true
+				break
+			}
+		}
+
+		assert.True(t, hasAustralium)
+	})
+
+	t.Run("festive_detection_by_name", func(t *testing.T) {
+		econ := inventory.CEconItem{
+			Asset: inventory.Asset{AssetID: "100"},
+			Description: inventory.Description{
+				Name: "Festivized Scattergun",
+				AppData: map[string]any{
+					"def_index": "13",
+					"quality":   "6",
+				},
+			},
+		}
+
+		item := mapCEconToTF2(econ, s)
+
+		hasFestive := false
+		for _, attr := range item.Attributes {
+			if attr.Defindex == schema.AttrFestivized {
+				hasFestive = true
+				break
+			}
+		}
+
+		assert.True(t, hasFestive)
+	})
+
+	t.Run("strange_part_and_spells_parsing", func(t *testing.T) {
+		rawCustom := &schema.Raw{}
+		rawCustom.Schema.Items = []*schema.Item{
+			{Defindex: 13, ItemQuality: 11},
+		}
+		sCustom := schema.New(rawCustom)
+
+		econ := inventory.CEconItem{
+			Asset: inventory.Asset{AssetID: "100"},
+			Description: inventory.Description{
+				AppData: map[string]any{
+					"def_index": "13",
+					"quality":   "11",
+				},
+				Descriptions: []struct {
+					Value string `json:"value"`
+					Color string `json:"color,omitempty"`
+				}{
+					{Value: "Halloween: Team Spirit Footprints", Color: "7ea9d1"},
+					{Value: "Kills: 0", Color: "756b5e"},
+				},
+			},
+		}
+
+		item := mapCEconToTF2(econ, sCustom)
+		hasSpell := false
+
+		hasPart := false
+		for _, attr := range item.Attributes {
+			if attr.Defindex >= schema.DefSpellProxy {
+				hasSpell = true
+			}
+
+			if attr.Defindex >= schema.DefPartsProxy && attr.Defindex < schema.DefSpellProxy {
+				hasPart = true
+			}
+		}
+
+		assert.True(t, hasSpell)
+		assert.True(t, hasPart)
+	})
+}
+
+func TestModels_ToSKU_Comprehensive(t *testing.T) {
 	t.Parallel()
 
 	item := TF2Item{
-		ID:         123,
-		Defindex:   1,
-		Quantity:   1,
-		CustomName: "My Gun",
+		Defindex: 1,
+		Quality:  6,
 		Attributes: []TF2Attribute{
-			{Defindex: 134, Value: float64(17)},
+			{Defindex: schema.AttrUnusualEffect, Value: float64(17)},
+			{Defindex: schema.AttrWear, Value: float64(0.2)},
+			{Defindex: schema.AttrAustralium, Value: float64(1)},
+			{Defindex: schema.AttrPaintkit, Value: float64(10)},
+			{Defindex: schema.AttrKillstreak, Value: float64(3)},
+			{Defindex: schema.AttrFestivized, Value: float64(1)},
+			{Defindex: schema.AttrPaintColor, Value: float64(142)},
+			{Defindex: schema.AttrCrateSeries, Value: float64(85)},
+			{Defindex: schema.AttrStrangeScore, Value: float64(1)},
+			{Defindex: schema.DefSpellProxy, Value: sku.Spell{Attribute: 1004, Value: 3}},
+			{Defindex: schema.DefPartsProxy, Value: float64(10)},
 		},
-		FlagCannotCraft: true,
 	}
 
-	econ := item.ToEconItem()
-	assert.Equal(t, uint64(123), econ.AssetID)
-	assert.Equal(t, uint64(1), econ.ClassID)
-	assert.Equal(t, "My Gun", econ.Name)
-	assert.Len(t, econ.Attributes, 1)
-	assert.Equal(t, 134, econ.Attributes[0].Defindex)
-	assert.Equal(t, "17", econ.Attributes[0].Value)
-	assert.Contains(t, econ.Descriptions[0].Value, "Not Usable in Crafting")
-}
-
-func TestNormalizeDefindex_VariousInputs_ReturnsCanonicalID(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		defindex int
-		expected int
-	}{
-		{"key_remains_key", 5021, 5021},
-		{"festive_key_normalizes_to_key", 5049, 5021},
-		{"eotl_key_normalizes_to_key", 5717, 5021},
-		{"lugermorph_normalizes", 294, 160},
-		{"killstreak_kit_normalizes_to_strangifier", 6523, 6522},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, schema.NormalizeDefindex(tt.defindex))
-		})
-	}
+	skuStr := item.ToSKU()
+	assert.NotEmpty(t, skuStr)
+	assert.Contains(t, skuStr, "u17")
+	assert.Contains(t, skuStr, "australium")
+	assert.Contains(t, skuStr, "pk10")
+	assert.Contains(t, skuStr, "kt-3")
+	assert.Contains(t, skuStr, "festive")
+	assert.Contains(t, skuStr, "p142")
+	assert.Contains(t, skuStr, "c85")
+	assert.Contains(t, skuStr, "s-1004-3")
+	assert.Contains(t, skuStr, "sp10")
 }

@@ -7,7 +7,165 @@ package mannco
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/lemon4ksan/aoni"
+	"github.com/lemon4ksan/g-man/test/mock"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func setupTestClient(t *testing.T) (*Client, *mock.HTTPStub) {
+	t.Helper()
+
+	stub := mock.NewHTTPStub()
+	restClient := aoni.NewClient(stub)
+	client := NewClient(restClient)
+
+	return client, stub
+}
+
+func setJSONResponse(stub *mock.HTTPStub, path string, statusCode int, obj any) {
+	stub.SetJSONResponse(path, statusCode, obj)
+	stub.SetJSONResponse("/"+path, statusCode, obj)
+	stub.SetJSONResponse("https://api.mannco.store/"+path, statusCode, obj)
+	stub.SetJSONResponse("https://api.mannco.store//"+path, statusCode, obj)
+}
+
+func TestClient_Login_And_getClient(t *testing.T) {
+	t.Parallel()
+	client, stub := setupTestClient(t)
+
+	stub.SetRawResponse(
+		"https://api.mannco.store/user/login",
+		200,
+		[]byte(`{"success": true, "content": {"jwt": "my-jwt-token"}}`),
+	)
+
+	ctx := t.Context()
+	err := client.Login(ctx, "my-api-key")
+	require.NoError(t, err)
+}
+
+func TestBaseResponse(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		respJSON := `{"success": true, "err": false, "content": {"status": "ok"}}`
+
+		var (
+			b      BaseResponse
+			target map[string]string
+		)
+
+		b.SetData(&target)
+		err := json.Unmarshal([]byte(respJSON), &b)
+		require.NoError(t, err)
+		assert.True(t, b.IsSuccess())
+		assert.Equal(t, "ok", target["status"])
+	})
+
+	t.Run("error", func(t *testing.T) {
+		respJSON := `{"success": false, "err": true, "content": "some error message"}`
+
+		var b BaseResponse
+
+		err := json.Unmarshal([]byte(respJSON), &b)
+		require.NoError(t, err)
+		assert.False(t, b.IsSuccess())
+		assert.Error(t, b.Error())
+		assert.Contains(t, b.Error().Error(), "some error message")
+	})
+}
+
+func TestUnmarshalJSON_UserAllBuyOrdersItem_AllNonNil(t *testing.T) {
+	t.Parallel()
+
+	inputJSON := `{
+		"steamid": "76561198000000000; ",
+		"type_steam": "type_steam_val; ",
+		"class": "class_val; ",
+		"hero": "hero_val; ",
+		"weapon": "weapon_val; ",
+		"exterior": "exterior_val; ",
+		"description": "description_val; "
+	}`
+
+	var u UserAllBuyOrdersItem
+
+	err := json.Unmarshal([]byte(inputJSON), &u)
+	require.NoError(t, err)
+	assert.Equal(t, "76561198000000000", u.SteamID)
+	assert.Equal(t, "type_steam_val", *u.TypeSteam)
+	assert.Equal(t, "class_val", *u.Class)
+	assert.Equal(t, "hero_val", *u.Hero)
+	assert.Equal(t, "weapon_val", *u.Weapon)
+	assert.Equal(t, "exterior_val", *u.Exterior)
+	assert.Equal(t, "description_val", *u.Description)
+}
+
+func TestUnmarshalJSON_ItemInfo_AllNonNil(t *testing.T) {
+	t.Parallel()
+
+	inputJSON := `{
+		"type_steam": "type_steam_val; ",
+		"class": "class_val; ",
+		"hero": "hero_val; ",
+		"description": "description_val; "
+	}`
+
+	var i ItemInfo
+
+	err := json.Unmarshal([]byte(inputJSON), &i)
+	require.NoError(t, err)
+	assert.Equal(t, "type_steam_val", *i.TypeSteam)
+	assert.Equal(t, "class_val", *i.Class)
+	assert.Equal(t, "hero_val", *i.Hero)
+	assert.Equal(t, "description_val", *i.Description)
+}
+
+func TestUnmarshalJSON_BackpackItemDetails_AllNonNil(t *testing.T) {
+	t.Parallel()
+
+	inputJSON := `{
+		"parts": "parts_val; ",
+		"paint": "paint_val; "
+	}`
+
+	var b BackpackItemDetails
+
+	err := json.Unmarshal([]byte(inputJSON), &b)
+	require.NoError(t, err)
+	assert.Equal(t, "parts_val", *b.Parts)
+	assert.Equal(t, "paint_val", *b.Paint)
+}
+
+func TestUnmarshalJSON_Listing_AllNonNil(t *testing.T) {
+	t.Parallel()
+
+	inputJSON := `{
+		"getImage": "getImage_val; "
+	}`
+
+	var l Listing
+
+	err := json.Unmarshal([]byte(inputJSON), &l)
+	require.NoError(t, err)
+	assert.Equal(t, "getImage_val", *l.GetImage)
+}
+
+func TestUnmarshalJSON_OfferItem_AllNonNil(t *testing.T) {
+	t.Parallel()
+
+	inputJSON := `{
+		"html": "html_val; "
+	}`
+
+	var o OfferItem
+
+	err := json.Unmarshal([]byte(inputJSON), &o)
+	require.NoError(t, err)
+	assert.Equal(t, "html_val", *o.HTML)
+}
 
 func TestCraftableUnmarshal(t *testing.T) {
 	tests := []struct {
@@ -33,7 +191,7 @@ func TestCraftableUnmarshal(t *testing.T) {
 		{
 			name:     "craftable invalid type float",
 			input:    `1.5`,
-			expected: 1, // truncated to int
+			expected: 1,
 		},
 		{
 			name:     "craftable non-empty string",
@@ -237,7 +395,7 @@ func TestUserBuyOrderResponseUnmarshal(t *testing.T) {
 			"id": 98765,
 			"steamid": "76561198000000000; ",
 			"itemid": 12345,
-			"price": 15000,
+			"price": 1500,
 			"amount": 3,
 			"timestamp": "1706745600; "
 		}
@@ -842,4 +1000,617 @@ func TestIPSessionListResponseUnmarshal(t *testing.T) {
 	if s.ISP != "Local ISP" {
 		t.Errorf("expected ISP 'Local ISP', got %q", s.ISP)
 	}
+}
+
+func TestClient_AllAPI(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	t.Run("buy_orders", func(t *testing.T) {
+		t.Parallel()
+		client, stub := setupTestClient(t)
+
+		setJSONResponse(stub, "item/buyorder", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{},
+		})
+
+		_, err := client.CreateBuyOrder(ctx, 123, 100, 5)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "item/buyorder/update", 200, map[string]any{
+			"success": true,
+			"content": "Updated",
+		})
+
+		_, err = client.UpdateBuyOrder(ctx, 123, 110, 10)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "item/buyorder/remove", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{},
+		})
+
+		_, err = client.RemoveBuyOrder(ctx, 123)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "user/buyorder/5021", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"informations": map[string]any{
+					"id":        98765,
+					"steamid":   "76561198000000000; ",
+					"itemid":    12345,
+					"price":     1500,
+					"amount":    1,
+					"timestamp": "1706745600; ",
+				},
+			},
+		})
+
+		_, err = client.GetUserBuyOrdersForItem(ctx, "5021")
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "user/getBuyorder", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"values": []any{},
+			},
+		})
+
+		_, err = client.GetUserBuyOrders(ctx, GetUserBuyOrdersQuery{})
+		require.NoError(t, err)
+	})
+
+	t.Run("cart", func(t *testing.T) {
+		t.Parallel()
+		client, stub := setupTestClient(t)
+
+		setJSONResponse(stub, "cart/get", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"cart": []any{},
+			},
+		})
+
+		_, err := client.GetCart(ctx)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "cart/add", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"cart": []any{},
+			},
+		})
+
+		_, err = client.AddToCart(ctx, "123")
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "cart/bulk", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"cart": []any{},
+			},
+		})
+
+		_, err = client.BulkAddToCart(ctx, 123, 2, "7656119")
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "cart/remove", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"cart": []any{},
+			},
+		})
+
+		_, err = client.RemoveFromCart(ctx, 42)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "cart/update", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"integrity": map[string]any{
+					"valid":        true,
+					"invalidItems": []any{},
+				},
+				"replaced": []any{},
+				"removed":  []any{},
+				"cart":     []any{},
+			},
+		})
+
+		_, err = client.UpdateCart(ctx)
+		require.NoError(t, err)
+	})
+
+	t.Run("deposit", func(t *testing.T) {
+		t.Parallel()
+		client, stub := setupTestClient(t)
+
+		setJSONResponse(stub, "deposit/440", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"informations": []any{},
+			},
+		})
+
+		_, err := client.GetDepositInfo(ctx, 440)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "deposit/trade", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"id": 123,
+			},
+		})
+
+		_, err = client.CreateDepositTrade(ctx, CreateDepositTradeReq{})
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "deposit/instantSell/440", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"informations": []any{},
+			},
+		})
+
+		_, err = client.GetInstantSellInfo(ctx, 440)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "deposit/trade/instant", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"id": 123,
+			},
+		})
+
+		_, err = client.CreateInstantSellTrade(ctx, CreateInstantSellTradeReq{})
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "deposit/tradeStatus/123", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"trade": map[string]any{
+					"id": 123,
+				},
+			},
+		})
+
+		_, err = client.GetDepositTradeStatus(ctx, 123)
+		require.NoError(t, err)
+	})
+
+	t.Run("inventory", func(t *testing.T) {
+		t.Parallel()
+		client, stub := setupTestClient(t)
+
+		setJSONResponse(stub, "inventory/onSale", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"items": []any{},
+			},
+		})
+
+		_, err := client.GetItemsOnSale(ctx)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "inventory/onInventory", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"items": []any{},
+			},
+		})
+
+		_, err = client.GetItemsInInventory(ctx)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "inventory/price", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"message": "ok",
+			},
+		})
+
+		_, err = client.SetItemPrice(ctx, []string{"123"}, 500)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "inventory/withdraw", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"message": "Items withdrawal processed",
+				"updated": 1,
+			},
+		})
+
+		_, err = client.WithdrawItems(ctx, []string{"123"})
+		require.NoError(t, err)
+	})
+
+	t.Run("items", func(t *testing.T) {
+		t.Parallel()
+		client, stub := setupTestClient(t)
+
+		setJSONResponse(stub, "item/details/5021", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"informations": map[string]any{
+					"id": 5021,
+				},
+			},
+		})
+
+		_, err := client.GetItemDetails(ctx, "5021")
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "item/salesGraph/5021", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"values": []any{},
+			},
+		})
+
+		_, err = client.GetItemSalesGraph(ctx, "5021", "1M")
+		require.NoError(t, err)
+
+		// Test GetListingCount without userID
+		setJSONResponse(stub, "item/listing/count/5021", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"count": 10,
+			},
+		})
+
+		_, err = client.GetListingCount(ctx, "5021", "")
+		require.NoError(t, err)
+
+		// Test GetListingCount with userID
+		setJSONResponse(stub, "item/listing/count/5021/7656119", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"count": 10,
+			},
+		})
+
+		_, err = client.GetListingCount(ctx, "5021", "7656119")
+		require.NoError(t, err)
+
+		// Test GetItemListings without userID
+		setJSONResponse(stub, "item/listing/5021", 200, map[string]any{
+			"success": true,
+			"content": []any{},
+		})
+
+		_, err = client.GetItemListings(ctx, "5021", "", ListingsReq{})
+		require.NoError(t, err)
+
+		// Test GetItemListings with userID
+		setJSONResponse(stub, "item/listing/5021/7656119", 200, map[string]any{
+			"success": true,
+			"content": []any{},
+		})
+
+		_, err = client.GetItemListings(ctx, "5021", "7656119", ListingsReq{})
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "item/buyorderList/5021", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"informations": map[string]any{},
+			},
+		})
+
+		_, err = client.GetBuyOrderList(ctx, "5021")
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "item/pricing/5021", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"item_id": 5021,
+			},
+		})
+
+		_, err = client.GetItemPricing(ctx, "5021")
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "item/pricing/bulk", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"items": []any{},
+			},
+		})
+
+		_, err = client.GetBulkPricing(ctx, []string{"5021"})
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "item/details/fromid/123", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"informations": map[string]any{
+					"id": 123,
+				},
+			},
+		})
+
+		_, err = client.GetBackpackDetailsTF2(ctx, "123")
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "item/cs/details/fromid/123", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"informations": map[string]any{
+					"id": 123,
+				},
+			},
+		})
+
+		_, err = client.GetBackpackDetailsCS2(ctx, "123")
+		require.NoError(t, err)
+	})
+
+	t.Run("offers", func(t *testing.T) {
+		t.Parallel()
+		client, stub := setupTestClient(t)
+
+		setJSONResponse(stub, "offers/received", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"offers": []any{},
+			},
+		})
+
+		_, err := client.GetReceivedOffers(ctx)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "offers/my", 200, map[string]any{
+			"success": true,
+			"content": []any{},
+		})
+
+		_, err = client.GetMyOffers(ctx)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "offers/create", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"message": "ok",
+			},
+		})
+
+		_, err = client.CreateOffer(ctx, 12345, 500)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "offers/accept", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"message": "ok",
+			},
+		})
+
+		_, err = client.AcceptOffer(ctx, 12345)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "offers/decline", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"message": "ok",
+			},
+		})
+
+		_, err = client.DeclineOffer(ctx, 12345)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "offers/remove", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"message": "ok",
+			},
+		})
+
+		_, err = client.RemoveOffer(ctx, 12345)
+		require.NoError(t, err)
+	})
+
+	t.Run("payment", func(t *testing.T) {
+		t.Parallel()
+		client, stub := setupTestClient(t)
+
+		setJSONResponse(stub, "payment/mannco", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"message": "ok",
+			},
+		})
+
+		_, err := client.InitiatePayment(ctx, "mannco", PaymentReq{})
+		require.NoError(t, err)
+	})
+
+	t.Run("trades", func(t *testing.T) {
+		t.Parallel()
+		client, stub := setupTestClient(t)
+
+		setJSONResponse(stub, "trades/active", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"trades": []any{},
+			},
+		})
+
+		_, err := client.GetActiveTrades(ctx)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "trades/all", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"trades": []any{},
+			},
+		})
+
+		_, err = client.GetAllTrades(ctx)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "trade/resend", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"message": "ok",
+			},
+		})
+
+		_, err = client.ResendTrade(ctx, 123)
+		require.NoError(t, err)
+	})
+
+	t.Run("user", func(t *testing.T) {
+		t.Parallel()
+		client, stub := setupTestClient(t)
+
+		setJSONResponse(stub, "user/disconnect", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"disconnect": true,
+			},
+		})
+
+		_, err := client.Disconnect(ctx)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "user/infos", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"informations": map[string]any{
+					"steamId": "123",
+				},
+			},
+		})
+
+		_, err = client.GetUserInfo(ctx)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "user/balance", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"balance": 1000,
+			},
+		})
+
+		_, err = client.GetBalance(ctx)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "user/notifications", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"alertCount": 0,
+			},
+		})
+
+		_, err = client.GetNotifications(ctx)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "user/ipList", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"values": []any{},
+			},
+		})
+
+		_, err = client.GetIPSessionList(ctx, IPSessionListQuery{})
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "user/store/my-shop", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"steamId": "123",
+			},
+		})
+
+		_, err = client.GetPublicStoreProfile(ctx, "my-shop")
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "user/getSalesInfos", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{},
+		})
+
+		_, err = client.GetSalesInfos(ctx)
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "user/getSalesChartInfos", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{},
+		})
+
+		_, err = client.GetSalesChartInfos(ctx, SalesChartQuery{})
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "user/getBalanceHistory", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"values": []any{},
+			},
+		})
+
+		_, err = client.GetBalanceHistory(ctx, BalanceHistoryQuery{})
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "user/getPurchaseHistory", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"values": []any{},
+			},
+		})
+
+		_, err = client.GetPurchaseHistory(ctx, PurchaseHistoryQuery{})
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "user/getSalesHistory", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"values": []any{},
+			},
+		})
+
+		_, err = client.GetSalesHistory(ctx, SalesHistoryQuery{})
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "user/getSalesHistory/123", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"values": []any{},
+			},
+		})
+
+		_, err = client.GetSalesHistoryForUser(ctx, "123", SalesHistoryQuery{})
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "user/getCashoutHistory", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"values": []any{},
+			},
+		})
+
+		_, err = client.GetCashoutHistory(ctx, CashoutHistoryQuery{})
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "user/getTransactionHistory", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"values": []any{},
+			},
+		})
+
+		_, err = client.GetTransactionHistory(ctx, TransactionHistoryQuery{})
+		require.NoError(t, err)
+
+		setJSONResponse(stub, "user/getTransactionDetails", 200, map[string]any{
+			"success": true,
+			"content": map[string]any{
+				"transaction": map[string]any{},
+			},
+		})
+
+		_, err = client.GetTransactionDetails(ctx, "123")
+		require.NoError(t, err)
+	})
 }

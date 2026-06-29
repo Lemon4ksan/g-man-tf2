@@ -5,7 +5,6 @@
 package crafting
 
 import (
-	"context"
 	"testing"
 
 	"github.com/lemon4ksan/g-man/pkg/log"
@@ -16,83 +15,29 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 )
 
-type mockFetcher struct {
-	mock.Mock
-}
+func TestMetalManager_SelectMetal(t *testing.T) {
+	t.Parallel()
 
-func (m *mockFetcher) GetAssetIDs(sku string) []uint64 {
-	args := m.Called(sku)
-	return args.Get(0).([]uint64)
-}
-
-func (m *mockFetcher) GetPureStock() currency.PureStock {
-	args := m.Called()
-	return args.Get(0).(currency.PureStock)
-}
-
-func (m *mockFetcher) FindWeaponsByClassForSmelting(class string) []*tf2.Item {
-	args := m.Called(class)
-	if args.Get(0) == nil {
-		return nil
-	}
-
-	return args.Get(0).([]*tf2.Item)
-}
-
-func (m *mockFetcher) GetMetalCount(defIndex uint32) int {
-	args := m.Called(defIndex)
-	return args.Int(0)
-}
-
-func TestMetalManager_SelectChange(t *testing.T) {
-	fetcher := new(mockFetcher)
-	mgr := NewManager(nil, nil)
-	mm := NewMetalManager(fetcher, mgr, log.Discard)
-
-	// Goal: 11 scrap (1 ref, 2 scrap)
-	// We have: 2 ref, 0 rec, 5 scrap
-	fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{100, 101})
-	fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{})
-	fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{1, 2, 3, 4, 5})
-
-	ids, err := mm.SelectChange(11)
-
-	assert.NoError(t, err)
-	assert.Equal(t, []uint64{100, 1, 2}, ids)
-}
-
-func TestMetalManager_TryToSmeltForChange(t *testing.T) {
-	t.Run("No_Smelt_Needed", func(t *testing.T) {
-		fetcher := new(mockFetcher)
-		mm := NewMetalManager(fetcher, nil, log.Discard)
-
-		// Need 1 scrap. Have 1 scrap.
-		fetcher.On("GetPureStock").Return(currency.PureStock{Scrap: 1})
-		fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{})
-		fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{})
-		fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{1})
-
-		err := mm.TryToSmeltForChange(context.Background(), 1)
-
+	t.Run("needed_scrap_zero_or_negative", func(t *testing.T) {
+		mm := NewMetalManager(nil, nil, log.Discard)
+		ids, err := mm.SelectMetal(t.Context(), 0)
 		assert.NoError(t, err)
+		assert.Nil(t, ids)
 	})
 
-	t.Run("Triggers_Smelt", func(t *testing.T) {
+	t.Run("cascaded_smelting_triggered_and_succeeds", func(t *testing.T) {
 		fetcher := new(mockFetcher)
 		inv := new(mockInventory)
 		gc := new(mockGC)
 		mgr := NewManager(inv, gc)
 		mm := NewMetalManager(fetcher, mgr, log.Discard)
 
-		// Need 1 scrap. Have 1 ref, 0 rec, 0 scrap.
-		fetcher.On("GetPureStock").Return(currency.PureStock{Refined: 1})
+		ctx := t.Context()
 
-		// Initial greedy select fails to find 1 scrap
 		fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{100}).Once()
 		fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
 		fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{}).Once()
 
-		// MakeChange(Scrap, 1) flow
 		inv.On("GetMetalCount", DefIndexScrap).Return(0).Once()
 		inv.On("GetMetalCount", DefIndexReclaimed).Return(0).Once()
 		inv.On("GetMetalCount", DefIndexReclaimed).Return(0).Once()
@@ -106,13 +51,262 @@ func TestMetalManager_TryToSmeltForChange(t *testing.T) {
 		gc.On("Craft", mock.Anything, []uint64{10}, RecipeSmeltReclaimed).Return([]uint64{1, 2, 3}, nil)
 		inv.On("GetMetalCount", DefIndexScrap).Return(3).Once()
 
-		// Final check after smelt
 		fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{}).Once()
 		fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{11, 12}).Once()
 		fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{1, 2, 3}).Once()
 
-		err := mm.TryToSmeltForChange(context.Background(), 1)
-
+		ids, err := mm.SelectMetal(ctx, 1)
 		assert.NoError(t, err)
+		assert.Equal(t, []uint64{1}, ids)
+	})
+
+	t.Run("make_change_fails_returns_error", func(t *testing.T) {
+		fetcher := new(mockFetcher)
+		inv := new(mockInventory)
+		mgr := NewManager(inv, nil)
+		mm := NewMetalManager(fetcher, mgr, log.Discard)
+
+		fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{}).Once()
+
+		inv.On("GetMetalCount", DefIndexScrap).Return(0).Once()
+		inv.On("GetMetalCount", DefIndexReclaimed).Return(0).Once()
+		inv.On("GetMetalCount", DefIndexReclaimed).Return(0).Once()
+		inv.On("GetMetalCount", DefIndexRefined).Return(0).Once()
+
+		ids, err := mm.SelectMetal(t.Context(), 1)
+		assert.Error(t, err)
+		assert.Nil(t, ids)
+		assert.Contains(t, err.Error(), "no refined metal left to smelt")
+	})
+
+	t.Run("insufficient_balance_after_make_change_error", func(t *testing.T) {
+		fetcher := new(mockFetcher)
+		inv := new(mockInventory)
+		gc := new(mockGC)
+		mgr := NewManager(inv, gc)
+		mm := NewMetalManager(fetcher, mgr, log.Discard)
+
+		ctx := t.Context()
+
+		fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{100}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{}).Once()
+
+		inv.On("GetMetalCount", DefIndexScrap).Return(0).Once()
+		inv.On("GetMetalCount", DefIndexReclaimed).Return(1).Once()
+		inv.On("FindCraftableItems", DefIndexReclaimed, 1).Return([]uint64{10}).Once()
+		gc.On("Craft", ctx, []uint64{10}, RecipeSmeltReclaimed).Return([]uint64{1, 2, 3}, nil).Once()
+		inv.On("GetMetalCount", DefIndexScrap).Return(3).Once()
+
+		fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{}).Once()
+
+		ids, err := mm.SelectMetal(ctx, 10)
+		assert.Error(t, err)
+		assert.Nil(t, ids)
+		assert.Contains(t, err.Error(), "not enough metal: missing 10 scrap")
+	})
+}
+
+func TestMetalManager_SelectChange(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		fetcher := new(mockFetcher)
+		mm := NewMetalManager(fetcher, nil, log.Discard)
+
+		fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{100, 101})
+		fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{})
+		fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{1, 2, 3, 4, 5})
+
+		ids, err := mm.SelectChange(11)
+		assert.NoError(t, err)
+		assert.Equal(t, []uint64{100, 1, 2}, ids)
+	})
+
+	t.Run("insufficient_change_error", func(t *testing.T) {
+		fetcher := new(mockFetcher)
+		mm := NewMetalManager(fetcher, nil, log.Discard)
+
+		fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{})
+		fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{})
+		fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{1})
+
+		ids, err := mm.SelectChange(5)
+		assert.Error(t, err)
+		assert.Nil(t, ids)
+		assert.ErrorIs(t, err, ErrNotEnoughChange)
+	})
+}
+
+func TestMetalManager_SelectKeysAndMetal(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success_keys_and_change", func(t *testing.T) {
+		fetcher := new(mockFetcher)
+		mm := NewMetalManager(fetcher, nil, log.Discard)
+
+		fetcher.On("GetAssetIDs", currency.SKUKey).Return([]uint64{10, 11, 12}).Once()
+		fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{1, 2}).Once()
+
+		ids, err := mm.SelectKeysAndMetal(2, 2)
+		assert.NoError(t, err)
+		assert.Equal(t, []uint64{10, 11, 1, 2}, ids)
+	})
+
+	t.Run("not_enough_keys_error", func(t *testing.T) {
+		fetcher := new(mockFetcher)
+		mm := NewMetalManager(fetcher, nil, log.Discard)
+
+		fetcher.On("GetAssetIDs", currency.SKUKey).Return([]uint64{10}).Once()
+
+		_, err := mm.SelectKeysAndMetal(2, 0)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "not enough keys")
+	})
+
+	t.Run("select_change_fails_error", func(t *testing.T) {
+		fetcher := new(mockFetcher)
+		mm := NewMetalManager(fetcher, nil, log.Discard)
+
+		fetcher.On("GetAssetIDs", currency.SKUKey).Return([]uint64{10}).Once()
+		fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{}).Once()
+
+		_, err := mm.SelectKeysAndMetal(1, 1)
+		assert.ErrorIs(t, err, ErrNotEnoughChange)
+	})
+}
+
+func TestMetalManager_TryToSmeltForChange(t *testing.T) {
+	t.Parallel()
+
+	t.Run("insufficient_total_metal_value_error", func(t *testing.T) {
+		fetcher := new(mockFetcher)
+		mm := NewMetalManager(fetcher, nil, log.Discard)
+
+		fetcher.On("GetPureStock").Return(currency.PureStock{Scrap: 1}).Once()
+
+		err := mm.TryToSmeltForChange(t.Context(), 2)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "insufficient total metal value")
+	})
+
+	t.Run("make_change_fails_returns_error", func(t *testing.T) {
+		fetcher := new(mockFetcher)
+		inv := new(mockInventory)
+		mgr := NewManager(inv, nil)
+		mm := NewMetalManager(fetcher, mgr, log.Discard)
+
+		ctx := t.Context()
+
+		fetcher.On("GetPureStock").Return(currency.PureStock{Refined: 1}).Once()
+		fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{100}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{}).Once()
+
+		inv.On("GetMetalCount", DefIndexScrap).Return(0).Once()
+		inv.On("GetMetalCount", DefIndexReclaimed).Return(0).Once()
+		inv.On("GetMetalCount", DefIndexReclaimed).Return(0).Once()
+		inv.On("GetMetalCount", DefIndexRefined).Return(0).Once()
+
+		err := mm.TryToSmeltForChange(ctx, 1)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "smelting failed")
+	})
+
+	t.Run("smelt_duplicates_fallback_resolves_change", func(t *testing.T) {
+		fetcher := new(mockFetcher)
+		inv := new(mockInventory)
+		gc := new(mockGC)
+		mgr := NewManager(inv, gc)
+		mm := NewMetalManager(fetcher, mgr, log.Discard)
+
+		ctx := t.Context()
+
+		fetcher.On("GetPureStock").Return(currency.PureStock{Refined: 1, Scrap: 0}).Once()
+		fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{100}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{}).Once()
+
+		inv.On("GetMetalCount", DefIndexScrap).Return(1).Once()
+
+		fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{}).Once()
+
+		fetcher.On("FindWeaponsByClassForSmelting", "Scout").Return([]*tf2.Item{
+			{ID: 1, IsTradable: true}, {ID: 2, IsTradable: true},
+		}).Once()
+		fetcher.On("FindWeaponsByClassForSmelting", mock.Anything).Return([]*tf2.Item{}).Maybe()
+		gc.On("Craft", ctx, []uint64{1, 2}, RecipeSmeltWeapons).Return([]uint64{50}, nil).Once()
+
+		fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{50}).Once()
+
+		err := mm.TryToSmeltForChange(ctx, 1)
+		assert.NoError(t, err)
+	})
+
+	t.Run("smelt_duplicates_unresolved_error", func(t *testing.T) {
+		fetcher := new(mockFetcher)
+		inv := new(mockInventory)
+		mgr := NewManager(inv, nil)
+		mm := NewMetalManager(fetcher, mgr, log.Discard)
+
+		ctx := t.Context()
+
+		fetcher.On("GetPureStock").Return(currency.PureStock{Refined: 1}).Once()
+		fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{100}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{}).Once()
+
+		inv.On("GetMetalCount", DefIndexScrap).Return(1).Once()
+
+		fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{}).Once()
+
+		fetcher.On("FindWeaponsByClassForSmelting", mock.Anything).Return([]*tf2.Item{}).Maybe()
+
+		err := mm.TryToSmeltForChange(ctx, 1)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "smelting didn't resolve the change problem")
+	})
+}
+
+func TestMetalManager_SmeltDuplicates(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no_duplicates_error", func(t *testing.T) {
+		fetcher := new(mockFetcher)
+		mm := NewMetalManager(fetcher, nil, log.Discard)
+
+		fetcher.On("FindWeaponsByClassForSmelting", mock.Anything).Return([]*tf2.Item{}).Maybe()
+
+		err := mm.SmeltDuplicates(t.Context(), 1)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "no duplicate weapons found to smelt")
+	})
+
+	t.Run("weapon_not_tradable_error", func(t *testing.T) {
+		fetcher := new(mockFetcher)
+		mm := NewMetalManager(fetcher, nil, log.Discard)
+
+		fetcher.On("FindWeaponsByClassForSmelting", "Scout").Return([]*tf2.Item{
+			{ID: 1, IsTradable: false}, {ID: 2, IsTradable: true},
+		}).Once()
+		fetcher.On("FindWeaponsByClassForSmelting", mock.Anything).Return([]*tf2.Item{}).Maybe()
+
+		err := mm.SmeltDuplicates(t.Context(), 1)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "refusing to smelt")
 	})
 }

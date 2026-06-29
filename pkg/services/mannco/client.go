@@ -13,7 +13,7 @@ import (
 )
 
 // BaseURL is the default endpoint host for the Mannco.store API.
-const BaseURL = "https://api.mannco.store"
+const BaseURL = "https://api.mannco.store/"
 
 // Game App IDs supported by Mannco.store API.
 const (
@@ -74,7 +74,7 @@ func NewClient(restClient *aoni.Client) *Client {
 	return &Client{
 		restClient: restClient.
 			WithUserAgent("G-man Bot/1.0").
-			WithBaseURL("https://api.mannco.store/").
+			WithBaseURL(BaseURL).
 			WithBaseResponse(func() aoni.BaseResponse { return new(BaseResponse) }),
 	}
 }

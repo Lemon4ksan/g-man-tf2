@@ -112,20 +112,18 @@ func NewBot(cfg Config, store storage.Provider, logger log.Logger) (*Bot, error)
 	logger = logger.With(log.String("module", "bot"))
 
 	// 2. Setup standard HTTP clients and TF2 API services
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	bptfClient := bptf.New(httpClient, cfg.BptfAPIKey, cfg.BptfUserToken)
-	pdbClient := pricedb.NewClient(aoni.NewClient(httpClient))
-	critClient := crit.NewClient(httpClient, cfg.CritAPIKey)
+	restClient := aoni.NewClient(&http.Client{Timeout: 30 * time.Second})
+	bptfClient := bptf.New(restClient, cfg.BptfAPIKey, cfg.BptfUserToken)
+	pdbClient := pricedb.NewClient(restClient)
+	critClient := crit.NewClient(restClient, cfg.CritAPIKey)
 
 	pdbManager := pricedb.NewManager(pdbClient, logger)
 	bansManager := rep.NewBansManager(bptfClient, cfg.MptfAPIKey)
 	bptfChecker := bptf.NewBackpackTFChecker(bptfClient)
 
 	// 3. Configure the Steam Client with all necessary modules
-	clientCfg := steam.DefaultConfig()
-	clientCfg.Storage = store
-
 	opts := []steam.Option{
+		steam.WithStorage(store),
 		steam.WithLogger(logger),
 		friends.WithModule(),
 		account.WithModule(),
@@ -138,7 +136,7 @@ func NewBot(cfg Config, store storage.Provider, logger log.Logger) (*Bot, error)
 		webtrading.WithModule(webtrading.Config{PollInterval: 30 * time.Second}),
 	}
 
-	client, err := steam.NewClient(clientCfg, opts...)
+	client, err := steam.NewClient(steam.DefaultConfig(), opts...)
 	if err != nil {
 		return nil, fmt.Errorf("steam client initialization failed: %w", err)
 	}
@@ -182,7 +180,7 @@ func (b *Bot) Run(ctx context.Context) error {
 	// Start config hot-reloader
 	b.tradeCfgManager.StartWatching(ctx, 10*time.Second, b.logger)
 
-	b.sub = b.client.Bus().Subscribe(&auth.LoggedOnEvent{}, &auth.LoggedOffEvent{})
+	b.sub = b.client.Bus().Subscribe(&auth.LoggedOnEvent{})
 
 	// Explicitly track background task execution using a WaitGroup
 	b.wg.Go(func() {
@@ -210,7 +208,7 @@ func (b *Bot) Run(ctx context.Context) error {
 		return fmt.Errorf("connect and login failed: %w", err)
 	}
 
-	if steamID := b.client.SteamID(); steamID != 0 {
+	if steamID := b.client.Session().SteamID(); steamID != 0 {
 		b.logger = b.logger.With(log.SteamID(steamID.Uint64()))
 	}
 
@@ -257,7 +255,7 @@ func (b *Bot) discoverCMServer(ctx context.Context) (socket.CMServer, error) {
 	defer cancel()
 
 	b.logger.Info("Discovering optimal Steam Connection Manager server...")
-	dir := directory.New(b.client.Service())
+	dir := directory.New(b.client)
 
 	return dir.GetOptimalCMServer(dirCtx)
 }
@@ -339,8 +337,7 @@ func (b *Bot) handleEvents(ctx context.Context) {
 			switch ev := event.(type) {
 			case *auth.LoggedOnEvent:
 				b.logger.Info("Login successful", log.Uint64("steam_id", ev.SteamID))
-			case *auth.LoggedOffEvent:
-				b.logger.Info("Logged off")
+			default:
 			}
 		}
 	}

@@ -5,27 +5,35 @@
 package crit
 
 import (
-	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
+	"errors"
 	"testing"
 
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
+	"github.com/lemon4ksan/g-man/test/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 )
 
-func TestClient_FetchMyListings(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/listings/my", r.URL.Path)
-		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Equal(t, "test-api-key", r.Header.Get("X-API-Key"))
+func setupTestClient(t *testing.T) (*Client, *mock.HTTPStub) {
+	t.Helper()
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+	stub := mock.NewHTTPStub()
+	client := NewClient(aoni.NewClient(stub), "test-api-key")
+
+	return client, stub
+}
+
+func TestClient(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	t.Run("fetch_my_listings", func(t *testing.T) {
+		t.Parallel()
+		client, stub := setupTestClient(t)
 
 		resp := map[string]any{
 			"success": true,
@@ -34,334 +42,277 @@ func TestClient_FetchMyListings(t *testing.T) {
 				map[string]any{},
 			},
 		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
+		stub.SetJSONResponse("api/v2/listings/my", 200, resp)
 
-	client := NewClient(nil, "test-api-key")
-	client.rest = client.rest.WithBaseURL(server.URL)
-
-	listings, err := client.FetchMyListings(context.Background())
-	require.NoError(t, err)
-	assert.Len(t, listings, 2)
-}
-
-func TestClient_CreateListing(t *testing.T) {
-	assetID := "123456"
-	currencies := pricedb.Currencies{Keys: 2, Metal: 15.5}
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/listings", r.URL.Path)
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "test-api-key", r.Header.Get("X-API-Key"))
-
-		var payload map[string]any
-
-		err := json.NewDecoder(r.Body).Decode(&payload)
+		listings, err := client.FetchMyListings(ctx)
 		require.NoError(t, err)
+		assert.Len(t, listings, 2)
+	})
 
-		assert.Equal(t, assetID, payload["asset_id"])
-		assert.Equal(t, float64(2), payload["price_keys"])
-		assert.Equal(t, 15.5, payload["price_metal"])
+	t.Run("create_listing", func(t *testing.T) {
+		t.Parallel()
+		client, stub := setupTestClient(t)
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		resp := map[string]any{
+		stub.SetJSONResponse("api/v2/listings", 200, map[string]any{
 			"success": true,
 			"listing": map[string]any{},
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
+		})
 
-	client := NewClient(nil, "test-api-key")
-	client.rest = client.rest.WithBaseURL(server.URL)
+		listing, err := client.CreateListing(ctx, "123456", pricedb.Currencies{Keys: 2, Metal: 15.5})
+		require.NoError(t, err)
+		assert.NotNil(t, listing)
 
-	listing, err := client.CreateListing(context.Background(), assetID, currencies)
-	require.NoError(t, err)
-	assert.NotNil(t, listing)
-}
-
-func TestClient_CreateListing_MissingListing(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		resp := map[string]any{
+		stub.SetJSONResponse("api/v2/listings", 200, map[string]any{
 			"success": true,
 			"listing": nil,
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
+		})
 
-	client := NewClient(nil, "test-api-key")
-	client.rest = client.rest.WithBaseURL(server.URL)
+		_, err = client.CreateListing(ctx, "123", pricedb.Currencies{})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "crit: listing is missing")
+	})
 
-	_, err := client.CreateListing(context.Background(), "123", pricedb.Currencies{})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "crit: listing is missing in response")
-}
+	t.Run("update_listing", func(t *testing.T) {
+		t.Parallel()
+		client, stub := setupTestClient(t)
 
-func TestClient_UpdateListing(t *testing.T) {
-	listingID := "listing-123"
-	currencies := pricedb.Currencies{Keys: 3, Metal: 25.0}
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/listings/listing-123", r.URL.Path)
-		assert.Equal(t, http.MethodPut, r.Method)
-		assert.Equal(t, "test-api-key", r.Header.Get("X-API-Key"))
-
-		var payload map[string]any
-
-		err := json.NewDecoder(r.Body).Decode(&payload)
-		require.NoError(t, err)
-
-		assert.Equal(t, float64(3), payload["price_keys"])
-		assert.Equal(t, float64(25), payload["price_metal"])
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		resp := map[string]any{
+		stub.SetJSONResponse("api/v2/listings/listing-123", 200, map[string]any{
 			"success": true,
 			"listing": map[string]any{},
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
+		})
 
-	client := NewClient(nil, "test-api-key")
-	client.rest = client.rest.WithBaseURL(server.URL)
+		listing, err := client.UpdateListing(ctx, "listing-123", pricedb.Currencies{Keys: 3, Metal: 25.0})
+		require.NoError(t, err)
+		assert.NotNil(t, listing)
 
-	listing, err := client.UpdateListing(context.Background(), listingID, currencies)
-	require.NoError(t, err)
-	assert.NotNil(t, listing)
-}
-
-func TestClient_UpdateListing_MissingListing(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		resp := map[string]any{
+		stub.SetJSONResponse("api/v2/listings/listing-123", 200, map[string]any{
 			"success": true,
 			"listing": nil,
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
+		})
 
-	client := NewClient(nil, "test-api-key")
-	client.rest = client.rest.WithBaseURL(server.URL)
+		_, err = client.UpdateListing(ctx, "listing-123", pricedb.Currencies{})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "crit: listing is missing")
 
-	_, err := client.UpdateListing(context.Background(), "listing-123", pricedb.Currencies{})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "crit: listing is missing in response")
-}
+		// Error path for UpdateListing
+		stub.ResponseErrs["api/v2/listings/listing-123"] = errors.New("network error")
+		_, err = client.UpdateListing(ctx, "listing-123", pricedb.Currencies{})
+		assert.Error(t, err)
+	})
 
-func TestClient_DeleteListing(t *testing.T) {
-	listingID := "listing-123"
+	t.Run("delete_listing", func(t *testing.T) {
+		t.Parallel()
+		client, stub := setupTestClient(t)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/listings/listing-123", r.URL.Path)
-		assert.Equal(t, http.MethodDelete, r.Method)
-		assert.Equal(t, "test-api-key", r.Header.Get("X-API-Key"))
+		stub.SetJSONResponse("api/v2/listings/listing-123", 200, map[string]any{"success": true})
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+		err := client.DeleteListing(ctx, "listing-123")
+		require.NoError(t, err)
+	})
 
-		resp := map[string]any{
-			"success": true,
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
+	t.Run("refresh_inventory", func(t *testing.T) {
+		t.Parallel()
+		client, stub := setupTestClient(t)
 
-	client := NewClient(nil, "test-api-key")
-	client.rest = client.rest.WithBaseURL(server.URL)
+		stub.SetJSONResponse("api/v2/inventory/refresh", 200, map[string]any{"success": true})
 
-	err := client.DeleteListing(context.Background(), listingID)
-	require.NoError(t, err)
-}
+		resp, err := client.RefreshInventory(ctx)
+		require.NoError(t, err)
+		assert.NotNil(t, resp)
+	})
 
-func TestClient_RefreshInventory(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/inventory/refresh", r.URL.Path)
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "test-api-key", r.Header.Get("X-API-Key"))
+	t.Run("groups_management", func(t *testing.T) {
+		t.Parallel()
+		client, stub := setupTestClient(t)
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		resp := map[string]any{
-			"success": true,
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	client := NewClient(nil, "test-api-key")
-	client.rest = client.rest.WithBaseURL(server.URL)
-
-	resp, err := client.RefreshInventory(context.Background())
-	require.NoError(t, err)
-	assert.NotNil(t, resp)
-}
-
-func TestClient_GetMyGroup(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/groups/my", r.URL.Path)
-		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Equal(t, "test-api-key", r.Header.Get("X-API-Key"))
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		resp := map[string]any{
+		stub.SetJSONResponse("api/v2/groups/my", 200, map[string]any{
 			"success": true,
 			"group":   map[string]any{},
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
+		})
 
-	client := NewClient(nil, "test-api-key")
-	client.rest = client.rest.WithBaseURL(server.URL)
+		group, err := client.GetMyGroup(ctx)
+		require.NoError(t, err)
+		assert.NotNil(t, group)
 
-	group, err := client.GetMyGroup(context.Background())
-	require.NoError(t, err)
-	assert.NotNil(t, group)
-}
-
-func TestClient_GetMyGroup_MissingGroup(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		resp := map[string]any{
+		stub.SetJSONResponse("api/v2/groups/my", 200, map[string]any{
 			"success": true,
 			"group":   nil,
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
+		})
 
-	client := NewClient(nil, "test-api-key")
-	client.rest = client.rest.WithBaseURL(server.URL)
+		_, err = client.GetMyGroup(ctx)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "crit: group is missing")
 
-	_, err := client.GetMyGroup(context.Background())
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "crit: group is missing in response")
-}
+		stub.SetJSONResponse("api/v2/groups/456/invite", 200, map[string]any{"success": true})
 
-func TestClient_InviteToGroup(t *testing.T) {
-	groupID := 456
-	targetSteamID := id.ID(76561198000000000)
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/groups/456/invite", r.URL.Path)
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "test-api-key", r.Header.Get("X-API-Key"))
-
-		var payload map[string]string
-
-		err := json.NewDecoder(r.Body).Decode(&payload)
+		err = client.InviteToGroup(ctx, 456, id.ID(76561198000000000))
 		require.NoError(t, err)
-		assert.Equal(t, "76561198000000000", payload["steam_id"])
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		resp := map[string]any{
+		stub.SetJSONResponse("api/v2/groups/invites", 200, map[string]any{
 			"success": true,
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
+			"invites": []any{map[string]any{}, map[string]any{}},
+		})
 
-	client := NewClient(nil, "test-api-key")
-	client.rest = client.rest.WithBaseURL(server.URL)
+		invites, err := client.GetPendingInvites(ctx)
+		require.NoError(t, err)
+		assert.Len(t, invites, 2)
 
-	err := client.InviteToGroup(context.Background(), groupID, targetSteamID)
-	require.NoError(t, err)
-}
+		stub.SetJSONResponse("api/v2/groups/789/accept", 200, map[string]any{"success": true})
 
-func TestClient_GetPendingInvites(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/groups/invites", r.URL.Path)
-		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Equal(t, "test-api-key", r.Header.Get("X-API-Key"))
+		err = client.AcceptGroupInvite(ctx, 789)
+		require.NoError(t, err)
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+		stub.SetJSONResponse("api/v2/groups/101/leave", 200, map[string]any{"success": true})
 
-		resp := map[string]any{
+		err = client.LeaveGroup(ctx, 101)
+		require.NoError(t, err)
+	})
+
+	t.Run("missing_api_methods", func(t *testing.T) {
+		t.Parallel()
+		client, stub := setupTestClient(t)
+
+		stub.SetJSONResponse("api/v2/bot-api/auth-token", 200, map[string]any{
+			"ok":    true,
+			"token": "token_abc",
+		})
+
+		token, err := client.FetchAuthToken(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, "token_abc", token)
+
+		stub.SetRawResponse("api/v2/bot-api/alive", 200, []byte(`{"success":true}`))
+
+		ok, err := client.SendDeadMansRequest(ctx)
+		require.NoError(t, err)
+		assert.True(t, ok)
+
+		// GetInventory and error path
+		stub.SetJSONResponse("api/v2/inventory", 200, map[string]any{
 			"success": true,
-			"invites": []any{
-				map[string]any{},
-				map[string]any{},
-			},
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
+			"items":   []any{"item1"},
+		})
 
-	client := NewClient(nil, "test-api-key")
-	client.rest = client.rest.WithBaseURL(server.URL)
+		inv, err := client.GetInventory(ctx)
+		require.NoError(t, err)
+		assert.Len(t, inv, 1)
 
-	invites, err := client.GetPendingInvites(context.Background())
-	require.NoError(t, err)
-	assert.Len(t, invites, 2)
-}
+		stub.ResponseErrs["api/v2/inventory"] = errors.New("network error")
+		_, err = client.GetInventory(ctx)
+		assert.Error(t, err)
 
-func TestClient_AcceptGroupInvite(t *testing.T) {
-	groupID := 789
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/groups/789/accept", r.URL.Path)
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "test-api-key", r.Header.Get("X-API-Key"))
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		resp := map[string]any{
+		// UpdateTradeURL and error path
+		stub.SetJSONResponse("api/v2/user/trade-url", 200, map[string]any{
 			"success": true,
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
+		})
 
-	client := NewClient(nil, "test-api-key")
-	client.rest = client.rest.WithBaseURL(server.URL)
+		ok, err = client.UpdateTradeURL(ctx, "trade_url_123")
+		require.NoError(t, err)
+		assert.True(t, ok)
 
-	err := client.AcceptGroupInvite(context.Background(), groupID)
-	require.NoError(t, err)
-}
+		stub.ResponseErrs["api/v2/user/trade-url"] = errors.New("network error")
+		_, err = client.UpdateTradeURL(ctx, "trade_url_123")
+		assert.Error(t, err)
 
-func TestClient_LeaveGroup(t *testing.T) {
-	groupID := 101
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/groups/101/leave", r.URL.Path)
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "test-api-key", r.Header.Get("X-API-Key"))
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		resp := map[string]any{
+		// GetUserInfo and error path
+		stub.SetJSONResponse("api/v2/user", 200, map[string]any{
 			"success": true,
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
+			"user":    map[string]any{"steam_id": "123"},
+		})
 
-	client := NewClient(nil, "test-api-key")
-	client.rest = client.rest.WithBaseURL(server.URL)
+		usr, err := client.GetUserInfo(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, "123", usr.SteamID)
 
-	err := client.LeaveGroup(context.Background(), groupID)
-	require.NoError(t, err)
+		stub.ResponseErrs["api/v2/user"] = errors.New("network error")
+		_, err = client.GetUserInfo(ctx)
+		assert.Error(t, err)
+	})
+
+	t.Run("stream_events", func(t *testing.T) {
+		t.Parallel()
+		client, stub := setupTestClient(t)
+
+		stub.SetRawResponse("api/v2/events", 200, []byte("event: test\ndata: payload\n\n"))
+
+		ch, err := client.StreamEvents(ctx, "events", "token_123")
+		require.NoError(t, err)
+		assert.NotNil(t, ch)
+	})
+
+	t.Run("crit_response_errors", func(t *testing.T) {
+		t.Parallel()
+
+		r := &critResponse{Success: false, Message: ""}
+		assert.EqualError(t, r.Error(), "crit: api error")
+
+		err := r.UnmarshalJSON([]byte("{invalid-json}"))
+		assert.Error(t, err)
+	})
+
+	t.Run("fetch_auth_token_errors", func(t *testing.T) {
+		t.Parallel()
+		client, stub := setupTestClient(t)
+
+		stub.SetRawResponse("api/v2/bot-api/auth-token", 500, []byte(`Internal Server Error`))
+
+		_, err := client.FetchAuthToken(ctx)
+		assert.Error(t, err)
+
+		stub.SetRawResponse("api/v2/bot-api/auth-token", 200, []byte(`{invalid-json}`))
+
+		_, err = client.FetchAuthToken(ctx)
+		assert.Error(t, err)
+
+		stub.SetJSONResponse("api/v2/bot-api/auth-token", 200, map[string]any{
+			"ok":     false,
+			"reason": "rate_limited",
+		})
+
+		_, err = client.FetchAuthToken(ctx)
+		assert.ErrorContains(t, err, "crit: api error: rate_limited")
+
+		stub.SetJSONResponse("api/v2/bot-api/auth-token", 200, map[string]any{
+			"ok": false,
+		})
+
+		_, err = client.FetchAuthToken(ctx)
+		assert.ErrorContains(t, err, "crit: api error: unknown reason")
+
+		// Network request failure
+		stub.ResponseErrs["api/v2/bot-api/auth-token"] = errors.New("connection failed")
+		_, err = client.FetchAuthToken(ctx)
+		assert.Error(t, err)
+	})
+
+	t.Run("stream_events_token_empty_and_error", func(t *testing.T) {
+		t.Parallel()
+		client, stub := setupTestClient(t)
+
+		stub.SetRawResponse("api/v2/events", 200, []byte("event: test\ndata: payload\n\n"))
+
+		ch, err := client.StreamEvents(ctx, "events", "")
+		require.NoError(t, err)
+		assert.NotNil(t, ch)
+
+		stub.ResponseErrs["api/v2/events-error"] = errors.New("network error")
+		_, err = client.StreamEvents(ctx, "events-error", "token")
+		assert.Error(t, err)
+	})
+
+	t.Run("send_dead_mans_request_errors", func(t *testing.T) {
+		t.Parallel()
+		client, stub := setupTestClient(t)
+
+		stub.ResponseErrs["api/v2/bot-api/alive"] = errors.New("network error")
+		_, err := client.SendDeadMansRequest(ctx)
+		assert.Error(t, err)
+
+		stub.ResponseErrs["api/v2/bot-api/alive"] = nil
+		stub.SetRawResponse("api/v2/bot-api/alive", 500, []byte(`Internal Server Error`))
+
+		ok, err := client.SendDeadMansRequest(ctx)
+		require.NoError(t, err)
+		assert.False(t, ok)
+	})
 }

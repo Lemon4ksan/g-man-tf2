@@ -122,6 +122,7 @@ func TestCurrency_ToValue_ConversionRates_ReturnsExpectedScrap(t *testing.T) {
 		{"one_key_only", 1, 0, 450, false},
 		{"one_key_with_metal", 1, 1.11, 460, false},
 		{"half_key", 0.5, 0, 225, false},
+		{"only_metal_no_keys", 0, 15.33, 138, false},
 		{"error_missing_conversion", 1, 0, 0, true},
 	}
 
@@ -155,22 +156,25 @@ func TestScrapToCurrencies_VariousScrapValues_ReturnsCurrencyBalances(t *testing
 	const conv = 50.0
 
 	tests := []struct {
-		name  string
-		scrap currency.Scrap
-		wantK float64
-		wantM float64
+		name     string
+		scrap    currency.Scrap
+		keyPrice float64
+		wantK    float64
+		wantM    float64
 	}{
-		{"exactly_one_key", 450, 1, 0},
-		{"one_key_and_one_scrap", 451, 1, 1.0 / 9.0},
-		{"less_than_one_key", 100, 0, 100.0 / 9.0},
-		{"multiple_keys", 1000, 2, 100.0 / 9.0},
+		{"exactly_one_key", 450, conv, 1, 0},
+		{"one_key_and_one_scrap", 451, conv, 1, 1.0 / 9.0},
+		{"less_than_one_key", 100, conv, 0, 100.0 / 9.0},
+		{"multiple_keys", 1000, conv, 2, 100.0 / 9.0},
+		{"zero_key_price", 100, 0, 0, 100.0 / 9.0},
+		{"negative_key_price", 100, -5.0, 0, 100.0 / 9.0},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := currency.ScrapToCurrencies(tt.scrap, conv)
+			got := currency.ScrapToCurrencies(tt.scrap, tt.keyPrice)
 			if got.Keys != tt.wantK || math.Abs(got.Metal-tt.wantM) > 1e-9 {
 				t.Errorf("ScrapToCurrencies() = %v keys, %v metal; want %v keys, %v metal",
 					got.Keys, got.Metal, tt.wantK, tt.wantM)

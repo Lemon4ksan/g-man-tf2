@@ -9,9 +9,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/lemon4ksan/g-man/pkg/behavior"
-	"github.com/lemon4ksan/g-man/pkg/log"
-	"github.com/lemon4ksan/miyako/bus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
@@ -19,17 +16,26 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 )
 
+// Shared mock declarations for the crafting package tests
 type mockInventory struct {
 	mock.Mock
 }
 
 func (m *mockInventory) FindCraftableItems(defIndex uint32, count int) []uint64 {
 	args := m.Called(defIndex, count)
+	if args.Get(0) == nil {
+		return nil
+	}
+
 	return args.Get(0).([]uint64)
 }
 
 func (m *mockInventory) FindWeaponsByClassForSmelting(class string) []*tf2.Item {
 	args := m.Called(class)
+	if args.Get(0) == nil {
+		return nil
+	}
+
 	return args.Get(0).([]*tf2.Item)
 }
 
@@ -44,450 +50,317 @@ type mockGC struct {
 
 func (m *mockGC) Craft(ctx context.Context, items []uint64, recipe int16) ([]uint64, error) {
 	args := m.Called(ctx, items, recipe)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+
 	return args.Get(0).([]uint64), args.Error(1)
 }
 
+type mockFetcher struct {
+	mock.Mock
+}
+
+func (m *mockFetcher) GetAssetIDs(sku string) []uint64 {
+	args := m.Called(sku)
+	if args.Get(0) == nil {
+		return nil
+	}
+
+	return args.Get(0).([]uint64)
+}
+
+func (m *mockFetcher) GetPureStock() currency.PureStock {
+	args := m.Called()
+	return args.Get(0).(currency.PureStock)
+}
+
+func (m *mockFetcher) FindWeaponsByClassForSmelting(class string) []*tf2.Item {
+	args := m.Called(class)
+	if args.Get(0) == nil {
+		return nil
+	}
+
+	return args.Get(0).([]*tf2.Item)
+}
+
+func (m *mockFetcher) GetMetalCount(defIndex uint32) int {
+	args := m.Called(defIndex)
+	return args.Int(0)
+}
+
 func TestManager_CombineMetal(t *testing.T) {
-	t.Run("Success", func(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
 		inv := new(mockInventory)
 		gc := new(mockGC)
 		mgr := NewManager(inv, gc)
 
-		ctx := context.Background()
+		ctx := t.Context()
 		items := []uint64{1, 2, 3}
 
 		inv.On("FindCraftableItems", DefIndexScrap, 3).Return(items)
 		gc.On("Craft", ctx, items, RecipeCombineScrap).Return([]uint64{10}, nil)
 
 		res, err := mgr.CombineMetal(ctx, DefIndexScrap)
-
 		assert.NoError(t, err)
 		assert.Equal(t, []uint64{10}, res)
 		inv.AssertExpectations(t)
 		gc.AssertExpectations(t)
 	})
 
-	t.Run("Not_Enough", func(t *testing.T) {
+	t.Run("not_enough_metal", func(t *testing.T) {
 		inv := new(mockInventory)
-		gc := new(mockGC)
-		mgr := NewManager(inv, gc)
+		mgr := NewManager(inv, nil)
 
 		inv.On("FindCraftableItems", DefIndexScrap, 3).Return([]uint64{1, 2})
 
-		res, err := mgr.CombineMetal(context.Background(), DefIndexScrap)
-
+		res, err := mgr.CombineMetal(t.Context(), DefIndexScrap)
 		assert.Error(t, err)
 		assert.Nil(t, res)
 		assert.Contains(t, err.Error(), "not enough metal")
 	})
+
+	t.Run("invalid_defindex", func(t *testing.T) {
+		inv := new(mockInventory)
+		mgr := NewManager(inv, nil)
+
+		inv.On("FindCraftableItems", uint32(9999), 3).Return([]uint64{1, 2, 3})
+
+		res, err := mgr.CombineMetal(t.Context(), 9999)
+		assert.Error(t, err)
+		assert.Nil(t, res)
+		assert.Contains(t, err.Error(), "invalid metal defindex for combination")
+	})
 }
 
 func TestManager_SmeltMetal(t *testing.T) {
-	inv := new(mockInventory)
-	gc := new(mockGC)
-	mgr := NewManager(inv, gc)
+	t.Parallel()
 
-	ctx := context.Background()
-	items := []uint64{10}
+	t.Run("success", func(t *testing.T) {
+		inv := new(mockInventory)
+		gc := new(mockGC)
+		mgr := NewManager(inv, gc)
 
-	inv.On("FindCraftableItems", DefIndexRefined, 1).Return(items)
-	gc.On("Craft", ctx, items, RecipeSmeltRefined).Return([]uint64{1, 2, 3}, nil)
+		ctx := t.Context()
+		items := []uint64{10}
 
-	res, err := mgr.SmeltMetal(ctx, DefIndexRefined)
+		inv.On("FindCraftableItems", DefIndexRefined, 1).Return(items)
+		gc.On("Craft", ctx, items, RecipeSmeltRefined).Return([]uint64{1, 2, 3}, nil)
 
-	assert.NoError(t, err)
-	assert.Equal(t, []uint64{1, 2, 3}, res)
+		res, err := mgr.SmeltMetal(ctx, DefIndexRefined)
+		assert.NoError(t, err)
+		assert.Equal(t, []uint64{1, 2, 3}, res)
+	})
+
+	t.Run("no_metal_found", func(t *testing.T) {
+		inv := new(mockInventory)
+		mgr := NewManager(inv, nil)
+
+		inv.On("FindCraftableItems", DefIndexRefined, 1).Return([]uint64{})
+
+		res, err := mgr.SmeltMetal(t.Context(), DefIndexRefined)
+		assert.Error(t, err)
+		assert.Nil(t, res)
+		assert.Contains(t, err.Error(), "no metal found")
+	})
+
+	t.Run("invalid_defindex", func(t *testing.T) {
+		inv := new(mockInventory)
+		mgr := NewManager(inv, nil)
+
+		inv.On("FindCraftableItems", uint32(9999), 1).Return([]uint64{1})
+
+		res, err := mgr.SmeltMetal(t.Context(), 9999)
+		assert.Error(t, err)
+		assert.Nil(t, res)
+		assert.Contains(t, err.Error(), "invalid metal defindex for smelting")
+	})
 }
 
-func TestManager_MakeChange(t *testing.T) {
-	inv := new(mockInventory)
-	gc := new(mockGC)
-	mgr := NewManager(inv, gc)
+func TestManager_SmeltWeapons(t *testing.T) {
+	t.Parallel()
 
-	ctx := context.Background()
-
-	// Goal: 1 scrap. We have 0 scrap, 0 rec, 1 ref.
-	// 1. Check scrap (0 < 1)
-	// 2. Check rec (0 == 0) -> Call MakeChange(Rec, 1)
-	// 3. MakeChange(Rec, 1):
-	//    - Check rec (0 < 1)
-	//    - Check ref (1 > 0) -> Smelt Refined
-	// 4. After smelting ref, we have rec.
-	// 5. Back to scrap loop:
-	//    - Check scrap (0 < 1)
-	//    - Check rec (3 > 0) -> Smelt Reclaimed
-	// 6. After smelting rec, we have 3 scrap.
-	// 7. Loop finishes.
-
-	inv.On("GetMetalCount", DefIndexScrap).Return(0).Once()
-	inv.On("GetMetalCount", DefIndexReclaimed).Return(0).Once()
-
-	// MakeChange(Rec, 1) starts
-	inv.On("GetMetalCount", DefIndexReclaimed).Return(0).Once()
-	inv.On("GetMetalCount", DefIndexRefined).Return(1).Once()
-
-	inv.On("FindCraftableItems", DefIndexRefined, 1).Return([]uint64{100})
-	gc.On("Craft", mock.Anything, []uint64{100}, RecipeSmeltRefined).Return([]uint64{10, 11, 12}, nil)
-
-	// After smelting ref, MakeChange(Rec, 1) loop checks again
-	inv.On("GetMetalCount", DefIndexReclaimed).Return(3).Once()
-
-	// Back to MakeChange(Scrap, 1) loop
-	inv.On("GetMetalCount", DefIndexScrap).Return(0).Once()
-	inv.On("GetMetalCount", DefIndexReclaimed).Return(3).Once()
-
-	inv.On("FindCraftableItems", DefIndexReclaimed, 1).Return([]uint64{10})
-	gc.On("Craft", mock.Anything, []uint64{10}, RecipeSmeltReclaimed).Return([]uint64{1, 2, 3}, nil)
-
-	// Final check for Scrap
-	inv.On("GetMetalCount", DefIndexScrap).Return(3).Once()
-
-	err := mgr.MakeChange(ctx, DefIndexScrap, 1)
-
-	assert.NoError(t, err)
-}
-
-func TestCoverage_Auto_Options_Name_Run(t *testing.T) {
-	inv := new(mockInventory)
-	gc := new(mockGC)
-	mgr := NewManager(inv, gc)
-
-	logger := log.Discard
-	opt := WithLogger(logger)
-	a := NewAutomator(mgr, inv, opt)
-
-	assert.Equal(t, "pure_liquidator", a.Name())
-
-	b := bus.New()
-	orch := behavior.NewOrchestrator(b, logger)
-	WithPureLiquidator(orch, mgr, inv)
-
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-
-	inv.On("GetMetalCount", DefIndexScrap).Return(0)
-	inv.On("GetMetalCount", DefIndexReclaimed).Return(0)
-	inv.On("GetMetalCount", DefIndexRefined).Return(0)
-	inv.On("FindWeaponsByClassForSmelting", mock.Anything).Return([]*tf2.Item{}).Maybe()
-
-	err := a.Run(ctx)
-	assert.ErrorIs(t, err, context.Canceled)
-}
-
-func TestCoverage_Auto_Tick_RemainingCases(t *testing.T) {
-	inv := new(mockInventory)
-	gc := new(mockGC)
-	mgr := NewManager(inv, gc)
-	auto := NewAutomator(mgr, inv)
-
-	ctx := t.Context()
-
-	// Case 1: Reclaimed supply low, smelting Refined
-	inv.On("GetMetalCount", DefIndexScrap).Return(3)
-	inv.On("GetMetalCount", DefIndexReclaimed).Return(0).Once()
-	inv.On("GetMetalCount", DefIndexRefined).Return(1).Once()
-	inv.On("FindCraftableItems", DefIndexRefined, 1).Return([]uint64{100}).Once()
-	gc.On("Craft", ctx, []uint64{100}, RecipeSmeltRefined).Return([]uint64{10, 11, 12}, nil).Once()
-
-	err := auto.Tick(ctx)
-	assert.NoError(t, err)
-
-	// Case 2: Too much Reclaimed, combining into Refined
-	inv.On("GetMetalCount", DefIndexScrap).Return(3)
-	inv.On("GetMetalCount", DefIndexReclaimed).Return(10).Once()
-	inv.On("GetMetalCount", DefIndexRefined).Return(1).Once()
-	inv.On("FindCraftableItems", DefIndexReclaimed, 3).Return([]uint64{10, 11, 12}).Once()
-	gc.On("Craft", ctx, []uint64{10, 11, 12}, RecipeCombineReclaimed).Return([]uint64{100}, nil).Once()
-
-	err = auto.Tick(ctx)
-	assert.NoError(t, err)
-}
-
-func TestCoverage_Auto_CleanInventory_Error(t *testing.T) {
-	inv := new(mockInventory)
-	gc := new(mockGC)
-	mgr := NewManager(inv, gc)
-	auto := NewAutomator(mgr, inv)
-
-	ctx := t.Context()
-
-	inv.On("FindWeaponsByClassForSmelting", mock.Anything).Return([]*tf2.Item{}).Maybe()
-	inv.On("FindWeaponsByClassForSmelting", "Scout").Return([]*tf2.Item{
-		{ID: 1, IsTradable: true},
-		{ID: 2, IsTradable: true},
-	}).Once()
-
-	gc.On("Craft", ctx, []uint64{1, 2}, RecipeSmeltWeapons).Return([]uint64(nil), errors.New("craft fail")).Once()
-
-	inv.On("GetMetalCount", DefIndexScrap).Return(0)
-	inv.On("GetMetalCount", DefIndexReclaimed).Return(0)
-
-	err := auto.CleanInventory(ctx)
-	assert.NoError(t, err)
-}
-
-func TestCoverage_Manager_Errors(t *testing.T) {
 	inv := new(mockInventory)
 	gc := new(mockGC)
 	mgr := NewManager(inv, gc)
 
 	ctx := t.Context()
+	gc.On("Craft", ctx, []uint64{1, 2}, RecipeSmeltWeapons).Return([]uint64{10}, nil)
 
-	// CombineMetal: invalid defindex
-	inv.On("FindCraftableItems", uint32(9999), 3).Return([]uint64{1, 2, 3}).Once()
-
-	_, err := mgr.CombineMetal(ctx, 9999)
-	assert.ErrorContains(t, err, "invalid metal defindex")
-
-	// SmeltMetal: no metal found
-	inv.On("FindCraftableItems", DefIndexRefined, 1).Return([]uint64{}).Once()
-	_, err = mgr.SmeltMetal(ctx, DefIndexRefined)
-	assert.ErrorContains(t, err, "no metal found")
-
-	// SmeltMetal: invalid defindex
-	inv.On("FindCraftableItems", uint32(9999), 1).Return([]uint64{1}).Once()
-
-	_, err = mgr.SmeltMetal(ctx, 9999)
-	assert.ErrorContains(t, err, "invalid metal defindex")
-
-	// SmeltWeapons
-	gc.On("Craft", ctx, []uint64{1, 2}, RecipeSmeltWeapons).Return([]uint64{10}, nil).Once()
 	res, err := mgr.SmeltWeapons(ctx, 1, 2)
 	assert.NoError(t, err)
 	assert.Equal(t, []uint64{10}, res)
-
-	// CondenseMetal scrap fails
-	inv.On("GetMetalCount", DefIndexScrap).Return(3).Once()
-	inv.On("FindCraftableItems", DefIndexScrap, 3).Return([]uint64{1, 2, 3}).Once()
-	gc.On("Craft", ctx, []uint64{1, 2, 3}, RecipeCombineScrap).
-		Return([]uint64(nil), errors.New("combine scrap failed")).
-		Once()
-	_, err = mgr.CondenseMetal(ctx)
-	assert.ErrorContains(t, err, "condense scrap failed")
-
-	// CondenseMetal reclaimed fails
-	inv.On("GetMetalCount", DefIndexScrap).Return(0).Once()
-	inv.On("GetMetalCount", DefIndexReclaimed).Return(3).Once()
-	inv.On("FindCraftableItems", DefIndexReclaimed, 3).Return([]uint64{10, 11, 12}).Once()
-	gc.On("Craft", ctx, []uint64{10, 11, 12}, RecipeCombineReclaimed).
-		Return([]uint64(nil), errors.New("combine rec failed")).
-		Once()
-	_, err = mgr.CondenseMetal(ctx)
-	assert.ErrorContains(t, err, "condense reclaimed failed")
 }
 
-func TestCoverage_MakeChange_Errors(t *testing.T) {
-	inv := new(mockInventory)
-	gc := new(mockGC)
-	mgr := NewManager(inv, gc)
+func TestManager_CondenseMetal(t *testing.T) {
+	t.Parallel()
 
-	ctx := t.Context()
+	t.Run("success_scrap_and_reclaimed", func(t *testing.T) {
+		inv := new(mockInventory)
+		gc := new(mockGC)
+		mgr := NewManager(inv, gc)
 
-	// MakeChange default case
-	inv.On("GetMetalCount", uint32(9999)).Return(0).Once()
+		ctx := t.Context()
 
-	err := mgr.MakeChange(ctx, 9999, 1)
-	assert.ErrorContains(t, err, "cannot smelt this item type")
+		inv.On("GetMetalCount", DefIndexScrap).Return(3).Once()
+		inv.On("FindCraftableItems", DefIndexScrap, 3).Return([]uint64{1, 2, 3}).Once()
+		gc.On("Craft", ctx, []uint64{1, 2, 3}, RecipeCombineScrap).Return([]uint64{10}, nil).Once()
 
-	// MakeChange Refined missing
-	inv.On("GetMetalCount", DefIndexReclaimed).Return(0).Once()
-	inv.On("GetMetalCount", DefIndexRefined).Return(0).Once()
+		inv.On("GetMetalCount", DefIndexScrap).Return(0).Once()
 
-	err = mgr.MakeChange(ctx, DefIndexReclaimed, 1)
-	assert.ErrorContains(t, err, "no refined metal left to smelt")
+		inv.On("GetMetalCount", DefIndexReclaimed).Return(3).Once()
+		inv.On("FindCraftableItems", DefIndexReclaimed, 3).Return([]uint64{10, 11, 12}).Once()
+		gc.On("Craft", ctx, []uint64{10, 11, 12}, RecipeCombineReclaimed).Return([]uint64{100}, nil).Once()
+
+		inv.On("GetMetalCount", DefIndexReclaimed).Return(0).Once()
+
+		crafts, err := mgr.CondenseMetal(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, 2, crafts)
+	})
+
+	t.Run("scrap_combination_fails", func(t *testing.T) {
+		inv := new(mockInventory)
+		gc := new(mockGC)
+		mgr := NewManager(inv, gc)
+
+		ctx := t.Context()
+
+		inv.On("GetMetalCount", DefIndexScrap).Return(3).Once()
+		inv.On("FindCraftableItems", DefIndexScrap, 3).Return([]uint64{1, 2, 3}).Once()
+		gc.On("Craft", ctx, []uint64{1, 2, 3}, RecipeCombineScrap).
+			Return([]uint64(nil), errors.New("combine failed")).
+			Once()
+
+		crafts, err := mgr.CondenseMetal(ctx)
+		assert.Error(t, err)
+		assert.Equal(t, 0, crafts)
+		assert.Contains(t, err.Error(), "condense scrap failed")
+	})
+
+	t.Run("reclaimed_combination_fails", func(t *testing.T) {
+		inv := new(mockInventory)
+		gc := new(mockGC)
+		mgr := NewManager(inv, gc)
+
+		ctx := t.Context()
+
+		inv.On("GetMetalCount", DefIndexScrap).Return(0).Once()
+		inv.On("GetMetalCount", DefIndexReclaimed).Return(3).Once()
+		inv.On("FindCraftableItems", DefIndexReclaimed, 3).Return([]uint64{10, 11, 12}).Once()
+		gc.On("Craft", ctx, []uint64{10, 11, 12}, RecipeCombineReclaimed).
+			Return([]uint64(nil), errors.New("combine failed")).
+			Once()
+
+		crafts, err := mgr.CondenseMetal(ctx)
+		assert.Error(t, err)
+		assert.Equal(t, 0, crafts)
+		assert.Contains(t, err.Error(), "condense reclaimed failed")
+	})
 }
 
-func TestCoverage_SmeltClassWeapons(t *testing.T) {
-	inv := new(mockInventory)
-	gc := new(mockGC)
-	mgr := NewManager(inv, gc)
+func TestManager_MakeChange(t *testing.T) {
+	t.Parallel()
 
-	ctx := t.Context()
+	t.Run("success_cascaded_smelting", func(t *testing.T) {
+		inv := new(mockInventory)
+		gc := new(mockGC)
+		mgr := NewManager(inv, gc)
 
-	// Not enough weapons
-	inv.On("FindWeaponsByClassForSmelting", "Scout").Return([]*tf2.Item{}).Once()
+		ctx := t.Context()
 
-	_, err := mgr.SmeltClassWeapons(ctx, "Scout")
-	assert.ErrorContains(t, err, "not enough weapons")
+		inv.On("GetMetalCount", DefIndexScrap).Return(0).Once()
+		inv.On("GetMetalCount", DefIndexReclaimed).Return(0).Once()
 
-	// Not tradable weapons
-	inv.On("FindWeaponsByClassForSmelting", "Scout").Return([]*tf2.Item{
-		{ID: 1, IsTradable: false},
-		{ID: 2, IsTradable: true},
-	}).Once()
+		inv.On("GetMetalCount", DefIndexReclaimed).Return(0).Once()
+		inv.On("GetMetalCount", DefIndexRefined).Return(1).Once()
 
-	_, err = mgr.SmeltClassWeapons(ctx, "Scout")
-	assert.ErrorContains(t, err, "refusing to smelt")
+		inv.On("FindCraftableItems", DefIndexRefined, 1).Return([]uint64{100})
+		gc.On("Craft", mock.Anything, []uint64{100}, RecipeSmeltRefined).Return([]uint64{10, 11, 12}, nil)
 
-	// Success
-	inv.On("FindWeaponsByClassForSmelting", "Scout").Return([]*tf2.Item{
-		{ID: 1, IsTradable: true},
-		{ID: 2, IsTradable: true},
-	}).Once()
-	gc.On("Craft", ctx, []uint64{1, 2}, RecipeSmeltWeapons).Return([]uint64{100}, nil).Once()
-	res, err := mgr.SmeltClassWeapons(ctx, "Scout")
-	assert.NoError(t, err)
-	assert.Equal(t, []uint64{100}, res)
+		inv.On("GetMetalCount", DefIndexReclaimed).Return(3).Once()
+
+		inv.On("GetMetalCount", DefIndexScrap).Return(0).Once()
+		inv.On("GetMetalCount", DefIndexReclaimed).Return(3).Once()
+
+		inv.On("FindCraftableItems", DefIndexReclaimed, 1).Return([]uint64{10})
+		gc.On("Craft", mock.Anything, []uint64{10}, RecipeSmeltReclaimed).Return([]uint64{1, 2, 3}, nil)
+
+		inv.On("GetMetalCount", DefIndexScrap).Return(3).Once()
+
+		err := mgr.MakeChange(ctx, DefIndexScrap, 1)
+		assert.NoError(t, err)
+	})
+
+	t.Run("unsupported_item_type", func(t *testing.T) {
+		inv := new(mockInventory)
+		mgr := NewManager(inv, nil)
+
+		inv.On("GetMetalCount", uint32(9999)).Return(0)
+
+		err := mgr.MakeChange(t.Context(), 9999, 1)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "cannot smelt this item type")
+	})
+
+	t.Run("no_refined_metal_remaining", func(t *testing.T) {
+		inv := new(mockInventory)
+		mgr := NewManager(inv, nil)
+
+		inv.On("GetMetalCount", DefIndexReclaimed).Return(0).Once()
+		inv.On("GetMetalCount", DefIndexRefined).Return(0).Once()
+
+		err := mgr.MakeChange(t.Context(), DefIndexReclaimed, 1)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "no refined metal left to smelt")
+	})
 }
 
-func TestCoverage_MetalManager_SelectMetal_Errors(t *testing.T) {
-	fetcher := new(mockFetcher)
-	inv := new(mockInventory)
-	gc := new(mockGC)
-	mgr := NewManager(inv, gc)
-	mm := NewMetalManager(fetcher, mgr, log.Discard)
+func TestManager_SmeltClassWeapons(t *testing.T) {
+	t.Parallel()
 
-	ctx := t.Context()
+	t.Run("success", func(t *testing.T) {
+		inv := new(mockInventory)
+		gc := new(mockGC)
+		mgr := NewManager(inv, gc)
 
-	// SelectMetal with <= 0 needed
-	ids, err := mm.SelectMetal(ctx, 0)
-	assert.NoError(t, err)
-	assert.Nil(t, ids)
+		ctx := t.Context()
 
-	// SelectMetal MakeChange fails
-	fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{}).Once()
-	fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
-	fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{}).Once()
-	inv.On("GetMetalCount", DefIndexScrap).Return(0).Once()
-	inv.On("GetMetalCount", DefIndexReclaimed).Return(0).Once()
-	inv.On("GetMetalCount", DefIndexReclaimed).Return(0).Once()
-	inv.On("GetMetalCount", DefIndexRefined).Return(0).Once()
+		inv.On("FindWeaponsByClassForSmelting", "Scout").Return([]*tf2.Item{
+			{ID: 1, IsTradable: true}, {ID: 2, IsTradable: true},
+		})
+		gc.On("Craft", ctx, []uint64{1, 2}, RecipeSmeltWeapons).Return([]uint64{100}, nil)
 
-	_, err = mm.SelectMetal(ctx, 1)
-	assert.ErrorContains(t, err, "no refined metal left to smelt")
+		res, err := mgr.SmeltClassWeapons(ctx, "Scout")
+		assert.NoError(t, err)
+		assert.Equal(t, []uint64{100}, res)
+	})
 
-	// SelectMetal with not enough metal remaining
-	fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{}).Once()
-	fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
-	fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{}).Once()
-	inv.On("GetMetalCount", DefIndexScrap).Return(1).Once()
+	t.Run("not_enough_weapons", func(t *testing.T) {
+		inv := new(mockInventory)
+		mgr := NewManager(inv, nil)
 
-	fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{}).Once()
-	fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
-	fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{}).Once()
+		inv.On("FindWeaponsByClassForSmelting", "Scout").Return([]*tf2.Item{{ID: 1}})
 
-	_, err = mm.SelectMetal(ctx, 1)
-	assert.ErrorContains(t, err, "not enough metal: missing 1 scrap")
-}
+		res, err := mgr.SmeltClassWeapons(t.Context(), "Scout")
+		assert.Error(t, err)
+		assert.Nil(t, res)
+		assert.Contains(t, err.Error(), "not enough weapons for class")
+	})
 
-func TestCoverage_MetalManager_SelectKeysAndMetal(t *testing.T) {
-	fetcher := new(mockFetcher)
-	mm := NewMetalManager(fetcher, nil, log.Discard)
+	t.Run("non_tradable_weapons_refusal", func(t *testing.T) {
+		inv := new(mockInventory)
+		mgr := NewManager(inv, nil)
 
-	// Keys missing
-	fetcher.On("GetAssetIDs", currency.SKUKey).Return([]uint64{10}).Once()
+		inv.On("FindWeaponsByClassForSmelting", "Scout").Return([]*tf2.Item{
+			{ID: 1, IsTradable: false}, {ID: 2, IsTradable: true},
+		})
 
-	_, err := mm.SelectKeysAndMetal(2, 0)
-	assert.ErrorContains(t, err, "not enough keys")
-
-	// SelectChange fails
-	fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{}).Once()
-	fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
-	fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{}).Once()
-
-	_, err = mm.SelectKeysAndMetal(0, 1)
-	assert.ErrorIs(t, err, ErrNotEnoughChange)
-
-	// Success
-	fetcher.On("GetAssetIDs", currency.SKUKey).Return([]uint64{10, 11}).Once()
-	fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{}).Once()
-	fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
-	fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{1}).Once()
-
-	res, err := mm.SelectKeysAndMetal(2, 1)
-	assert.NoError(t, err)
-	assert.Equal(t, []uint64{10, 11, 1}, res)
-}
-
-func TestCoverage_MetalManager_TryToSmeltForChange_More(t *testing.T) {
-	fetcher := new(mockFetcher)
-	inv := new(mockInventory)
-	gc := new(mockGC)
-	mgr := NewManager(inv, gc)
-	mm := NewMetalManager(fetcher, mgr, log.Discard)
-
-	ctx := t.Context()
-
-	// totalValue < needed
-	fetcher.On("GetPureStock").Return(currency.PureStock{Scrap: 1}).Once()
-
-	err := mm.TryToSmeltForChange(ctx, 2)
-	assert.ErrorContains(t, err, "insufficient total metal value")
-
-	// Smelt fails
-	fetcher.On("GetPureStock").Return(currency.PureStock{Refined: 1}).Once()
-	fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{100}).Once()
-	fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
-	fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{}).Once()
-	inv.On("GetMetalCount", DefIndexScrap).Return(0).Once()
-	inv.On("GetMetalCount", DefIndexReclaimed).Return(0).Once()
-	inv.On("GetMetalCount", DefIndexReclaimed).Return(0).Once()
-	inv.On("GetMetalCount", DefIndexRefined).Return(0).Once()
-
-	err = mm.TryToSmeltForChange(ctx, 1)
-	assert.ErrorContains(t, err, "smelting failed")
-
-	// Smelt succeeds but still needs change, weapon smelting resolves it
-	fetcher.On("GetPureStock").Return(currency.PureStock{Refined: 1, Scrap: 0}).Once()
-	fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{100}).Once()
-	fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
-	fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{}).Once()
-
-	inv.On("GetMetalCount", DefIndexScrap).Return(1).Once()
-
-	fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{}).Once()
-	fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
-	fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{}).Once()
-
-	fetcher.On("FindWeaponsByClassForSmelting", "Scout").Return([]*tf2.Item{
-		{ID: 1, IsTradable: true},
-		{ID: 2, IsTradable: true},
-	}).Once()
-	fetcher.On("FindWeaponsByClassForSmelting", mock.Anything).Return([]*tf2.Item{}).Maybe()
-	gc.On("Craft", ctx, []uint64{1, 2}, RecipeSmeltWeapons).Return([]uint64{50}, nil).Once()
-
-	fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{}).Once()
-	fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
-	fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{50}).Once()
-
-	err = mm.TryToSmeltForChange(ctx, 1)
-	assert.NoError(t, err)
-}
-
-func TestCoverage_SmeltDuplicates_Errors(t *testing.T) {
-	fetcher := new(mockFetcher)
-	inv := new(mockInventory)
-	gc := new(mockGC)
-	mgr := NewManager(inv, gc)
-	mm := NewMetalManager(fetcher, mgr, log.Discard)
-
-	ctx := t.Context()
-
-	// No duplicate weapons found to smelt
-	fetcher.On("FindWeaponsByClassForSmelting", mock.Anything).Return([]*tf2.Item{}).Maybe()
-
-	err := mm.SmeltDuplicates(ctx, 1)
-	assert.ErrorContains(t, err, "no duplicate weapons found")
-
-	// Weapon not tradable
-	fetcher.ExpectedCalls = nil
-	fetcher.On("FindWeaponsByClassForSmelting", "Scout").Return([]*tf2.Item{
-		{ID: 1, IsTradable: false},
-		{ID: 2, IsTradable: true},
-	}).Once()
-	fetcher.On("FindWeaponsByClassForSmelting", mock.Anything).Return([]*tf2.Item{}).Maybe()
-
-	err = mm.SmeltDuplicates(ctx, 1)
-	assert.ErrorContains(t, err, "refusing to smelt")
-
-	// SmeltWeapons returns error
-	fetcher.ExpectedCalls = nil
-	fetcher.On("FindWeaponsByClassForSmelting", "Scout").Return([]*tf2.Item{
-		{ID: 1, IsTradable: true},
-		{ID: 2, IsTradable: true},
-	}).Once()
-	fetcher.On("FindWeaponsByClassForSmelting", mock.Anything).Return([]*tf2.Item{}).Maybe()
-	gc.On("Craft", ctx, []uint64{1, 2}, RecipeSmeltWeapons).Return([]uint64(nil), errors.New("craft fail")).Once()
-	err = mm.SmeltDuplicates(ctx, 1)
-	assert.ErrorContains(t, err, "craft fail")
+		res, err := mgr.SmeltClassWeapons(t.Context(), "Scout")
+		assert.Error(t, err)
+		assert.Nil(t, res)
+		assert.Contains(t, err.Error(), "refusing to smelt")
+	})
 }

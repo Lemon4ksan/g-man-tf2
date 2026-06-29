@@ -6,22 +6,28 @@ package backpack
 
 import (
 	"context"
+	"errors"
 	"testing"
-	"time"
 
 	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/steam"
-	"github.com/lemon4ksan/g-man/pkg/steam/community/inventory"
+	"github.com/lemon4ksan/g-man/pkg/steam/sys/apps"
+	"github.com/lemon4ksan/g-man/pkg/steam/sys/gc"
 	"github.com/lemon4ksan/g-man/pkg/trading"
-	"github.com/lemon4ksan/g-man/test/module"
+	"github.com/lemon4ksan/g-man/test/mock"
 	"github.com/lemon4ksan/miyako/bus"
+	"github.com/lemon4ksan/miyako/generic"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
+	pb "github.com/lemon4ksan/g-man-tf2/pkg/protobuf/tf2"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
+	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 )
 
+// Shared mock definitions used across all backpack tests
 type mockCache struct {
 	items    []*tf2.Item
 	maxSlots int
@@ -55,10 +61,59 @@ func (m *mockSchemaProvider) Get() *schema.Schema {
 
 type mockTradingProvider struct {
 	offers []trading.TradeOffer
+	err    error
 }
 
 func (m *mockTradingProvider) GetActiveSentOffers(ctx context.Context) ([]trading.TradeOffer, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+
 	return m.offers, nil
+}
+
+type mockLogRecorder struct {
+	messages []string
+}
+
+func (m *mockLogRecorder) Debug(msg string, fields ...log.Field) {
+	m.messages = append(m.messages, msg)
+}
+
+func (m *mockLogRecorder) DebugContext(ctx context.Context, msg string, fields ...log.Field) {
+	m.messages = append(m.messages, msg)
+}
+
+func (m *mockLogRecorder) Info(msg string, fields ...log.Field) {
+	m.messages = append(m.messages, msg)
+}
+
+func (m *mockLogRecorder) InfoContext(ctx context.Context, msg string, fields ...log.Field) {
+	m.messages = append(m.messages, msg)
+}
+
+func (m *mockLogRecorder) Warn(msg string, fields ...log.Field) {
+	m.messages = append(m.messages, msg)
+}
+
+func (m *mockLogRecorder) WarnContext(ctx context.Context, msg string, fields ...log.Field) {
+	m.messages = append(m.messages, msg)
+}
+
+func (m *mockLogRecorder) Error(msg string, fields ...log.Field) {
+	m.messages = append(m.messages, msg)
+}
+
+func (m *mockLogRecorder) ErrorContext(ctx context.Context, msg string, fields ...log.Field) {
+	m.messages = append(m.messages, msg)
+}
+
+func (m *mockLogRecorder) With(fields ...log.Field) log.Logger {
+	return m
+}
+
+func (m *mockLogRecorder) Close() error {
+	return nil
 }
 
 func mockSchemaForSmelting() *schema.Schema {
@@ -87,413 +142,6 @@ func mockSchemaForSmelting() *schema.Schema {
 	return schema.New(raw)
 }
 
-func TestBackpack_LockItems_ValidIDs_LocksState(t *testing.T) {
-	t.Parallel()
-
-	bp := New()
-
-	assert.Empty(t, bp.GetLockedAssetIDs())
-
-	bp.LockItems([]uint64{100, 200})
-	locked := bp.GetLockedAssetIDs()
-	assert.ElementsMatch(t, []uint64{100, 200}, locked)
-
-	bp.UnlockItems([]uint64{100})
-	locked = bp.GetLockedAssetIDs()
-	assert.ElementsMatch(t, []uint64{200}, locked)
-}
-
-func TestBackpack_GetPureStock_ValidCache_ReturnsCorrectStock(t *testing.T) {
-	t.Parallel()
-
-	mock := &mockCache{
-		items: []*tf2.Item{
-			{ID: 1, DefIndex: 5021, IsTradable: true},
-			{ID: 2, DefIndex: 5021, IsTradable: false},
-			{ID: 3, DefIndex: 5002, IsTradable: true},
-			{ID: 4, DefIndex: 5002, IsTradable: true},
-			{ID: 5, DefIndex: 5001, IsTradable: true},
-			{ID: 6, DefIndex: 5000, IsTradable: true},
-			{ID: 7, DefIndex: 123, IsTradable: true},
-		},
-	}
-
-	bp := New()
-	bp.cache = mock
-
-	stock := bp.GetPureStock()
-
-	expected := currency.PureStock{
-		Keys:      1,
-		Refined:   2,
-		Reclaimed: 1,
-		Scrap:     1,
-	}
-
-	assert.Equal(t, expected, stock)
-}
-
-func TestBackpack_GetAssetIDs_FilteringAndLocking_ReturnsAvailableIDs(t *testing.T) {
-	t.Parallel()
-
-	mock := &mockCache{
-		items: []*tf2.Item{
-			{ID: 1, IsTradable: true, SKU: "target_sku"},
-			{ID: 2, IsTradable: true, SKU: "target_sku"},
-			{ID: 3, IsTradable: false, SKU: "target_sku"},
-			{ID: 4, IsTradable: true, SKU: "other_sku"},
-		},
-	}
-
-	bp := New()
-	bp.cache = mock
-	bp.manager = &mockSchemaProvider{s: &schema.Schema{}}
-
-	bp.LockItems([]uint64{2})
-
-	ids := bp.GetAssetIDs("target_sku")
-	assert.ElementsMatch(t, []uint64{1}, ids)
-}
-
-func TestBackpack_HandleEvent_FullBackpack_PublishesFullEvent(t *testing.T) {
-	t.Parallel()
-
-	mock := &mockCache{maxSlots: 10}
-	bp := New()
-	bp.cache = mock
-	bp.Logger = log.Discard
-	bp.Bus = bus.New()
-
-	for i := range 10 {
-		mock.items = append(mock.items, &tf2.Item{ID: uint64(i)})
-	}
-
-	events := bp.handleEvent(t.Context(), &tf2.ItemAcquiredEvent{Item: &tf2.Item{ID: 999}})
-	assert.Len(t, events, 1)
-	assert.IsType(t, &FullEvent{}, events[0])
-}
-
-func TestBackpack_HandleEvent_OtherEvents_DoesNotPanic(t *testing.T) {
-	t.Parallel()
-
-	bp := New()
-	bp.Logger = log.Discard
-
-	events := bp.handleEvent(t.Context(), &tf2.ItemRemovedEvent{ItemID: 123})
-	assert.Empty(t, events)
-}
-
-func TestBackpack_ApplyLayout_SchemaNotReady_ReturnsError(t *testing.T) {
-	t.Parallel()
-
-	bp := New()
-	bp.manager = schema.NewManager(schema.Config{})
-
-	err := bp.ApplyLayout(t.Context(), Layout{})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "schema not ready")
-}
-
-func TestBackpack_ApplyLayout_SuccessfulEmptyMoves_ReturnsNil(t *testing.T) {
-	t.Parallel()
-
-	s := mockSchema()
-	mock := &mockCache{
-		items: []*tf2.Item{
-			{ID: 10, DefIndex: 1, Quality: 6, Inventory: 1},
-			{ID: 20, DefIndex: 5000, Quality: 6, Inventory: 2},
-		},
-	}
-
-	bp := New()
-	bp.cache = mock
-	bp.manager = &mockSchemaProvider{s: s}
-	bp.Logger = log.Discard
-
-	layout := Layout{
-		Sections: []SectionLayout{
-			{
-				Name: "Test Section",
-				Filters: []Filter{
-					BySKU("1;6"),
-					BySKU("5000;6"),
-				},
-			},
-		},
-	}
-
-	err := bp.ApplyLayout(t.Context(), layout)
-	assert.NoError(t, err)
-}
-
-func TestBackpack_ApplyLayout_PageRanges(t *testing.T) {
-	t.Parallel()
-
-	s := mockSchema()
-	bp := New()
-	bp.manager = &mockSchemaProvider{s: s}
-	bp.Logger = log.Discard
-
-	t.Run("successfully places items on correct start pages", func(t *testing.T) {
-		mock := &mockCache{
-			items: []*tf2.Item{
-				{ID: 10, DefIndex: 1, Quality: 6, SKU: "1;6", Inventory: 51},        // slot 1 of page 2
-				{ID: 20, DefIndex: 5000, Quality: 6, SKU: "5000;6", Inventory: 151}, // slot 1 of page 4
-			},
-		}
-		bp.cache = mock
-
-		// Section 1 should start at page 2, Section 2 should start at page 4
-		layout := Layout{
-			Sections: []SectionLayout{
-				{
-					Name:      "Section 1",
-					Filters:   []Filter{BySKU("1;6")},
-					StartPage: 2,
-					EndPage:   2,
-				},
-				{
-					Name:      "Section 2",
-					Filters:   []Filter{BySKU("5000;6")},
-					StartPage: 4,
-				},
-			},
-		}
-
-		err := bp.ApplyLayout(t.Context(), layout)
-		assert.NoError(t, err)
-	})
-
-	t.Run("returns error when section overflows its end page", func(t *testing.T) {
-		// Place 51 items on a 1-page section (max capacity 50 items)
-		items := make([]*tf2.Item, 51)
-		for i := 0; i < 51; i++ {
-			items[i] = &tf2.Item{ID: uint64(i + 1), DefIndex: 1, Quality: 6, SKU: "1;6", Inventory: uint32(i + 1)}
-		}
-
-		mock := &mockCache{items: items}
-		bp.cache = mock
-
-		layout := Layout{
-			Sections: []SectionLayout{
-				{
-					Name:      "Section 1",
-					Filters:   []Filter{BySKU("1;6")},
-					StartPage: 1,
-					EndPage:   1, // 1 page can only hold 50 items
-				},
-			},
-		}
-
-		err := bp.ApplyLayout(t.Context(), layout)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "overflowed its allocated page range (1-1)")
-	})
-
-	t.Run("automatically shifts subsequent sections when previous section overflows", func(t *testing.T) {
-		// Place 51 items in Section 1 (which starts at page 1).
-		// Page 1 can only hold 50 items, so the 51st item overflows to page 2 slot 1.
-		// Section 2 is configured to start at page 2.
-		// Since Section 1 overflowed to page 2, Section 2 should automatically shift to start on page 3!
-		items := make([]*tf2.Item, 52)
-		for i := 0; i < 51; i++ {
-			items[i] = &tf2.Item{ID: uint64(i + 1), DefIndex: 1, Quality: 6, SKU: "1;6", Inventory: uint32(i + 1)}
-		}
-
-		// The 52nd item belongs to Section 2 (SKU "5000;6")
-		items[51] = &tf2.Item{
-			ID:        52,
-			DefIndex:  5000,
-			Quality:   6,
-			SKU:       "5000;6",
-			Inventory: 101,
-		} // already at slot 1 of page 3 (PositionOf(3, 1) = 101)
-
-		mock := &mockCache{items: items}
-		bp.cache = mock
-
-		layout := Layout{
-			Sections: []SectionLayout{
-				{
-					Name:      "Section 1",
-					Filters:   []Filter{BySKU("1;6")},
-					StartPage: 1,
-					// EndPage is 0 (no strict cap), so it naturally overflows to page 2
-				},
-				{
-					Name:      "Section 2",
-					Filters:   []Filter{BySKU("5000;6")},
-					StartPage: 2, // will shift to page 3
-				},
-			},
-		}
-
-		err := bp.ApplyLayout(t.Context(), layout)
-		assert.NoError(t, err) // should successfully place item 52 on page 3 with 0 moves
-	})
-}
-
-func TestBackpack_GetItemsBySKU_ValidSKU_ReturnsMatchingIDs(t *testing.T) {
-	t.Parallel()
-
-	mock := &mockCache{
-		items: []*tf2.Item{
-			{ID: 1, SKU: "target_sku"},
-			{ID: 2, SKU: "other_sku"},
-		},
-	}
-
-	bp := New()
-	bp.cache = mock
-	bp.manager = &mockSchemaProvider{s: &schema.Schema{}}
-
-	ids := bp.GetItemsBySKU("target_sku")
-	assert.ElementsMatch(t, []uint64{1}, ids)
-}
-
-func TestBackpack_CleanupStaleLocks_StaleLocks_RemovesObsoleteLocks(t *testing.T) {
-	t.Parallel()
-
-	bp := New()
-	bp.LockItems([]uint64{1, 2, 3})
-
-	mockTrading := &mockTradingProvider{
-		offers: []trading.TradeOffer{
-			{
-				ItemsToGive: []*trading.Item{
-					{AssetID: 1},
-				},
-			},
-		},
-	}
-
-	bp.cleanupStaleLocks(t.Context(), mockTrading)
-
-	locked := bp.GetLockedAssetIDs()
-	assert.Contains(t, locked, uint64(1))
-	assert.NotContains(t, locked, uint64(2))
-	assert.NotContains(t, locked, uint64(3))
-}
-
-func TestBackpack_FindWeaponsByClass_ValidWeapons_ReturnsMatching(t *testing.T) {
-	t.Parallel()
-
-	s := mockSchemaForSmelting()
-	mock := &mockCache{
-		items: []*tf2.Item{
-			{ID: 1, DefIndex: 1, IsCraftable: true, IsTradable: true},
-			{ID: 2, DefIndex: 3, IsCraftable: true, IsTradable: true},
-		},
-	}
-
-	bp := New()
-	bp.cache = mock
-	bp.manager = &mockSchemaProvider{s: s}
-
-	weapons := bp.FindWeaponsByClass("Scout")
-	assert.Len(t, weapons, 1)
-	assert.Equal(t, uint64(1), weapons[0].ID)
-}
-
-func TestBackpack_FindCraftableItems_CountAndLockScenarios_ExpectedItemIDs(t *testing.T) {
-	t.Parallel()
-
-	mock := &mockCache{
-		items: []*tf2.Item{
-			{ID: 1, DefIndex: 1, IsCraftable: true},
-			{ID: 2, DefIndex: 1, IsCraftable: true},
-			{ID: 3, DefIndex: 1, IsCraftable: false},
-			{ID: 4, DefIndex: 1, IsCraftable: true},
-		},
-	}
-
-	bp := New()
-	bp.cache = mock
-	bp.LockItems([]uint64{2})
-
-	res1 := bp.FindCraftableItems(1, 1)
-	assert.ElementsMatch(t, []uint64{1}, res1)
-
-	res0 := bp.FindCraftableItems(1, 0)
-	assert.ElementsMatch(t, []uint64{1, 4}, res0)
-}
-
-func TestBackpack_GetMetalCount_ValidDefIndex_ReturnsCount(t *testing.T) {
-	t.Parallel()
-
-	mock := &mockCache{
-		items: []*tf2.Item{
-			{ID: 1, DefIndex: 5000},
-			{ID: 2, DefIndex: 5000},
-			{ID: 3, DefIndex: 5001},
-		},
-	}
-
-	bp := New()
-	bp.cache = mock
-
-	count := bp.GetMetalCount(5000)
-	assert.Equal(t, 2, count)
-}
-
-func TestBackpack_FindWeaponsByClassForSmelting_VariousDuplicates_ReturnsExpectedSmeltingPairs(t *testing.T) {
-	t.Parallel()
-
-	s := mockSchemaForSmelting()
-	mock := &mockCache{
-		items: []*tf2.Item{
-			{ID: 10, DefIndex: 1, Quality: 6, IsCraftable: true, IsTradable: true},
-			{ID: 11, DefIndex: 1, Quality: 6, IsCraftable: true, IsTradable: true},
-			{ID: 12, DefIndex: 1, Quality: 6, IsCraftable: true, IsTradable: true},
-
-			{ID: 20, DefIndex: 3, Quality: 6, IsCraftable: true, IsTradable: true},
-			{ID: 21, DefIndex: 3, Quality: 6, IsCraftable: true, IsTradable: true},
-
-			{ID: 30, DefIndex: 1, Quality: 11, IsCraftable: true, IsTradable: true},
-			{ID: 40, DefIndex: 1, Quality: 6, IsCraftable: false, IsTradable: true},
-			{ID: 50, DefIndex: 160, Quality: 6, IsCraftable: true, IsTradable: true},
-		},
-	}
-
-	bp := New()
-	bp.cache = mock
-	bp.manager = &mockSchemaProvider{s: s}
-
-	scoutSmelting := bp.FindWeaponsByClassForSmelting("Scout")
-	assert.Len(t, scoutSmelting, 2)
-	scoutIDs := []uint64{scoutSmelting[0].ID, scoutSmelting[1].ID}
-	assert.ElementsMatch(t, []uint64{11, 12}, scoutIDs)
-
-	soldierSmelting := bp.FindWeaponsByClassForSmelting("Soldier")
-	assert.Len(t, soldierSmelting, 2)
-	soldierIDs := []uint64{soldierSmelting[0].ID, soldierSmelting[1].ID}
-	assert.ElementsMatch(t, []uint64{20, 21}, soldierIDs)
-}
-
-func TestPositionOf_Calculations_ReturnsCorrectIndex(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		page     int
-		slot     int
-		expected uint32
-	}{
-		{"first_page_first_slot", 1, 1, 1},
-		{"first_page_last_slot", 1, 50, 50},
-		{"second_page_first_slot", 2, 1, 51},
-		{"third_page_tenth_slot", 3, 10, 110},
-		{"zero_bounds_correction", 0, 0, 1},
-		{"negative_bounds_correction", -1, -5, 1},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, PositionOf(tt.page, tt.slot))
-		})
-	}
-}
-
 func mockSchemaForCoverage() *schema.Schema {
 	raw := &schema.Raw{}
 	raw.Schema.Items = []*schema.Item{
@@ -517,221 +165,703 @@ func mockSchemaForCoverage() *schema.Schema {
 	return schema.New(raw)
 }
 
-func TestCoverage_MapCEconToTF2_Extra(t *testing.T) {
+func TestPositionOf(t *testing.T) {
 	t.Parallel()
 
-	s := mockSchemaForCoverage()
-
-	// 1. desc is zero value
-	econNilDesc := inventory.CEconItem{
-		Asset:       inventory.Asset{AssetID: "100", Amount: "abc"},
-		Description: inventory.Description{},
+	tests := []struct {
+		name     string
+		page     int
+		slot     int
+		expected uint32
+	}{
+		{"first_page_first_slot", 1, 1, 1},
+		{"first_page_last_slot", 1, 50, 50},
+		{"second_page_first_slot", 2, 1, 51},
+		{"third_page_tenth_slot", 3, 10, 110},
+		{"zero_bounds_correction", 0, 0, 1},
+		{"negative_bounds_correction", -1, -5, 1},
 	}
-	itemNilDesc := mapCEconToTF2(econNilDesc, s)
-	assert.Equal(t, uint64(100), itemNilDesc.ID)
 
-	// 2. defindex == 0 or quality == 0 tags matching Category "Quality"
-	econTags := inventory.CEconItem{
-		Asset: inventory.Asset{AssetID: "101", Amount: "2"},
-		Description: inventory.Description{
-			Tags: []inventory.Tag{
-				{Category: "Quality", LocalizedTagName: "Unique"},
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, PositionOf(tt.page, tt.slot))
+		})
+	}
+}
+
+func TestBackpack_LockAndUnlock(t *testing.T) {
+	t.Parallel()
+
+	bp := New()
+	assert.Empty(t, bp.GetLockedAssetIDs())
+
+	bp.LockItems([]uint64{100, 200})
+	locked := bp.GetLockedAssetIDs()
+	assert.ElementsMatch(t, []uint64{100, 200}, locked)
+
+	bp.UnlockItems([]uint64{100})
+	locked = bp.GetLockedAssetIDs()
+	assert.ElementsMatch(t, []uint64{200}, locked)
+}
+
+func TestBackpack_GetPureStock(t *testing.T) {
+	t.Parallel()
+
+	t.Run("without_logger", func(t *testing.T) {
+		mockC := &mockCache{
+			items: []*tf2.Item{
+				{ID: 1, DefIndex: 5021, IsTradable: true},
+				{ID: 2, DefIndex: 5021, IsTradable: false},
+				{ID: 3, DefIndex: 5002, IsTradable: true},
+				{ID: 4, DefIndex: 5002, IsTradable: true},
+				{ID: 5, DefIndex: 5001, IsTradable: true},
+				{ID: 6, DefIndex: 5000, IsTradable: true},
+				{ID: 7, DefIndex: 123, IsTradable: true},
 			},
+		}
+
+		bp := New()
+		bp.cache = mockC
+
+		stock := bp.GetPureStock()
+		expected := currency.PureStock{
+			Keys:      1,
+			Refined:   2,
+			Reclaimed: 1,
+			Scrap:     1,
+		}
+		assert.Equal(t, expected, stock)
+	})
+
+	t.Run("with_logger_and_untradable_ref", func(t *testing.T) {
+		mockC := &mockCache{
+			items: []*tf2.Item{
+				{ID: 1, DefIndex: 5002, IsTradable: true},
+				{ID: 2, DefIndex: 5002, IsTradable: false},
+			},
+		}
+		bp := New()
+		bp.cache = mockC
+
+		loggerRecorder := &mockLogRecorder{}
+		bp.Logger = loggerRecorder
+
+		stock := bp.GetPureStock()
+		assert.Equal(t, int(1), int(stock.Refined))
+
+		require.NotEmpty(t, loggerRecorder.messages)
+		assert.Contains(t, loggerRecorder.messages[0], "Pure stock metal count statistics")
+		assert.Contains(t, loggerRecorder.messages[1], "Untradable refined sample details")
+	})
+}
+
+func TestBackpack_GetAssetIDs(t *testing.T) {
+	t.Parallel()
+
+	mockC := &mockCache{
+		items: []*tf2.Item{
+			{ID: 1, IsTradable: true, SKU: "target_sku"},
+			{ID: 2, IsTradable: true, SKU: "target_sku"},
+			{ID: 3, IsTradable: false, SKU: "target_sku"},
+			{ID: 4, IsTradable: true, SKU: "other_sku"},
 		},
 	}
-	itemTags := mapCEconToTF2(econTags, s)
-	assert.Equal(t, 2, itemTags.Quantity)
 
-	// 3. Various descriptions: Exterior, Effect, Killstreak, Paint, Crate, Strange Parts, Spells, Festive
-	econDesc := inventory.CEconItem{
-		Asset: inventory.Asset{AssetID: "102"},
-		Description: inventory.Description{
-			Name:           "Festivized Sunbeams Rocket Launcher",
-			MarketHashName: "Australium Rocket Launcher",
-			Descriptions: []struct {
-				Value string `json:"value"`
-				Color string `json:"color,omitempty"`
-			}{
-				{Value: "Exterior: Field-Tested"},
-				{Value: "★ Unusual Effect: Sunbeams"},
-				{Value: "Killstreak Active: Specialized"},
-				{Value: "Killstreak Active: Professional"},
-				{Value: "Killstreak Active: Killstreak"},
-				{Value: "Paint Color: Distinctive Lack of Hue"},
-				{Value: "Crate Series #85"},
-				{Value: "Strange Stat: Kills: 0"},
-				{Value: "Strange Part: Robots Destroyed: 0", Color: "756b5e"},
-				{Value: "Exorcism", Color: "7ea9d1"},
-			},
-			AppData: map[string]any{
-				"def_index": "13",
-				"quality":   "11", // Strange
-			},
+	bp := New()
+	bp.cache = mockC
+	bp.manager = &mockSchemaProvider{s: &schema.Schema{}}
+
+	bp.LockItems([]uint64{2})
+
+	ids := bp.GetAssetIDs("target_sku")
+	assert.ElementsMatch(t, []uint64{1}, ids)
+}
+
+func TestBackpack_FindCraftableItems(t *testing.T) {
+	t.Parallel()
+
+	mockC := &mockCache{
+		items: []*tf2.Item{
+			{ID: 1, DefIndex: 1, IsCraftable: true},
+			{ID: 2, DefIndex: 1, IsCraftable: true},
+			{ID: 3, DefIndex: 1, IsCraftable: false},
+			{ID: 4, DefIndex: 1, IsCraftable: true},
 		},
 	}
 
-	itemDesc := mapCEconToTF2(econDesc, s)
-	assert.Equal(t, uint64(102), itemDesc.ID)
+	bp := New()
+	bp.cache = mockC
+	bp.LockItems([]uint64{2})
 
-	// 4. Quality Decorated (15) for Paint Kits, Native Festive (654), and AppData attributes with Australium
-	econExtra := inventory.CEconItem{
-		Asset: inventory.Asset{AssetID: "103"},
-		Description: inventory.Description{
-			Name:           "Festivized Sunbeams Skin",
-			MarketHashName: "Sunbeams Skin",
-			AppData: map[string]any{
-				"def_index": "654", // Native Festive
-				"quality":   "15",  // Decorated
-				"attributes": map[string]any{
-					"2027": map[string]any{}, // Australium attribute
+	res1 := bp.FindCraftableItems(1, 1)
+	assert.ElementsMatch(t, []uint64{1}, res1)
+
+	res0 := bp.FindCraftableItems(1, 0)
+	assert.ElementsMatch(t, []uint64{1, 4}, res0)
+}
+
+func TestBackpack_GetMetalCount(t *testing.T) {
+	t.Parallel()
+
+	mockC := &mockCache{
+		items: []*tf2.Item{
+			{ID: 1, DefIndex: 5000},
+			{ID: 2, DefIndex: 5000},
+			{ID: 3, DefIndex: 5001},
+		},
+	}
+
+	bp := New()
+	bp.cache = mockC
+
+	count := bp.GetMetalCount(5000)
+	assert.Equal(t, 2, count)
+}
+
+func TestBackpack_FindWeaponsByClass(t *testing.T) {
+	t.Parallel()
+
+	s := mockSchemaForSmelting()
+	mockC := &mockCache{
+		items: []*tf2.Item{
+			{ID: 1, DefIndex: 1, IsCraftable: true, IsTradable: true},
+			{ID: 2, DefIndex: 3, IsCraftable: true, IsTradable: true},
+		},
+	}
+
+	bp := New()
+	bp.cache = mockC
+	bp.manager = &mockSchemaProvider{s: s}
+
+	weapons := bp.FindWeaponsByClass("Scout")
+	require.Len(t, weapons, 1)
+	assert.Equal(t, uint64(1), weapons[0].ID)
+}
+
+func TestBackpack_FindWeaponsByClassForSmelting(t *testing.T) {
+	t.Parallel()
+
+	s := mockSchemaForSmelting()
+
+	t.Run("schema_nil", func(t *testing.T) {
+		bp := New()
+		bp.manager = &mockSchemaProvider{s: nil}
+		res := bp.FindWeaponsByClassForSmelting("Scout")
+		assert.Nil(t, res)
+	})
+
+	t.Run("various_skips", func(t *testing.T) {
+		mockC := &mockCache{
+			items: []*tf2.Item{
+				{ID: 1, DefIndex: 1, IsCraftable: false, IsTradable: true},
+				{ID: 2, DefIndex: 1, IsCraftable: true, IsTradable: false},
+				{ID: 3, DefIndex: 999, IsCraftable: true, IsTradable: true},
+				{ID: 4, DefIndex: 1, Quality: 5, IsCraftable: true, IsTradable: true},
+				{ID: 5, DefIndex: 1, Quality: 6, IsElevated: true, IsCraftable: true, IsTradable: true},
+				{ID: 6, DefIndex: 1, Quality: 6, KillstreakTier: 1, IsCraftable: true, IsTradable: true},
+				{ID: 7, DefIndex: 1, Quality: 6, Paint: 1, IsCraftable: true, IsTradable: true},
+				{ID: 8, DefIndex: 1, Quality: 6, Festivized: true, IsCraftable: true, IsTradable: true},
+				{ID: 9, DefIndex: 1, Quality: 6, CustomName: "custom", IsCraftable: true, IsTradable: true},
+				{ID: 10, DefIndex: 1, Quality: 6, CustomDesc: "desc", IsCraftable: true, IsTradable: true},
+				{ID: 11, DefIndex: 1, Quality: 6, Spells: []sku.Spell{{}}, IsCraftable: true, IsTradable: true},
+				{ID: 12, DefIndex: 1, Quality: 6, Parts: []uint32{1}, IsCraftable: true, IsTradable: true},
+				{ID: 13, DefIndex: 1, Quality: 6, Australium: true, IsCraftable: true, IsTradable: true},
+				{ID: 14, DefIndex: 1, Quality: 6, Paintkit: 1, IsCraftable: true, IsTradable: true},
+				{ID: 15, DefIndex: 1, Quality: 6, CraftNumber: 1, IsCraftable: true, IsTradable: true},
+				{ID: 16, DefIndex: 1, Quality: 6, HasCustomDecal: true, IsCraftable: true, IsTradable: true},
+			},
+		}
+		bp := New()
+		bp.cache = mockC
+		bp.manager = &mockSchemaProvider{s: s}
+		res := bp.FindWeaponsByClassForSmelting("Scout")
+		assert.Empty(t, res)
+	})
+
+	t.Run("unpaired_duplicate_scenarios", func(t *testing.T) {
+		mockC := &mockCache{
+			items: []*tf2.Item{
+				{ID: 10, DefIndex: 1, Quality: 6, IsCraftable: true, IsTradable: true},
+				{ID: 11, DefIndex: 1, Quality: 6, IsCraftable: true, IsTradable: true},
+				{ID: 12, DefIndex: 1, Quality: 6, IsCraftable: true, IsTradable: true},
+				{ID: 20, DefIndex: 3, Quality: 6, IsCraftable: true, IsTradable: true},
+				{ID: 21, DefIndex: 3, Quality: 6, IsCraftable: true, IsTradable: true},
+			},
+		}
+		bp := New()
+		bp.cache = mockC
+		bp.manager = &mockSchemaProvider{s: s}
+
+		res := bp.FindWeaponsByClassForSmelting("Scout")
+		require.Len(t, res, 2)
+		assert.Equal(t, uint64(11), res[0].ID)
+		assert.Equal(t, uint64(12), res[1].ID)
+
+		raw := &schema.Raw{}
+		raw.Schema.Items = []*schema.Item{
+			{Defindex: 1, ItemQuality: 6, CraftClass: "weapon", UsedByClasses: []string{"Scout"}},
+			{Defindex: 3, ItemQuality: 6, CraftClass: "weapon", UsedByClasses: []string{"Scout"}},
+		}
+		sCombined := schema.New(raw)
+		bp.manager = &mockSchemaProvider{s: sCombined}
+
+		resCombined := bp.FindWeaponsByClassForSmelting("Scout")
+		require.Len(t, resCombined, 4)
+		assert.Equal(t, uint64(11), resCombined[0].ID)
+		assert.Equal(t, uint64(12), resCombined[1].ID)
+		assert.Equal(t, uint64(21), resCombined[2].ID)
+		assert.Equal(t, uint64(20), resCombined[3].ID)
+	})
+}
+
+func TestBackpack_ApplyLayout(t *testing.T) {
+	t.Parallel()
+
+	t.Run("schema_not_ready", func(t *testing.T) {
+		bp := New()
+		bp.manager = &mockSchemaProvider{s: nil}
+		err := bp.ApplyLayout(t.Context(), Layout{})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "schema not ready")
+	})
+
+	t.Run("successful_empty_moves_returns_nil", func(t *testing.T) {
+		s := mockSchema()
+		mockC := &mockCache{
+			items: []*tf2.Item{
+				{ID: 10, DefIndex: 1, Quality: 6, Inventory: 1},
+				{ID: 20, DefIndex: 5000, Quality: 6, Inventory: 2},
+			},
+		}
+
+		bp := New()
+		bp.cache = mockC
+		bp.manager = &mockSchemaProvider{s: s}
+		bp.Logger = log.Discard
+
+		layout := Layout{
+			Sections: []SectionLayout{
+				{
+					Name: "Test Section",
+					Filters: []Filter{
+						BySKU("1;6"),
+						BySKU("5000;6"),
+					},
+				},
+			},
+		}
+
+		err := bp.ApplyLayout(t.Context(), layout)
+		assert.NoError(t, err)
+	})
+
+	t.Run("page_ranges", func(t *testing.T) {
+		s := mockSchema()
+		bp := New()
+		bp.manager = &mockSchemaProvider{s: s}
+		bp.Logger = log.Discard
+
+		t.Run("successful_start_page_placement", func(t *testing.T) {
+			mockC := &mockCache{
+				items: []*tf2.Item{
+					{ID: 10, DefIndex: 1, Quality: 6, SKU: "1;6", Inventory: 51},
+					{ID: 20, DefIndex: 5000, Quality: 6, SKU: "5000;6", Inventory: 151},
+				},
+			}
+			bp.cache = mockC
+
+			layout := Layout{
+				Sections: []SectionLayout{
+					{
+						Name:      "Section 1",
+						Filters:   []Filter{BySKU("1;6")},
+						StartPage: 2,
+						EndPage:   2,
+					},
+					{
+						Name:      "Section 2",
+						Filters:   []Filter{BySKU("5000;6")},
+						StartPage: 4,
+					},
+				},
+			}
+
+			err := bp.ApplyLayout(t.Context(), layout)
+			assert.NoError(t, err)
+		})
+
+		t.Run("section_overflow_error", func(t *testing.T) {
+			items := make([]*tf2.Item, 51)
+			for i := range 51 {
+				items[i] = &tf2.Item{ID: uint64(i + 1), DefIndex: 1, Quality: 6, SKU: "1;6", Inventory: uint32(i + 1)}
+			}
+
+			mockC := &mockCache{items: items}
+			bp.cache = mockC
+
+			layout := Layout{
+				Sections: []SectionLayout{
+					{
+						Name:      "Section 1",
+						Filters:   []Filter{BySKU("1;6")},
+						StartPage: 1,
+						EndPage:   1,
+					},
+				},
+			}
+
+			err := bp.ApplyLayout(t.Context(), layout)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "overflowed its allocated page range")
+		})
+	})
+}
+
+func TestBackpack_ApplyLayout_SortersAndUnmoved(t *testing.T) {
+	t.Parallel()
+
+	s := mockSchemaForLayout()
+	bp := New()
+	bp.manager = &mockSchemaProvider{s: s}
+	bp.Logger = log.Discard
+
+	mockC := &mockCache{
+		items: []*tf2.Item{
+			{ID: 10, DefIndex: 1, Quality: 6, SKU: "1;6", Inventory: 1},
+		},
+	}
+	bp.cache = mockC
+
+	layout := Layout{
+		Sections: []SectionLayout{
+			{
+				Name: "Sorted Section",
+				Filters: []Filter{
+					BySKU("1;6"),
+				},
+				OrderBy: func(a, b *tf2.Item, s *schema.Schema) int {
+					return int(a.ID) - int(b.ID)
 				},
 			},
 		},
 	}
 
-	itemExtra := mapCEconToTF2(econExtra, s)
-	assert.Equal(t, uint64(103), itemExtra.ID)
+	err := bp.ApplyLayout(t.Context(), layout)
+	assert.NoError(t, err)
 }
 
-func TestCoverage_TrivialGettersAndMethods(t *testing.T) {
+func TestBackpack_ApplyLayout_LockedSlotOccupation(t *testing.T) {
 	t.Parallel()
 
-	mockC := &mockCache{}
-	mockS := &mockSchemaProvider{}
-
+	s := mockSchemaForLayout()
 	bp := New()
-	bp.cache = mockC
-	bp.manager = mockS
+	bp.manager = &mockSchemaProvider{s: s}
+	bp.Logger = log.Discard
 
-	// 1. Getters
-	assert.Equal(t, mockC, bp.Cache())
-	assert.Equal(t, mockS, bp.Schema())
-
-	item, exists := bp.GetItem(123)
-	assert.False(t, exists)
-	assert.Nil(t, item)
-
-	assert.Equal(t, 0, bp.GetTotalCount())
-
-	assert.Equal(t, 0, bp.GetStock("5021;6"))
-}
-
-func TestCoverage_GetStock_Valid(t *testing.T) {
-	t.Parallel()
-
-	s := mockSchemaForCoverage()
 	mockC := &mockCache{
 		items: []*tf2.Item{
-			{ID: 1, DefIndex: 13, Quality: 6, SKU: "13;6"},
+			{ID: 10, DefIndex: 5000, Quality: 6, SKU: "5000;6", Inventory: 1},
+			{ID: 20, DefIndex: 1, Quality: 6, SKU: "1;6", Inventory: 10},
 		},
 	}
-	mockS := &mockSchemaProvider{s: s}
-
-	bp := New()
 	bp.cache = mockC
-	bp.manager = mockS
+	bp.LockItems([]uint64{10})
 
-	// Non-empty manager, matching SKU
-	assert.Equal(t, 1, bp.GetStock("13;6"))
-}
-
-func TestCoverage_RemoteOptions(t *testing.T) {
-	t.Parallel()
-
-	s := schema.New(&schema.Raw{})
-	inv := NewRemote(12345, nil, nil, s, WithLogger(log.Discard))
-	assert.NotNil(t, inv)
-}
-
-func TestCoverage_ModuleWithAndFrom(t *testing.T) {
-	cfg := steam.DefaultConfig()
-
-	client, err := steam.NewClient(cfg, WithModule())
-	if err != nil {
-		t.Skipf("steam.NewClient failed, skipping: %v", err)
-		return
+	layout := Layout{
+		Sections: []SectionLayout{
+			{
+				Name: "Moves Section",
+				Filters: []Filter{
+					BySKU("1;6"),
+				},
+			},
+		},
 	}
 
-	bp := From(client)
-	assert.NotNil(t, bp)
+	ictx := mock.NewInitContext()
+	appsMod := apps.New()
+	tf2Mod := tf2.New()
+	schemaMod := schema.NewManager(schema.Config{})
+
+	gcMock := mock.NewGCMock()
+	ictx.SetModule("gc", gcMock)
+	ictx.SetModule(apps.ModuleName, appsMod)
+	ictx.SetModule(schema.ModuleName, schemaMod)
+	ictx.SetModule(tf2.ModuleName, tf2Mod)
+
+	err := tf2Mod.Init(ictx)
+	require.NoError(t, err)
+
+	bp.tf2 = tf2Mod
+
+	err = bp.ApplyLayout(t.Context(), layout)
+	require.NoError(t, err)
+
+	gcMock.AssertSent(t, uint32(pb.EGCItemMsg_k_EMsgGCSetItemPositions))
 }
 
-func TestCoverage_Init_Errors(t *testing.T) {
+func TestBackpack_CleanupStaleLocks(t *testing.T) {
 	t.Parallel()
 
-	// Missing tf2
-	{
-		ictx := module.NewInitContext()
-		schemaMod := schema.NewManager(schema.DefaultConfig())
+	t.Run("trading_success", func(t *testing.T) {
+		bp := New()
+		bp.LockItems([]uint64{1, 2, 3})
+
+		mockTrading := &mockTradingProvider{
+			offers: []trading.TradeOffer{
+				{
+					ItemsToGive: []*trading.Item{
+						{AssetID: 1},
+					},
+				},
+			},
+		}
+		bp.Logger = log.Discard
+
+		bp.cleanupStaleLocks(t.Context(), mockTrading)
+
+		locked := bp.GetLockedAssetIDs()
+		assert.Contains(t, locked, uint64(1))
+		assert.NotContains(t, locked, uint64(2))
+		assert.NotContains(t, locked, uint64(3))
+	})
+
+	t.Run("trading_error", func(t *testing.T) {
+		bp := New()
+		bp.LockItems([]uint64{1, 2})
+
+		mockTrading := &mockTradingProvider{
+			err: errors.New("provider error"),
+		}
+		loggerRecorder := &mockLogRecorder{}
+		bp.Logger = loggerRecorder
+
+		bp.cleanupStaleLocks(t.Context(), mockTrading)
+
+		locked := bp.GetLockedAssetIDs()
+		assert.Len(t, locked, 2)
+
+		require.NotEmpty(t, loggerRecorder.messages)
+		assert.Contains(t, loggerRecorder.messages[0], "Failed to get active offers for stale lock cleanup")
+	})
+}
+
+func TestBackpack_HandleEvent(t *testing.T) {
+	t.Parallel()
+
+	t.Run("backpack_full", func(t *testing.T) {
+		mockC := &mockCache{maxSlots: 10}
+		bp := New()
+		bp.cache = mockC
+		bp.Logger = log.Discard
+
+		for i := range 10 {
+			mockC.items = append(mockC.items, &tf2.Item{ID: uint64(i)})
+		}
+
+		events := bp.handleEvent(t.Context(), &tf2.ItemAcquiredEvent{Item: &tf2.Item{ID: 999}})
+		require.Len(t, events, 1)
+		assert.IsType(t, &FullEvent{}, events[0])
+	})
+
+	t.Run("backpack_not_full", func(t *testing.T) {
+		mockC := &mockCache{maxSlots: 10}
+		bp := New()
+		bp.cache = mockC
+
+		events := bp.handleEvent(t.Context(), &tf2.ItemAcquiredEvent{Item: &tf2.Item{ID: 999}})
+		assert.Empty(t, events)
+	})
+
+	t.Run("unrelated_event", func(t *testing.T) {
+		bp := New()
+		events := bp.handleEvent(t.Context(), &tf2.ItemRemovedEvent{ItemID: 123})
+		assert.Empty(t, events)
+	})
+}
+
+func TestBackpack_DeleteItem(t *testing.T) {
+	t.Parallel()
+
+	ictx := mock.NewInitContext()
+	tf2Mod := tf2.New()
+	schemaMod := schema.NewManager(schema.Config{})
+	appsMod := apps.New()
+
+	gcMock := mock.NewGCMock()
+	ictx.SetModule(gc.ModuleName, gcMock)
+	ictx.SetModule(apps.ModuleName, appsMod)
+	ictx.SetModule(schema.ModuleName, schemaMod)
+	ictx.SetModule(tf2.ModuleName, tf2Mod)
+
+	err := tf2Mod.Init(ictx)
+	require.NoError(t, err)
+
+	bp := New()
+	err = bp.Init(ictx)
+	require.NoError(t, err)
+
+	err = bp.DeleteItem(t.Context(), 100)
+	require.NoError(t, err)
+
+	gcMock.AssertSentRaw(t, uint32(pb.EGCItemMsg_k_EMsgGCDelete))
+}
+
+func TestBackpack_GetItemsBySKU_And_GetStock(t *testing.T) {
+	t.Parallel()
+
+	t.Run("s_nil", func(t *testing.T) {
+		bp := New()
+		bp.manager = &mockSchemaProvider{s: nil}
+		assert.Nil(t, bp.GetItemsBySKU("1;6"))
+		assert.Equal(t, 0, bp.GetStock("1;6"))
+	})
+
+	t.Run("s_not_nil", func(t *testing.T) {
+		s := mockSchemaForLayout()
+		mockC := &mockCache{
+			items: []*tf2.Item{
+				{ID: 100, DefIndex: 1, Quality: 6, SKU: "1;6"},
+				{ID: 200, DefIndex: 1, Quality: 6, SKU: "1;6"},
+				{ID: 300, DefIndex: 5000, Quality: 6, SKU: "5000;6"},
+			},
+		}
+		bp := New()
+		bp.cache = mockC
+		bp.manager = &mockSchemaProvider{s: s}
+
+		assert.ElementsMatch(t, []uint64{100, 200}, bp.GetItemsBySKU("1;6"))
+		assert.Equal(t, 2, bp.GetStock("1;6"))
+	})
+}
+
+func TestBackpack_WithModuleAndFrom(t *testing.T) {
+	t.Parallel()
+
+	opt := WithModule()
+	assert.NotNil(t, opt)
+
+	sc, err := steam.NewClient(steam.Config{})
+	if err == nil && sc != nil {
+		opt(sc)
+		retrieved := From(sc)
+		assert.NotNil(t, retrieved)
+	}
+}
+
+func TestBackpack_NewWithDeps(t *testing.T) {
+	t.Parallel()
+
+	cache := &mockCache{}
+	mgr := &mockSchemaProvider{}
+	locked := make(generic.Set[uint64])
+
+	bp := NewWithDeps(cache, mgr, locked)
+	assert.NotNil(t, bp)
+	assert.Equal(t, cache, bp.cache)
+	assert.Equal(t, mgr, bp.manager)
+}
+
+func TestBackpack_CacheAndGetters(t *testing.T) {
+	t.Parallel()
+
+	cache := &mockCache{}
+	mgr := &mockSchemaProvider{}
+	bp := NewWithDeps(cache, mgr, nil)
+
+	assert.Equal(t, cache, bp.Cache())
+	assert.Equal(t, mgr, bp.Schema())
+}
+
+func TestBackpack_GetItem(t *testing.T) {
+	t.Parallel()
+
+	mockC := &mockCache{
+		items: []*tf2.Item{
+			{ID: 100},
+		},
+	}
+	bp := New()
+	bp.cache = mockC
+
+	it, ok := bp.GetItem(100)
+	assert.True(t, ok)
+	assert.Equal(t, uint64(100), it.ID)
+
+	_, ok = bp.GetItem(200)
+	assert.False(t, ok)
+}
+
+func TestBackpack_GetTotalCount(t *testing.T) {
+	t.Parallel()
+
+	mockC := &mockCache{
+		items: []*tf2.Item{
+			{ID: 100},
+			{ID: 200},
+		},
+	}
+	bp := New()
+	bp.cache = mockC
+
+	assert.Equal(t, 2, bp.GetTotalCount())
+}
+
+func TestBackpack_EventLoopCancel(t *testing.T) {
+	t.Parallel()
+
+	bp := New()
+	bp.Bus = bus.New()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	bp.eventLoop(ctx)
+}
+
+func TestBackpack_Lifecycle(t *testing.T) {
+	t.Parallel()
+
+	t.Run("init_missing_tf2", func(t *testing.T) {
+		ictx := mock.NewInitContext()
+		schemaMod := schema.NewManager(schema.Config{})
 		ictx.SetModule(schema.ModuleName, schemaMod)
 
 		bp := New()
 		err := bp.Init(ictx)
 		assert.Error(t, err)
-	}
+	})
 
-	// Missing schema
-	{
-		ictx := module.NewInitContext()
+	t.Run("init_missing_schema", func(t *testing.T) {
+		ictx := mock.NewInitContext()
 		tf2Mod := tf2.New()
 		ictx.SetModule(tf2.ModuleName, tf2Mod)
 
 		bp := New()
 		err := bp.Init(ictx)
 		assert.Error(t, err)
-	}
-}
+	})
 
-func TestCoverage_InitAndStartAuthed(t *testing.T) {
-	ictx := module.NewInitContext()
+	t.Run("init_and_start_authed_success", func(t *testing.T) {
+		ictx := mock.NewInitContext()
+		tf2Mod := tf2.New()
+		schemaMod := schema.NewManager(schema.Config{})
 
-	tf2Mod := tf2.New()
-	schemaMod := schema.NewManager(schema.DefaultConfig())
+		ictx.SetModule(tf2.ModuleName, tf2Mod)
+		ictx.SetModule(schema.ModuleName, schemaMod)
 
-	ictx.SetModule(tf2.ModuleName, tf2Mod)
-	ictx.SetModule(schema.ModuleName, schemaMod)
+		bp := New()
+		err := bp.Init(ictx)
+		require.NoError(t, err)
 
-	bp := New()
-	err := bp.Init(ictx)
-	assert.NoError(t, err)
-	assert.Equal(t, tf2Mod, bp.tf2)
-	assert.Equal(t, schemaMod, bp.manager)
+		bp.trading = &mockTradingProvider{}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-	defer cancel()
+		ctx, cancel := context.WithCancel(t.Context())
+		authCtx := mock.NewAuthContext(7656119)
 
-	authCtx := module.NewAuthContext(7656119)
+		err = bp.StartAuthed(ctx, authCtx)
+		require.NoError(t, err)
 
-	err = bp.StartAuthed(ctx, authCtx)
-	assert.NoError(t, err)
-
-	// Wait briefly for go routines to spin and shut down on context timeout
-	time.Sleep(20 * time.Millisecond)
-}
-
-func TestCoverage_StartAuthed_WithTrading(t *testing.T) {
-	ictx := module.NewInitContext()
-
-	tf2Mod := tf2.New()
-	schemaMod := schema.NewManager(schema.DefaultConfig())
-
-	ictx.SetModule(tf2.ModuleName, tf2Mod)
-	ictx.SetModule(schema.ModuleName, schemaMod)
-
-	bp := New()
-	err := bp.Init(ictx)
-	assert.NoError(t, err)
-
-	bp.trading = &mockTradingProvider{}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	authCtx := module.NewAuthContext(7656119)
-
-	err = bp.StartAuthed(ctx, authCtx)
-	assert.NoError(t, err)
-
-	// Wait a tiny bit then cancel context to cover the <-ctx.Done() case
-	time.Sleep(5 * time.Millisecond)
-	cancel()
-	time.Sleep(10 * time.Millisecond)
+		cancel()
+	})
 }

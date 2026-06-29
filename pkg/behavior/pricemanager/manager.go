@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package bptf
+// Package pricemanager provides a backpack.tf price manager for the g-man-tf2 bot.
+package pricemanager
 
 import (
 	"context"
@@ -19,6 +20,7 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/log"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
+	"github.com/lemon4ksan/g-man-tf2/pkg/services/bptf"
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 )
 
@@ -26,7 +28,7 @@ import (
 const BehaviorName = "bptf_prices"
 
 // WithPriceManager registers the price manager behavior with the orchestrator.
-func WithPriceManager(orch *behavior.Orchestrator, client *Client, cfg Config) {
+func WithPriceManager(orch *behavior.Orchestrator, client *bptf.Client, cfg Config) {
 	orch.Register(NewPriceManager(client, orch.Logger(), cfg))
 }
 
@@ -49,20 +51,20 @@ func DefaultConfig() Config {
 // PriceManager manages backpack.tf prices.
 type PriceManager struct {
 	config Config
-	client *Client
+	client *bptf.Client
 	logger log.Logger
 
 	mu    sync.RWMutex
-	index map[string]PriceEntry
+	index map[string]bptf.PriceEntry
 }
 
 // NewPriceManager creates a new price manager.
-func NewPriceManager(c *Client, l log.Logger, cfg Config) *PriceManager {
+func NewPriceManager(c *bptf.Client, l log.Logger, cfg Config) *PriceManager {
 	return &PriceManager{
 		config: cfg,
 		client: c,
 		logger: l.With(log.Module(BehaviorName)),
-		index:  make(map[string]PriceEntry),
+		index:  make(map[string]bptf.PriceEntry),
 	}
 }
 
@@ -110,7 +112,7 @@ func (m *PriceManager) Update(ctx context.Context) error {
 		return fmt.Errorf("bptf update failed: %w", err)
 	}
 
-	newIndex := make(map[string]PriceEntry)
+	newIndex := make(map[string]bptf.PriceEntry)
 
 	// Quality -> Tradability -> Craftability -> PriceIndex -> PriceEntry.
 	for _, itemData := range res.Items {
@@ -169,7 +171,7 @@ func (m *PriceManager) Update(ctx context.Context) error {
 }
 
 // GetPrice returns the price for the SKU from memory.
-func (m *PriceManager) GetPrice(sku string) (PriceEntry, bool) {
+func (m *PriceManager) GetPrice(sku string) (bptf.PriceEntry, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -215,7 +217,7 @@ func (m *PriceManager) loadFromCache() error {
 		return err
 	}
 
-	var index map[string]PriceEntry
+	var index map[string]bptf.PriceEntry
 	if err := json.Unmarshal(data, &index); err != nil {
 		return err
 	}

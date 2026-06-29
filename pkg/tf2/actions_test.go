@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	pb "github.com/lemon4ksan/g-man-tf2/pkg/protobuf/tf2"
 )
@@ -54,6 +55,62 @@ func TestTF2_Actions_ValidInputs_SendsCorrectGCPackets(t *testing.T) {
 			},
 		},
 		{
+			name: "remove_item_paint",
+			action: func(tf *TF2, ctx context.Context) error {
+				return tf.RemoveItemPaint(ctx, 123)
+			},
+			expectedMsg: pb.EGCItemMsg_k_EMsgGCRemoveItemPaint,
+		},
+		{
+			name: "remove_makers_mark",
+			action: func(tf *TF2, ctx context.Context) error {
+				return tf.RemoveMakersMark(ctx, 123)
+			},
+			expectedMsg: pb.EGCItemMsg_k_EMsgGCRemoveMakersMark,
+		},
+		{
+			name: "reset_strange_scores",
+			action: func(tf *TF2, ctx context.Context) error {
+				return tf.ResetStrangeScores(ctx, 123)
+			},
+			expectedMsg: pb.EGCItemMsg_k_EMsgGCResetStrangeScores,
+		},
+		{
+			name: "remove_killstreak",
+			action: func(tf *TF2, ctx context.Context) error {
+				return tf.RemoveKillstreak(ctx, 123)
+			},
+			expectedMsg: pb.EGCItemMsg_k_EMsgGCRemoveKillStreak,
+		},
+		{
+			name: "remove_festivizer",
+			action: func(tf *TF2, ctx context.Context) error {
+				return tf.RemoveFestivizer(ctx, 123)
+			},
+			expectedMsg: pb.EGCItemMsg_k_EMsgGCRemoveFestivizer,
+		},
+		{
+			name: "remove_gifted_by",
+			action: func(tf *TF2, ctx context.Context) error {
+				return tf.RemoveGiftedBy(ctx, 123)
+			},
+			expectedMsg: pb.EGCItemMsg_k_EMsgGCRemoveGiftedBy,
+		},
+		{
+			name: "acknowledge_item",
+			action: func(tf *TF2, ctx context.Context) error {
+				return tf.AcknowledgeItem(ctx, 123)
+			},
+			expectedMsg: pb.EGCItemMsg_k_EMsgGCSetSingleItemPosition,
+			expectedBody: func() []byte {
+				b := make([]byte, 12)
+				binary.LittleEndian.PutUint64(b[0:8], 123)
+				binary.LittleEndian.PutUint32(b[8:12], 1)
+
+				return b
+			},
+		},
+		{
 			name: "name_item",
 			action: func(tf *TF2, ctx context.Context) error {
 				return tf.NameItem(ctx, 100, 200, "Cool Weapon")
@@ -85,20 +142,6 @@ func TestTF2_Actions_ValidInputs_SendsCorrectGCPackets(t *testing.T) {
 				buf.WriteByte(0)
 
 				return buf.Bytes()
-			},
-		},
-		{
-			name: "acknowledge_item",
-			action: func(tf *TF2, ctx context.Context) error {
-				return tf.AcknowledgeItem(ctx, 123)
-			},
-			expectedMsg: pb.EGCItemMsg_k_EMsgGCSetSingleItemPosition,
-			expectedBody: func() []byte {
-				b := make([]byte, 12)
-				binary.LittleEndian.PutUint64(b[0:8], 123)
-				binary.LittleEndian.PutUint32(b[8:12], 1)
-
-				return b
 			},
 		},
 		{
@@ -259,6 +302,55 @@ func TestTF2_Actions_ValidInputs_SendsCorrectGCPackets(t *testing.T) {
 			expectedMsg: pb.EGCItemMsg_k_EMsgGCTrading_CancelSession,
 			expectedBody: func() []byte {
 				return nil
+			},
+		},
+		{
+			name: "unwrap_gift_request",
+			action: func(tf *TF2, ctx context.Context) error {
+				return tf.UnwrapGiftRequest(ctx, 123)
+			},
+			expectedMsg: pb.EGCItemMsg_k_EMsgGCUnwrapGiftRequest,
+			expectedBody: func() []byte {
+				b := make([]byte, 8)
+				binary.LittleEndian.PutUint64(b, 123)
+				return b
+			},
+		},
+		{
+			name: "fulfill_dynamic_recipe_component",
+			action: func(tf *TF2, ctx context.Context) error {
+				return tf.FulfillDynamicRecipeComponent(ctx, 10, 20, 30)
+			},
+			expectedMsg: pb.EGCItemMsg_k_EMsgGCFulfillDynamicRecipeComponent,
+			expectedBody: func() []byte {
+				req := &pb.CMsgFulfillDynamicRecipeComponent{
+					ToolItemId: proto.Uint64(10),
+					ConsumptionComponents: []*pb.CMsgRecipeComponent{
+						{
+							SubjectItemId:  proto.Uint64(20),
+							AttributeIndex: proto.Uint64(30),
+						},
+					},
+				}
+				b, _ := proto.Marshal(req)
+
+				return b
+			},
+		},
+		{
+			name: "consume_paintkit",
+			action: func(tf *TF2, ctx context.Context) error {
+				return tf.ConsumePaintkit(ctx, 10, 20)
+			},
+			expectedMsg: pb.EGCItemMsg(pb.ETFGCMsg_k_EMsgGCConsumePaintKit),
+			expectedBody: func() []byte {
+				req := &pb.CMsgConsumePaintkit{
+					SourceId:       proto.Uint64(10),
+					TargetDefindex: proto.Uint32(20),
+				}
+				b, _ := proto.Marshal(req)
+
+				return b
 			},
 		},
 	}

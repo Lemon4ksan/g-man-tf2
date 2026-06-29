@@ -43,9 +43,7 @@ const (
 
 // WithModule returns an option that registers the [TF2] module with the client.
 func WithModule() steam.Option {
-	return func(c *steam.Client) {
-		c.RegisterModule(New())
-	}
+	return steam.WithModule(New())
 }
 
 // From returns the [TF2] module instance from the [steam.Client].
@@ -568,6 +566,7 @@ func (t *TF2) handleGoodbye(_ *protocol.GCPacket) {
 	t.Logger.Warn("Disconnected from TF2 Game Coordinator (Server Goodbye)")
 
 	if t.fsm.Transition(context.Background(), EventServerGoodbye) == nil {
+		t.cache.Unload()
 		t.Bus.Publish(&DisconnectedEvent{})
 	}
 }

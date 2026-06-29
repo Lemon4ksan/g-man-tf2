@@ -66,10 +66,8 @@ func run() error {
 		}
 	}()
 
-	clientCfg := steam.DefaultConfig()
-	clientCfg.Storage = store
-
 	opts := []steam.Option{
+		steam.WithStorage(store),
 		steam.WithLogger(logger),
 		apps.WithModule(),
 		gc.WithModule(),
@@ -78,7 +76,7 @@ func run() error {
 		backpack.WithModule(),
 	}
 
-	client, err := steam.NewClient(clientCfg, opts...)
+	client, err := steam.NewClient(steam.DefaultConfig(), opts...)
 	if err != nil {
 		return fmt.Errorf("failed to create Steam client: %w", err)
 	}
@@ -113,7 +111,7 @@ func run() error {
 	sub := eventBus.Subscribe(&auth.LoggedOnEvent{}, &tf2.BackpackLoadedEvent{})
 	defer sub.Unsubscribe()
 
-	dir := directory.New(client.Service())
+	dir := directory.New(client)
 
 	server, err := dir.GetOptimalCMServer(ctx)
 	if err != nil {

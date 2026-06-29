@@ -61,6 +61,8 @@ const (
 	AttrUnusualEffect uint32 = 134
 	// AttrPaintPrimary represents the primary team paint color decimal value.
 	AttrPaintPrimary uint32 = 142
+	// AttrCustomTextureLow represents the low texture ID for custom decals.
+	AttrCustomTextureLow uint32 = 152
 	// AttrCannotTrade represents the non-tradable restriction.
 	AttrCannotTrade uint32 = 153
 	// AttrCannotCraft represents the non-craftable restriction.
@@ -73,6 +75,8 @@ const (
 	AttrTradableAfter uint32 = 211
 	// AttrKillEater represents a Strange part counter tracking presence.
 	AttrKillEater uint32 = 214
+	// AttrCustomTextureHigh represents the high texture ID for custom decals.
+	AttrCustomTextureHigh uint32 = 227
 	// AttrCraftNumber represents the craft index numbering attribute.
 	AttrCraftNumber uint32 = 229
 	// AttrPaintSecondary represents the secondary team paint color decimal value.
@@ -590,6 +594,7 @@ type SOCache struct {
 	items     map[uint64]*Item
 	slots     uint32
 	isPremium bool
+	loaded    bool
 
 	tradeBanExpiration uint32
 	compAccess         bool
@@ -801,6 +806,24 @@ func (c *SOCache) GetAssetIDsBySKU(targetSKU string, limit int) []uint64 {
 	return result
 }
 
+// IsLoaded returns whether the cache is loaded.
+func (c *SOCache) IsLoaded() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.loaded
+}
+
+// Unload clears the cache and marks it as unloaded.
+// SOCache can be reloaded after this.
+func (c *SOCache) Unload() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	clear(c.items)
+	c.loaded = false
+}
+
 func (c *SOCache) handleSubscribed(pkt *protocol.GCPacket) {
 	msg := &pb.CMsgSOCacheSubscribed{}
 	if err := proto.Unmarshal(pkt.Payload, msg); err != nil {
@@ -813,6 +836,7 @@ func (c *SOCache) handleSubscribed(pkt *protocol.GCPacket) {
 
 	c.mu.Lock()
 	clear(c.items)
+	c.loaded = true
 
 	for _, subType := range msg.GetObjects() {
 		typeID := subType.GetTypeId()
@@ -898,10 +922,11 @@ func (c *SOCache) handleSOCacheCheck(ctx context.Context, pkt *protocol.GCPacket
 		log.Uint64("our_version", ourVersion),
 	)
 
-	if gcVersion != ourVersion {
+	if gcVersion != ourVersion || !c.IsLoaded() {
 		c.logger.Warn("SOCache desync detected. Requesting refresh...",
 			log.Uint64("expected", gcVersion),
 			log.Uint64("actual", ourVersion),
+			log.Bool("loaded", c.IsLoaded()),
 		)
 		c.requestRefresh(ctx, owner, c.logger)
 	}
@@ -1096,7 +1121,7 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 			}
 
 		case AttrKillEater:
-			item.IsElevated = true
+			item.IsElevated = item.Quality != schema.QualityStrange
 		case AttrCraftNumber:
 			item.CraftNumber = getUint(val)
 		case AttrStrangePart1:
@@ -1153,10 +1178,10 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 			item.Australium = getFloat(val) != 0
 		case AttrFestivized:
 			item.Festivized = getFloat(val) != 0
-		case 152: // custom_texture_lo
+		case AttrCustomTextureLow: // custom_texture_lo
 			decalLo = getUint(val)
 			item.HasCustomDecal = true
-		case 227: // custom_texture_hi
+		case AttrCustomTextureHigh: // custom_texture_hi
 			decalHi = getUint(val)
 			item.HasCustomDecal = true
 		}

@@ -74,10 +74,8 @@ func run() error {
 	}()
 
 	// 4. Configure Steam client with necessary TF2 modules
-	clientCfg := steam.DefaultConfig()
-	clientCfg.Storage = store
-
 	opts := []steam.Option{
+		steam.WithStorage(store),
 		steam.WithLogger(logger),
 		apps.WithModule(),
 		gc.WithModule(),
@@ -86,7 +84,7 @@ func run() error {
 		backpack.WithModule(),
 	}
 
-	client, err := steam.NewClient(clientCfg, opts...)
+	client, err := steam.NewClient(steam.DefaultConfig(), opts...)
 	if err != nil {
 		return fmt.Errorf("failed to create Steam client: %w", err)
 	}
@@ -125,7 +123,7 @@ func run() error {
 	defer sub.Unsubscribe()
 
 	// 6. Discover the optimal Steam Connection Manager (CM) Server
-	dir := directory.New(client.Service())
+	dir := directory.New(client)
 
 	server, err := dir.GetOptimalCMServer(ctx)
 	if err != nil {

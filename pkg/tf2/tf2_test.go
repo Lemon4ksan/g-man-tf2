@@ -13,11 +13,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lemon4ksan/g-man/pkg/log"
+	"github.com/lemon4ksan/g-man/pkg/steam"
 	bm "github.com/lemon4ksan/g-man/pkg/steam/module"
 	"github.com/lemon4ksan/g-man/pkg/steam/protocol"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/apps"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/gc"
-	"github.com/lemon4ksan/g-man/test/module"
+	module "github.com/lemon4ksan/g-man/test/mock"
+	"github.com/lemon4ksan/miyako/bus"
 	"github.com/lemon4ksan/miyako/jobs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,6 +28,7 @@ import (
 
 	pb "github.com/lemon4ksan/g-man-tf2/pkg/protobuf/tf2"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
+	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 )
 
 const (
@@ -333,6 +337,14 @@ func TestTF2_AdvancedActions_ComplexCustomizations_DispatchesGCPackets(t *testin
 		assert.Equal(t, uint32(pb.EGCItemMsg_k_EMsgGCRemoveKillStreak), mCoord.GetLastSendMsgType())
 	})
 
+	t.Run("remove_killstreak", func(t *testing.T) {
+		t.Parallel()
+		tf, _, mCoord := setupTF2(t)
+		err := tf.RemoveKillstreak(t.Context(), 456)
+		require.NoError(t, err)
+		assert.Equal(t, uint32(pb.EGCItemMsg_k_EMsgGCRemoveKillStreak), mCoord.GetLastSendMsgType())
+	})
+
 	t.Run("report_player", func(t *testing.T) {
 		t.Parallel()
 		tf, _, mCoord := setupTF2(t)
@@ -559,6 +571,14 @@ func TestTF2_RemoveItemAttribute_SendsCorrectGCPacket(t *testing.T) {
 	assert.Equal(t, uint64(12345), sent.GetItemId())
 }
 
+type errorCoordinator struct {
+	mockCoordinator
+}
+
+func (e *errorCoordinator) Send(ctx context.Context, appID, msgType uint32, msg proto.Message) error {
+	return errors.New("gc send error")
+}
+
 func TestTF2_MoveItems_BatchingAndErrors(t *testing.T) {
 	t.Parallel()
 
@@ -644,10 +664,148 @@ func TestSOCache_FindWeaponsByClass_WithWeapon(t *testing.T) {
 	assert.Len(t, weaponsNone, 0)
 }
 
-type errorCoordinator struct {
-	mockCoordinator
+func TestTF2_WithModuleAndFrom(t *testing.T) {
+	t.Parallel()
+
+	opt := WithModule()
+	assert.NotNil(t, opt)
+
+	sc, err := steam.NewClient(steam.Config{})
+	if err == nil && sc != nil {
+		opt(sc)
+		retrieved := From(sc)
+		assert.NotNil(t, retrieved)
+	}
 }
 
-func (e *errorCoordinator) Send(ctx context.Context, appID, msgType uint32, msg proto.Message) error {
-	return errors.New("gc send error")
+func TestTF2_SetKeepActive(t *testing.T) {
+	t.Parallel()
+
+	tf, _, _ := setupTF2(t)
+	tf.SetKeepActive(true)
+	assert.True(t, tf.keepActive)
+}
+
+func TestTF2_AchievementAndStats_API(t *testing.T) {
+	t.Parallel()
+
+	tf, _, _ := setupTF2(t)
+
+	t.Run("connected_actions", func(t *testing.T) {
+		tf.fsm.ForceSet(Connected)
+
+		err := tf.AwardAchievement(t.Context(), 1001)
+		require.NoError(t, err)
+
+		err = tf.SetStat(t.Context(), 2001, 100)
+		require.NoError(t, err)
+	})
+
+	t.Run("disconnected_errors", func(t *testing.T) {
+		tf.fsm.ForceSet(Disconnected)
+
+		err := tf.AwardAchievement(t.Context(), 1001)
+		assert.ErrorContains(t, err, "GC is not connected")
+
+		err = tf.SetStat(t.Context(), 2001, 100)
+		assert.ErrorContains(t, err, "GC is not connected")
+
+		_, err = tf.GetCurrentAchievements(t.Context())
+		assert.ErrorContains(t, err, "GC is not connected")
+	})
+}
+
+func TestTF2_Craft_DisconnectedError(t *testing.T) {
+	t.Parallel()
+
+	tf, _, _ := setupTF2(t)
+	tf.fsm.ForceSet(Disconnected)
+
+	_, err := tf.Craft(t.Context(), []uint64{100}, 1)
+	assert.ErrorContains(t, err, "GC is not connected")
+}
+
+func TestSOCache_Item_ToEconItem_Comprehensive(t *testing.T) {
+	t.Parallel()
+
+	item := Item{
+		ID:             42,
+		DefIndex:       100,
+		Quantity:       1,
+		CustomName:     "Epic Scattergun",
+		IsTradable:     true,
+		IsMarketable:   true,
+		IsCraftable:    true,
+		Effect:         10,
+		Wear:           0.05,
+		Australium:     true,
+		Paintkit:       200,
+		KillstreakTier: 3,
+		Festivized:     true,
+		Paint:          123,
+		CrateSeries:    85,
+		IsElevated:     true,
+		Spells: []sku.Spell{
+			{Attribute: 1004, Value: 3},
+		},
+		Parts: []uint32{10, 11},
+	}
+
+	econ := item.ToEconItem()
+	assert.Equal(t, uint64(42), econ.AssetID)
+	assert.Equal(t, "Epic Scattergun", econ.Name)
+	assert.Len(t, econ.Attributes, 12)
+}
+
+func TestSOCache_NewSOCache_AllOptions(t *testing.T) {
+	t.Parallel()
+
+	logger := log.Discard
+	busInstance := bus.New()
+	sch := &schema.Schema{}
+
+	cache := NewSOCache(&mockCoordinator{}, WithLogger(logger), WithBus(busInstance), WithSchema(sch))
+	assert.Equal(t, logger, cache.logger)
+	assert.Equal(t, busInstance, cache.bus)
+	assert.Equal(t, sch, cache.schema)
+}
+
+func TestSOCache_UpdateSchema_WithItems(t *testing.T) {
+	t.Parallel()
+
+	cache := NewSOCache(&mockCoordinator{})
+	cache.items[1] = &Item{ID: 1, DefIndex: 1, SKU: ""}
+
+	raw := &schema.Raw{}
+	s := schema.New(raw)
+
+	cache.UpdateSchema(s)
+	assert.Equal(t, s, cache.schema)
+	assert.NotEmpty(t, cache.items[1].SKU)
+}
+
+func TestTF2_MessageLoop_AllEvents(t *testing.T) {
+	t.Parallel()
+
+	_, ictx, _ := setupTF2(t)
+
+	ictx.Bus().Publish(&schema.ReadyEvent{})
+	ictx.Bus().Publish(&schema.UpdatedEvent{})
+
+	ictx.Bus().Publish(&gc.MessageEvent{
+		Packet: &protocol.GCPacket{
+			AppID: 730,
+		},
+	})
+
+	time.Sleep(100 * time.Millisecond)
+}
+
+func TestTF2_GCEvents_UnmarshalErrors(t *testing.T) {
+	t.Parallel()
+
+	tf, _, _ := setupTF2(t)
+
+	tf.handleWelcome(&protocol.GCPacket{Payload: []byte("invalid-payload")})
+	tf.handleSchemaUpdate(&protocol.GCPacket{Payload: []byte("invalid-payload")})
 }

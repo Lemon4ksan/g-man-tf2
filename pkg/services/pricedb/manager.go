@@ -24,6 +24,17 @@ func WithPriceManager(orch *behavior.Orchestrator, client *Client) {
 	orch.Register(NewManager(client, orch.Logger()).WithBus(orch.Bus()))
 }
 
+// PricelistUpdatedEvent is published when a price in the database is set or changed.
+type PricelistUpdatedEvent struct {
+	bus.BaseEvent
+	SKU     string     `json:"sku"`
+	Buy     Currencies `json:"buy"`
+	Sell    Currencies `json:"sell"`
+	OldBuy  Currencies `json:"old_buy"`
+	OldSell Currencies `json:"old_sell"`
+	Source  string     `json:"source"`
+}
+
 // Manager handles caching and background updates for PriceDB prices.
 // It acts as the primary price authority for the bot.
 // It implements behavior.Behavior interface.
@@ -54,7 +65,7 @@ func NewManager(client *Client, logger log.Logger) *Manager {
 
 	var restClient *aoni.Client
 	if client != nil {
-		restClient = client.restClient
+		restClient = client.rest
 	}
 
 	m.socket = NewSocketManager("", restClient, m.logger)

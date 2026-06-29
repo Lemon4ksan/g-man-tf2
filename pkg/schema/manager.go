@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -65,9 +64,7 @@ func DefaultConfig() Config {
 
 // WithModule returns a [steam.Option] that registers the [Manager] module with the client.
 func WithModule(cfg Config) steam.Option {
-	return func(c *steam.Client) {
-		c.RegisterModule(NewManager(cfg))
-	}
+	return steam.WithModule(NewManager(cfg))
 }
 
 // From returns the [Manager] module instance retrieved from the [steam.Client].
@@ -468,17 +465,14 @@ func (m *Manager) parseTfEnglish(ctx context.Context) map[string]string {
 
 	m.Logger.InfoContext(ctx, "Fetching tf_english.txt for localization...")
 
-	var resp *http.Response
-
-	err := m.withRetry(ctx, func() error {
-		var rerr error
-
-		resp, rerr = m.restClient.Request(ctx, "GET", url, nil, nil)
-		return rerr
-	})
-
+	resp, err := m.restClient.Request(ctx, "GET", url)
 	if err != nil || resp == nil || resp.StatusCode != 200 {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+
 		m.Logger.WarnContext(ctx, "Failed to fetch tf_english.txt", log.Err(err))
+
 		return nil
 	}
 
@@ -551,17 +545,14 @@ func (m *Manager) parseItemsGameItems(ctx context.Context, url string) []any {
 		url = m.config.ItemsGameMirrorURL
 	}
 
-	var resp *http.Response
-
-	err := m.withRetry(ctx, func() error {
-		var rerr error
-
-		resp, rerr = m.restClient.Request(ctx, "GET", url, nil, nil)
-		return rerr
-	})
-
+	resp, err := m.restClient.Request(ctx, "GET", url)
 	if err != nil || resp == nil || resp.StatusCode != 200 {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+
 		m.Logger.WarnContext(ctx, "Failed to download items_game.txt for item parsing", log.Err(err))
+
 		return nil
 	}
 
@@ -908,28 +899,20 @@ func (m *Manager) getSchemaItems(ctx context.Context) ([]any, error) {
 	next := 0
 
 	for {
-		var resp *map[string]any
+		req := struct {
+			Language string `url:"language"`
+			Start    int    `url:"start"`
+		}{"English", next}
 
-		err := m.withRetry(ctx, func() error {
-			req := struct {
-				Language string `url:"language"`
-				Start    int    `url:"start"`
-			}{"English", next}
-
-			var err error
-
-			resp, err = service.WebAPI[map[string]any](
-				ctx,
-				m.svcClient,
-				"GET",
-				"IEconItems_440",
-				"GetSchemaItems",
-				1,
-				req,
-			)
-
-			return err
-		})
+		resp, err := service.WebAPI[map[string]any](
+			ctx,
+			m.svcClient,
+			"GET",
+			"IEconItems_440",
+			"GetSchemaItems",
+			1,
+			req,
+		)
 		if err != nil {
 			if m.isForbiddenError(err) {
 				return m.fetchItemsFromMirror(ctx)
@@ -960,15 +943,12 @@ func (m *Manager) getSchemaItems(ctx context.Context) ([]any, error) {
 }
 
 func (m *Manager) getPaintKits(ctx context.Context) (map[string]string, error) {
-	var resp *http.Response
-
-	err := m.withRetry(ctx, func() error {
-		var rerr error
-
-		resp, rerr = m.restClient.Request(ctx, "GET", m.config.PaintKitURL, nil, nil)
-		return rerr
-	})
+	resp, err := m.restClient.Request(ctx, "GET", m.config.PaintKitURL)
 	if err != nil {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+
 		return nil, fmt.Errorf("failed to fetch paint kits: %w", err)
 	}
 
@@ -1043,15 +1023,12 @@ func (m *Manager) getItemsGame(ctx context.Context, url string) (map[string]any,
 		url = m.config.ItemsGameMirrorURL
 	}
 
-	var resp *http.Response
-
-	err := m.withRetry(ctx, func() error {
-		var rerr error
-
-		resp, rerr = m.restClient.Request(ctx, "GET", url, nil, nil)
-		return rerr
-	})
+	resp, err := m.restClient.Request(ctx, "GET", url)
 	if err != nil {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+
 		return nil, fmt.Errorf("failed to fetch items_game.txt: %w", err)
 	}
 
@@ -1251,57 +1228,6 @@ func (m *Manager) fetchItemsFromMirror(ctx context.Context) ([]any, error) {
 	}
 
 	return *res, nil
-}
-
-func (m *Manager) withRetry(ctx context.Context, operation func() error) error {
-	const maxRetries = 3
-
-	backoff := 2 * time.Second
-
-	var lastErr error
-
-	for i := range maxRetries {
-		err := operation()
-		if err == nil {
-			return nil
-		}
-
-		lastErr = err
-		if !m.isRetryable(err) {
-			return err
-		}
-
-		m.Logger.Warn("Operation failed, retrying...",
-			log.Err(err),
-			log.Int("attempt", i+1),
-			log.Duration("backoff", backoff),
-		)
-
-		select {
-		case <-time.After(backoff):
-			backoff *= 2
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-
-	return fmt.Errorf("after %d attempts: %w", maxRetries, lastErr)
-}
-
-func (m *Manager) isRetryable(err error) bool {
-	if strings.Contains(err.Error(), "invalid character '<'") {
-		return true
-	}
-
-	if strings.Contains(err.Error(), "429") {
-		return true
-	}
-
-	if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "connection refused") {
-		return true
-	}
-
-	return false
 }
 
 func (m *Manager) saveToCache() error {

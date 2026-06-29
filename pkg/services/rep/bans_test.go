@@ -5,208 +5,254 @@
 package rep
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"io"
-	"net/http"
-	"strings"
 	"testing"
 
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
+	"github.com/lemon4ksan/g-man/test/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/bptf"
 )
 
-type mockDoer struct {
-	fn func(req *http.Request) (*http.Response, error)
-}
+func setupBansManager(t *testing.T, apiKey string) (*BansManager, *mock.HTTPStub) {
+	t.Helper()
 
-func (m *mockDoer) Do(req *http.Request) (*http.Response, error) {
-	return m.fn(req)
+	stub := mock.NewHTTPStub()
+	bptfClient := bptf.New(aoni.NewClient(stub), "mock-bptf-key", "mock-token")
+	manager := NewBansManager(bptfClient, apiKey)
+
+	return manager, stub
 }
 
 func TestBansManager_CheckBans(t *testing.T) {
+	t.Parallel()
+
 	cleanSteamID := id.New(76561198033830321)
 	bannedSteamID := id.New(76561198000000001)
 	scammerSteamID := id.New(76561198000000002)
 	badTrustSteamID := id.New(76561198000000003)
 	mptfBannedSteamID := id.New(76561198000000004)
 
-	httpMock := &mockDoer{
-		fn: func(req *http.Request) (*http.Response, error) {
-			// 1. Intercept Backpack.tf User Info call
-			if strings.HasSuffix(req.URL.Path, "/users/info/v1") {
-				steamidsQuery := req.URL.Query().Get("steamids")
+	t.Run("clean_user", func(t *testing.T) {
+		t.Parallel()
 
-				resp := bptf.V1UserResponse{
-					Users: make(map[id.ID]bptf.V1User),
-				}
+		manager, stub := setupBansManager(t, "mock-mptf-key")
 
-				// Populate mock info based on which steam ID is queried
-				switch {
-				case steamidsQuery == cleanSteamID.String():
-					resp.Users[cleanSteamID] = bptf.V1User{
-						Name: "Clean User",
-						Trust: bptf.UserTrust{
-							Positive: 10,
-							Negative: 0,
-						},
-					}
-
-				case steamidsQuery == bannedSteamID.String():
-					resp.Users[bannedSteamID] = bptf.V1User{
-						Name: "Banned User",
-						Bans: &bptf.UserBans{
-							All:  "banned everywhere",
-							BPTF: "banned on bptf",
-						},
-					}
-
-				case steamidsQuery == scammerSteamID.String():
-					resp.Users[scammerSteamID] = bptf.V1User{
-						Name: "SteamRep Scammer",
-						Bans: &bptf.UserBans{
-							SteamRepScammer: 1,
-						},
-					}
-
-				case steamidsQuery == badTrustSteamID.String():
-					resp.Users[badTrustSteamID] = bptf.V1User{
-						Name: "Negative Trust User",
-						Trust: bptf.UserTrust{
-							Positive: 1,
-							Negative: 5,
-						},
-					}
-
-				case steamidsQuery == mptfBannedSteamID.String():
-					resp.Users[mptfBannedSteamID] = bptf.V1User{
-						Name: "Marketplace Banned User",
-						Trust: bptf.UserTrust{
-							Positive: 2,
-							Negative: 0,
-						},
-					}
-				}
-
-				bodyBytes, _ := json.Marshal(resp)
-
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Header:     make(http.Header),
-					Body:       io.NopCloser(bytes.NewReader(bodyBytes)),
-				}, nil
-			}
-
-			// 2. Intercept Marketplace.tf call
-			if strings.HasSuffix(req.URL.Path, "/api/Bans/GetUserBan/v2") {
-				// We need to read the body because PostJSON posts as JSON or URL encoded body.
-				// But wait, PostJSON posts a struct.
-				// Let's return isBanned = true only if it's the mptfBannedSteamID.
-				isBanned := false
-
-				// Read body or URL parameters.
-				// PostJSON actually sends the payload in body.
-				bodyBytes, _ := io.ReadAll(req.Body)
-				bodyStr := string(bodyBytes)
-
-				if bytes.Contains(bodyBytes, []byte(mptfBannedSteamID.String())) ||
-					req.URL.Query().Get("steamid") == mptfBannedSteamID.String() ||
-					bodyStr != "" {
-					// We'll mock it dynamically
-					if bytes.Contains(bodyBytes, []byte(mptfBannedSteamID.String())) {
-						isBanned = true
-					}
-				}
-
-				resp := struct {
-					Status  string `json:"status"`
-					Results []struct {
-						SteamID string `json:"steamid"`
-						Banned  bool   `json:"banned"`
-					} `json:"results"`
-				}{
-					Status: "success",
-					Results: []struct {
-						SteamID string `json:"steamid"`
-						Banned  bool   `json:"banned"`
-					}{
-						{
-							SteamID: mptfBannedSteamID.String(),
-							Banned:  isBanned,
-						},
+		respBptf := bptf.V1UserResponse{
+			Users: map[id.ID]bptf.V1User{
+				cleanSteamID: {
+					Name: "Clean User",
+					Trust: bptf.UserTrust{
+						Positive: 10,
+						Negative: 0,
 					},
-				}
+				},
+			},
+		}
+		stub.SetJSONResponse("api/users/info/v1", 200, respBptf)
 
-				respBytes, _ := json.Marshal(resp)
+		respMptf := map[string]any{
+			"status": "success",
+			"results": []any{
+				map[string]any{
+					"steamid": cleanSteamID.String(),
+					"banned":  false,
+				},
+			},
+		}
+		stub.SetJSONResponse("api/Bans/GetUserBan/v2", 200, respMptf)
 
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Header:     make(http.Header),
-					Body:       io.NopCloser(bytes.NewReader(respBytes)),
-				}, nil
-			}
-
-			return &http.Response{
-				StatusCode: http.StatusNotFound,
-				Body:       io.NopCloser(bytes.NewReader([]byte(`{"status":"error"}`))),
-			}, nil
-		},
-	}
-
-	bptfClient := bptf.New(httpMock, "mock-api-key", "mock-token")
-	// Since bptf Client constructor sets the URL to https://backpack.tf/api, we should keep it
-	// and our mock doer matches the path.
-
-	t.Run("Clean User", func(t *testing.T) {
-		manager := NewBansManager(bptfClient, "mock-mptf-key")
-		res, err := manager.CheckBans(context.Background(), cleanSteamID)
+		res, err := manager.CheckBans(t.Context(), cleanSteamID)
 		require.NoError(t, err)
 		assert.False(t, res.IsBanned)
 		assert.Len(t, res.Details, 0)
 	})
 
-	t.Run("Banned on Backpack.tf", func(t *testing.T) {
-		manager := NewBansManager(bptfClient, "")
-		res, err := manager.CheckBans(context.Background(), bannedSteamID)
+	t.Run("banned_bptf", func(t *testing.T) {
+		t.Parallel()
+
+		manager, stub := setupBansManager(t, "")
+
+		respBptf := bptf.V1UserResponse{
+			Users: map[id.ID]bptf.V1User{
+				bannedSteamID: {
+					Name: "Banned User",
+					Bans: &bptf.UserBans{
+						All:  "banned everywhere",
+						BPTF: "banned on bptf",
+					},
+				},
+			},
+		}
+		stub.SetJSONResponse("api/users/info/v1", 200, respBptf)
+
+		res, err := manager.CheckBans(t.Context(), bannedSteamID)
 		require.NoError(t, err)
 		assert.True(t, res.IsBanned)
 		assert.Equal(t, "banned", res.Details["backpack.tf"])
 	})
 
-	t.Run("SteamRep Scammer", func(t *testing.T) {
-		manager := NewBansManager(bptfClient, "")
-		res, err := manager.CheckBans(context.Background(), scammerSteamID)
+	t.Run("steamrep_scammer", func(t *testing.T) {
+		t.Parallel()
+
+		manager, stub := setupBansManager(t, "")
+
+		respBptf := bptf.V1UserResponse{
+			Users: map[id.ID]bptf.V1User{
+				scammerSteamID: {
+					Name: "SteamRep Scammer",
+					Bans: &bptf.UserBans{
+						SteamRepScammer: 1,
+					},
+				},
+			},
+		}
+		stub.SetJSONResponse("api/users/info/v1", 200, respBptf)
+
+		res, err := manager.CheckBans(t.Context(), scammerSteamID)
 		require.NoError(t, err)
 		assert.True(t, res.IsBanned)
 		assert.Equal(t, "scammer", res.Details["steamrep.com"])
 	})
 
-	t.Run("Negative Trust User", func(t *testing.T) {
-		manager := NewBansManager(bptfClient, "")
-		res, err := manager.CheckBans(context.Background(), badTrustSteamID)
+	t.Run("negative_trust", func(t *testing.T) {
+		t.Parallel()
+
+		manager, stub := setupBansManager(t, "")
+
+		respBptf := bptf.V1UserResponse{
+			Users: map[id.ID]bptf.V1User{
+				badTrustSteamID: {
+					Name: "Negative Trust User",
+					Trust: bptf.UserTrust{
+						Positive: 1,
+						Negative: 5,
+					},
+				},
+			},
+		}
+		stub.SetJSONResponse("api/users/info/v1", 200, respBptf)
+
+		res, err := manager.CheckBans(t.Context(), badTrustSteamID)
 		require.NoError(t, err)
-		assert.False(t, res.IsBanned) // trust doesn't auto-ban, but logs details
+		assert.False(t, res.IsBanned)
 		assert.Contains(t, res.Details["trust"], "negative")
 	})
 
-	t.Run("Marketplace.tf Banned", func(t *testing.T) {
-		manager := NewBansManager(bptfClient, "mock-mptf-key")
-		res, err := manager.CheckBans(context.Background(), mptfBannedSteamID)
+	t.Run("marketplace_banned", func(t *testing.T) {
+		t.Parallel()
+
+		manager, stub := setupBansManager(t, "mock-mptf-key")
+
+		respBptf := bptf.V1UserResponse{
+			Users: map[id.ID]bptf.V1User{
+				mptfBannedSteamID: {
+					Name: "Marketplace Banned User",
+					Trust: bptf.UserTrust{
+						Positive: 2,
+						Negative: 0,
+					},
+				},
+			},
+		}
+		stub.SetJSONResponse("api/users/info/v1", 200, respBptf)
+
+		respMptf := map[string]any{
+			"status": "success",
+			"results": []any{
+				map[string]any{
+					"steamid": mptfBannedSteamID.String(),
+					"banned":  true,
+				},
+			},
+		}
+		stub.SetJSONResponse("api/Bans/GetUserBan/v2", 200, respMptf)
+
+		res, err := manager.CheckBans(t.Context(), mptfBannedSteamID)
 		require.NoError(t, err)
 		assert.True(t, res.IsBanned)
 		assert.Equal(t, "banned", res.Details["marketplace.tf"])
 	})
 
-	t.Run("Marketplace.tf Checked without API key", func(t *testing.T) {
-		// When API key is empty, Marketplace check is skipped
-		manager := NewBansManager(bptfClient, "")
-		res, err := manager.CheckBans(context.Background(), mptfBannedSteamID)
+	t.Run("marketplace_no_key", func(t *testing.T) {
+		t.Parallel()
+
+		manager, stub := setupBansManager(t, "")
+
+		respBptf := bptf.V1UserResponse{
+			Users: map[id.ID]bptf.V1User{
+				mptfBannedSteamID: {
+					Name: "Marketplace Banned User",
+				},
+			},
+		}
+		stub.SetJSONResponse("api/users/info/v1", 200, respBptf)
+
+		res, err := manager.CheckBans(t.Context(), mptfBannedSteamID)
 		require.NoError(t, err)
 		assert.False(t, res.IsBanned)
 		assert.NotContains(t, res.Details, "marketplace.tf")
+	})
+
+	t.Run("bptf_api_error_swallowed", func(t *testing.T) {
+		t.Parallel()
+
+		manager, stub := setupBansManager(t, "")
+
+		stub.SetJSONResponse("api/users/info/v1", 500, nil)
+
+		res, err := manager.CheckBans(t.Context(), cleanSteamID)
+		require.NoError(t, err)
+		assert.False(t, res.IsBanned)
+		assert.Empty(t, res.Details)
+	})
+
+	t.Run("mptf_api_error_swallowed", func(t *testing.T) {
+		t.Parallel()
+
+		manager, stub := setupBansManager(t, "mock-mptf-key")
+
+		respBptf := bptf.V1UserResponse{
+			Users: map[id.ID]bptf.V1User{
+				cleanSteamID: {
+					Name: "Clean User",
+				},
+			},
+		}
+		stub.SetJSONResponse("api/users/info/v1", 200, respBptf)
+
+		stub.SetJSONResponse("api/Bans/GetUserBan/v2", 500, nil)
+
+		res, err := manager.CheckBans(t.Context(), cleanSteamID)
+		require.NoError(t, err)
+		assert.False(t, res.IsBanned)
+		assert.Empty(t, res.Details)
+	})
+
+	t.Run("mptf_api_status_failed_swallowed", func(t *testing.T) {
+		t.Parallel()
+
+		manager, stub := setupBansManager(t, "mock-mptf-key")
+
+		respBptf := bptf.V1UserResponse{
+			Users: map[id.ID]bptf.V1User{
+				cleanSteamID: {
+					Name: "Clean User",
+				},
+			},
+		}
+		stub.SetJSONResponse("api/users/info/v1", 200, respBptf)
+
+		respMptf := map[string]any{
+			"status": "error",
+		}
+		stub.SetJSONResponse("api/Bans/GetUserBan/v2", 200, respMptf)
+
+		res, err := manager.CheckBans(t.Context(), cleanSteamID)
+		require.NoError(t, err)
+		assert.False(t, res.IsBanned)
+		assert.Empty(t, res.Details)
 	})
 }

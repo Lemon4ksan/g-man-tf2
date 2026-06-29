@@ -4,7 +4,11 @@
 
 package currency
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestValueDiff_Metrics_CalculatesExpectedValues(t *testing.T) {
 	t.Parallel()
@@ -94,4 +98,18 @@ func TestValueDiff_Metrics_CalculatesExpectedValues(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("zero_key_price_missing_string", func(t *testing.T) {
+		vd := NewValueDiff(18, 9, 0)
+		assert.False(t, vd.IsProfitable())
+		assert.Equal(t, "1.00 ref", vd.MissingString())
+	})
+
+	t.Run("profitable_cases", func(t *testing.T) {
+		vd := NewValueDiff(10, 20, 0)
+		assert.True(t, vd.IsProfitable())
+		assert.Equal(t, 0.0, vd.MissingRefined())
+		assert.Equal(t, "0 ref", vd.MissingString())
+		assert.Equal(t, Scrap(10), vd.Diff())
+	})
 }

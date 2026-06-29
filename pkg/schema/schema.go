@@ -1338,13 +1338,6 @@ func (it *Item) ValidatePaintKit(paintkitID int) bool {
 	return true
 }
 
-var validSingleSeries = map[int][]int{
-	5022: {1, 3, 7, 12, 13, 18, 19, 23, 26, 31, 34, 39, 43, 47, 54, 57, 75},
-	5041: {2, 4, 8, 11, 14, 17, 20, 24, 27, 32, 37, 42, 44, 49, 56, 71, 76},
-	5045: {5, 9, 10, 15, 16, 21, 25, 28, 29, 33, 38, 41, 45, 55, 59, 77},
-	5068: {30, 40, 50},
-}
-
 // CheckExistence verifies whether the specified [sku.Item] possesses valid quality and attribute configurations.
 func (s *Schema) CheckExistence(item *sku.Item) bool {
 	schemaItem := s.ItemByDef(item.Defindex)

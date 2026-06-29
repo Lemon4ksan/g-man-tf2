@@ -6,11 +6,16 @@ package bptf
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/lemon4ksan/aoni"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 )
@@ -54,64 +59,100 @@ func createBptfHTML(hasTable, isDuped bool) string {
 }
 
 func TestBackpackTFChecker_CheckHistory(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name       string
 		statusCode int
 		body       string
+		transport  func(req *http.Request) (*http.Response, error)
 		wantStatus backpack.HistoryStatus
 		wantErr    bool
+		errMsg     string
 	}{
 		{
-			name:       "404 Not Found",
+			name:       "not_found_api_error",
 			statusCode: 404,
+			transport: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: 404,
+					Body:       io.NopCloser(strings.NewReader(`{"success":false,"message":"not found"}`)),
+				}, nil
+			},
 			wantStatus: backpack.HistoryStatus{Recorded: false},
 			wantErr:    true,
 		},
 		{
-			name:       "200 OK, Clean",
+			name: "connection_failed_error",
+			transport: func(req *http.Request) (*http.Response, error) {
+				return nil, errors.New("network timeout")
+			},
+			wantStatus: backpack.HistoryStatus{Recorded: false},
+			wantErr:    true,
+			errMsg:     "bptf dupe check request failed",
+		},
+		{
+			name:       "clean_item_history",
 			statusCode: 200,
 			body:       createBptfHTML(true, false),
 			wantStatus: backpack.HistoryStatus{Recorded: true, IsDuped: false},
 		},
 		{
-			name:       "200 OK, Duped",
+			name:       "duped_item_history",
 			statusCode: 200,
 			body:       createBptfHTML(true, true),
 			wantStatus: backpack.HistoryStatus{Recorded: true, IsDuped: true},
 		},
 		{
-			name:       "200 OK, No Table (Not recorded)",
+			name:       "no_table_not_recorded",
 			statusCode: 200,
 			body:       createBptfHTML(false, false),
+			wantStatus: backpack.HistoryStatus{Recorded: false},
+		},
+		{
+			name:       "malformed_html_no_document",
+			statusCode: 200,
+			body:       "",
 			wantStatus: backpack.HistoryStatus{Recorded: false},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			httpClient := &http.Client{
-				Transport: &mockRoundTripper{
+			var rt http.RoundTripper
+			if tt.transport != nil {
+				rt = &mockRoundTripper{fn: tt.transport}
+			} else {
+				rt = &mockRoundTripper{
 					fn: func(req *http.Request) (*http.Response, error) {
 						return &http.Response{
 							StatusCode: tt.statusCode,
 							Body:       io.NopCloser(strings.NewReader(tt.body)),
 						}, nil
 					},
-				},
+				}
 			}
 
+			httpClient := &http.Client{Transport: rt}
 			checker := &BackpackTFChecker{
-				bptfClient: New(httpClient, "", ""),
+				bptfClient: New(aoni.NewClient(httpClient), "", ""),
 			}
 
-			got, err := checker.CheckHistory(context.Background(), 123)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("CheckHistory() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
+			got, err := checker.CheckHistory(t.Context(), 123)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("expected error but got nil")
+				}
 
-			if !reflect.DeepEqual(got, tt.wantStatus) {
-				t.Errorf("CheckHistory() = %v, want %v", got, tt.wantStatus)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				require.NoError(t, err)
+
+				if !reflect.DeepEqual(got, tt.wantStatus) {
+					t.Errorf("CheckHistory() = %v, want %v", got, tt.wantStatus)
+				}
 			}
 		})
 	}

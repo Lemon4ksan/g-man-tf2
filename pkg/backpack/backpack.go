@@ -30,9 +30,7 @@ const ModuleName = "tf2_backpack"
 
 // WithModule returns a [steam.Option] that registers the [Backpack] module with the client.
 func WithModule() steam.Option {
-	return func(c *steam.Client) {
-		c.RegisterModule(New())
-	}
+	return steam.WithModule(New())
 }
 
 // From returns the [Backpack] module instance retrieved from the [steam.Client].

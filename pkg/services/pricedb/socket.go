@@ -17,6 +17,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/g-man/pkg/log"
+	"github.com/lemon4ksan/miyako/generic"
 )
 
 // SocketManager handles the real-time price updates via Socket.IO.
@@ -24,7 +25,7 @@ type SocketManager struct {
 	url       string
 	logger    log.Logger
 	userAgent string
-	client    *aoni.Client // Инжектируем настроенный aoni.Client!
+	client    *aoni.Client
 
 	mu   sync.Mutex
 	conn *websocket.Conn
@@ -34,12 +35,12 @@ type SocketManager struct {
 
 // NewSocketManager creates a new Socket.IO client for PriceDB.
 func NewSocketManager(rawURL string, client *aoni.Client, logger log.Logger) *SocketManager {
-	if rawURL == "" {
-		rawURL = "ws://ws.pricedb.io/"
+	if client == nil {
+		client = aoni.DefaultClient
 	}
 
 	return &SocketManager{
-		url:    rawURL,
+		url:    generic.Coalesce(rawURL, "ws://ws.pricedb.io/"),
 		client: client,
 		logger: logger.With(log.Module("pricedb_socket")),
 	}

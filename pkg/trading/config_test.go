@@ -22,7 +22,6 @@ func TestConfigManager_LoadAndWatch_FileUpdated_HotReloadsConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "trading_config.json")
 
-	// Pre-create the file and backdate its timestamp to guarantee reload detection instantly
 	initialCfg := Config{
 		GlobalMaxStock:  3000,
 		DefaultMaxStock: 5,
@@ -36,16 +35,13 @@ func TestConfigManager_LoadAndWatch_FileUpdated_HotReloadsConfig(t *testing.T) {
 	err = os.Chtimes(configPath, backdateTime, backdateTime)
 	require.NoError(t, err)
 
-	// Load configuration
 	cm, err := NewConfigManager(configPath)
 	require.NoError(t, err)
 	assert.Equal(t, 3000, cm.GetConfig().GlobalMaxStock)
 	assert.Equal(t, 5, cm.GetConfig().DefaultMaxStock)
 
-	// Start background watcher on t.Context()
 	cm.StartWatching(t.Context(), 10*time.Millisecond, log.Discard)
 
-	// Prepare updated config
 	updatedConfig := Config{
 		GlobalMaxStock:  5000,
 		DefaultMaxStock: 10,
@@ -63,7 +59,6 @@ func TestConfigManager_LoadAndWatch_FileUpdated_HotReloadsConfig(t *testing.T) {
 	err = os.WriteFile(configPath, data, 0o644)
 	require.NoError(t, err)
 
-	// Wait for the reloader to dynamically capture changes
 	assert.Eventually(t, func() bool {
 		return cm.GetConfig().GlobalMaxStock == 5000
 	}, 1*time.Second, 10*time.Millisecond)
@@ -73,4 +68,32 @@ func TestConfigManager_LoadAndWatch_FileUpdated_HotReloadsConfig(t *testing.T) {
 	itemCfg, ok := cm.GetItemConfig("5021;6")
 	assert.True(t, ok)
 	assert.Equal(t, 50, itemCfg.MaxStock)
+}
+
+func TestConfigManager_Load_Errors(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "invalid_config.json")
+
+	err := os.WriteFile(configPath, []byte(`{invalid}`), 0o644)
+	require.NoError(t, err)
+
+	_, err = NewConfigManager(configPath)
+	assert.Error(t, err)
+
+	parentFile := filepath.Join(tmpDir, "parent_file")
+	err = os.WriteFile(parentFile, []byte("junk"), 0o644)
+	require.NoError(t, err)
+
+	nestedPath := filepath.Join(parentFile, "nested", "config.json")
+	_, err = NewConfigManager(nestedPath)
+	assert.Error(t, err)
+
+	dirPath := filepath.Join(tmpDir, "some_dir")
+	err = os.MkdirAll(dirPath, 0o755)
+	require.NoError(t, err)
+
+	_, err = NewConfigManager(dirPath)
+	assert.Error(t, err)
 }

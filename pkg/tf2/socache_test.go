@@ -157,8 +157,16 @@ func TestSOCache_Lifecycle_GCEvents_UpdatesInternalState(t *testing.T) {
 		tf, _, _ := setupTF2(t)
 		cache := tf.Cache()
 
-		cache.handleSOCacheCheck(t.Context(), &protocol.GCPacket{})
-		cache.handleUpToDate(&protocol.GCPacket{})
+		msg := &pb.CMsgSOCacheSubscribedUpToDate{
+			Version: proto.Uint64(456),
+		}
+		payload, _ := proto.Marshal(msg)
+		pkt := &protocol.GCPacket{
+			MsgType: uint32(pb.ESOMsg_k_ESOMsg_CacheSubscribedUpToDate),
+			Payload: payload,
+		}
+		cache.handleUpToDate(pkt)
+		assert.Equal(t, uint64(456), cache.version.Load())
 	})
 }
 
@@ -757,4 +765,146 @@ func TestSOCache_Item_Fix_StaticRestrictions(t *testing.T) {
 		assert.False(t, item.IsTradable)
 		assert.False(t, item.IsMarketable)
 	})
+}
+
+func TestSOCache_RecipeComponent_Getters(t *testing.T) {
+	t.Parallel()
+
+	comp := RecipeComponent{
+		Flags:        0x01 | 0x02 | 0x04 | 0x08,
+		NumRequired:  5,
+		NumFulfilled: 3,
+	}
+
+	assert.True(t, comp.IsOutput())
+	assert.True(t, comp.IsUntradable())
+	assert.True(t, comp.HasDefIndex())
+	assert.True(t, comp.HasQuality())
+	assert.False(t, comp.IsComplete())
+
+	comp.NumFulfilled = 5
+	assert.True(t, comp.IsComplete())
+}
+
+func TestSOCache_Item_GetSKU(t *testing.T) {
+	t.Parallel()
+
+	item := &Item{SKU: "5021;6"}
+	assert.Equal(t, "5021;6", item.GetSKU(&schema.Schema{}))
+
+	itemEmpty := &Item{DefIndex: 5021, Quality: 6, IsTradable: true, IsCraftable: true}
+	raw := &schema.Raw{}
+	s := schema.New(raw)
+	assert.Equal(t, "5021;6", itemEmpty.GetSKU(s))
+}
+
+func TestSOCache_NewSOCache_NilBus(t *testing.T) {
+	t.Parallel()
+
+	cache := NewSOCache(&mockCoordinator{})
+	assert.NotNil(t, cache.bus)
+}
+
+func TestSOCache_UpdateSchema_Nil(t *testing.T) {
+	t.Parallel()
+
+	cache := NewSOCache(&mockCoordinator{})
+	cache.UpdateSchema(nil)
+}
+
+func TestSOCache_GetItemByOriginalID(t *testing.T) {
+	t.Parallel()
+
+	tf, _, _ := setupTF2(t)
+	cache := tf.Cache()
+
+	cache.items[100] = &Item{ID: 100, OriginalID: 555}
+
+	item, ok := cache.GetItemByOriginalID(555)
+	assert.True(t, ok)
+	assert.Equal(t, uint64(100), item.ID)
+
+	_, ok = cache.GetItemByOriginalID(999)
+	assert.False(t, ok)
+}
+
+func TestSOCache_Getters_EdgeCases(t *testing.T) {
+	t.Parallel()
+
+	tf, _, _ := setupTF2(t)
+	cache := tf.Cache()
+
+	cache.items[1] = &Item{ID: 1, DefIndex: 5000, Quality: 6, IsTradable: true, SKU: "5000;6"}
+	cache.items[2] = &Item{ID: 2, DefIndex: 5000, Quality: 6, IsTradable: false, SKU: "5000;6"}
+
+	res := cache.GetMetal(5000, 1)
+	assert.Len(t, res, 1)
+	assert.Equal(t, uint64(1), res[0])
+
+	resSKU := cache.GetAssetIDsBySKU("5000;6", 10)
+	assert.Len(t, resSKU, 1)
+	assert.Equal(t, uint64(1), resSKU[0])
+}
+
+func TestSOCache_cleanGCString(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "", cleanGCString(nil))
+	assert.Equal(t, "", cleanGCString([]byte{}))
+	assert.Equal(t, "", cleanGCString([]byte{1, 2, 3}))
+	assert.Equal(t, "Hello", cleanGCString([]byte{'H', 'e', 'l', 'l', 'o', 0}))
+}
+
+func TestSOCache_handleSOCacheCheck_Sync(t *testing.T) {
+	t.Parallel()
+
+	tf, _, mCoord := setupTF2(t)
+	cache := tf.Cache()
+
+	cache.version.Store(100)
+
+	msg := &pb.CMsgSOCacheSubscriptionCheck{
+		Version: proto.Uint64(100),
+		Owner:   proto.Uint64(12345),
+	}
+	payload, _ := proto.Marshal(msg)
+
+	pkt := &protocol.GCPacket{
+		MsgType: uint32(pb.ESOMsg_k_ESOMsg_CacheSubscriptionCheck),
+		Payload: payload,
+	}
+
+	cache.handleSOCacheCheck(t.Context(), pkt)
+
+	assert.Equal(t, uint32(0), mCoord.GetLastSendMsgType())
+}
+
+func TestSOCache_GCEvents_UnmarshalErrors(t *testing.T) {
+	t.Parallel()
+
+	tf, _, _ := setupTF2(t)
+	cache := tf.Cache()
+
+	cache.handleSubscribed(&protocol.GCPacket{Payload: []byte("invalid-payload")})
+
+	cache.handleSOCacheCheck(t.Context(), &protocol.GCPacket{Payload: []byte("invalid-payload")})
+
+	cache.handleSOUpdate(&protocol.GCPacket{
+		MsgType: uint32(pb.ESOMsg_k_ESOMsg_Create),
+		Payload: []byte("invalid-payload"),
+	})
+
+	cache.handleSOUpdate(&protocol.GCPacket{
+		MsgType: uint32(pb.ESOMsg_k_ESOMsg_Destroy),
+		Payload: []byte("invalid-payload"),
+	})
+
+	cache.handleSOUpdate(&protocol.GCPacket{
+		MsgType: uint32(pb.ESOMsg_k_ESOMsg_UpdateMultiple),
+		Payload: []byte("invalid-payload"),
+	})
+
+	tf.handleWelcome(&protocol.GCPacket{Payload: []byte("invalid-payload")})
+
+	tf.handleSchemaUpdate(&protocol.GCPacket{Payload: []byte("invalid-payload")})
 }
