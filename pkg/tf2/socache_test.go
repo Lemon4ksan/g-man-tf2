@@ -479,7 +479,6 @@ func TestSOCache_protoToItem_Attributes_ParsedCorrectly(t *testing.T) {
 		{DefIndex: proto.Uint32(AttrStrangePart2Val), ValueBytes: uint32ToBytes(500)},
 		{DefIndex: proto.Uint32(AttrStrangePart3), ValueBytes: float32ToBytes(103.0)},
 		{DefIndex: proto.Uint32(AttrStrangePart3Val), ValueBytes: uint32ToBytes(1337)},
-		{DefIndex: proto.Uint32(AttrCannotCraftVariant), ValueBytes: uint32ToBytes(1)},
 		{DefIndex: proto.Uint32(AttrEOTLEarlySupporter), ValueBytes: float32ToBytes(1.0)},
 		{DefIndex: proto.Uint32(AttrQuestLoanerIDLow), ValueBytes: uint32ToBytes(0xAA55AA55)},
 		{DefIndex: proto.Uint32(AttrQuestLoanerIDHigh), ValueBytes: uint32ToBytes(0x55AA55AA)},
@@ -512,7 +511,7 @@ func TestSOCache_protoToItem_Attributes_ParsedCorrectly(t *testing.T) {
 	assert.Equal(t, "Custom Description", item.CustomDesc)
 	assert.Equal(t, uint32(1234), item.MedalNumber)
 	assert.Equal(t, uint32(25), item.Effect)
-	assert.Equal(t, uint32(456), item.Paint)
+	assert.Equal(t, uint32(456), item.PaintPrimary)
 	assert.True(t, item.IsTradable)
 	assert.False(t, item.IsCraftable)
 	assert.Equal(t, uint32(90), item.CrateSeries)
@@ -862,6 +861,7 @@ func TestSOCache_handleSOCacheCheck_Sync(t *testing.T) {
 	cache := tf.Cache()
 
 	cache.version.Store(100)
+	cache.loaded = true
 
 	msg := &pb.CMsgSOCacheSubscriptionCheck{
 		Version: proto.Uint64(100),

@@ -409,3 +409,146 @@ func TestModels_ToSKU_Comprehensive(t *testing.T) {
 	assert.Contains(t, skuStr, "s-1004-3")
 	assert.Contains(t, skuStr, "sp10")
 }
+
+func TestMapCEconToTF2_GlitchedInventory(t *testing.T) {
+	t.Parallel()
+
+	s := mockSchemaForCoverage()
+
+	t.Run("strange_festivized_prof_ks_holy_mackerel_with_spell", func(t *testing.T) {
+		econ := inventory.CEconItem{
+			Asset: inventory.Asset{
+				AssetID: "5244338466",
+				Amount:  "1",
+			},
+			Description: inventory.Description{
+				Tradable:       1,
+				MarketHashName: "Strange Festivized Professional Killstreak Holy Mackerel",
+				AppData: map[string]any{
+					"def_index": "221",
+					"quality":   "11",
+				},
+				Descriptions: []struct {
+					Value string `json:"value"`
+					Color string `json:"color,omitempty"`
+				}{
+					{Value: "(Player Hits: 0)", Color: "756b5e"},
+					{Value: "Festivized", Color: "ffd700"},
+					{Value: "Halloween: Exorcism (spell only active during event)", Color: "7ea9d1"},
+					{Value: "Killstreaker: Cerebral Discharge", Color: "7ea9d1"},
+					{Value: "Sheen: Team Shine", Color: "7ea9d1"},
+					{Value: "Killstreaks Active", Color: "7ea9d1"},
+				},
+			},
+		}
+
+		item := mapCEconToTF2(econ, s)
+		assert.Equal(t, uint64(5244338466), item.ID)
+		assert.Equal(t, 221, item.Defindex)
+		assert.Equal(t, 11, item.Quality)
+
+		hasKS3 := false
+		hasSpell := false
+		for _, attr := range item.Attributes {
+			if attr.Defindex == schema.AttrKillstreak && attr.Value == float64(3) {
+				hasKS3 = true
+			}
+			if attr.Defindex >= schema.DefSpellProxy {
+				hasSpell = true
+			}
+		}
+
+		assert.True(t, hasKS3, "Should correctly extract Professional Killstreak (Tier 3) from community description")
+		assert.True(t, hasSpell, "Should correctly extract Halloween Spell from community description")
+	})
+
+	t.Run("prof_ks_three_rune_blade_with_spell", func(t *testing.T) {
+		econ := inventory.CEconItem{
+			Asset: inventory.Asset{
+				AssetID: "261014391",
+				Amount:  "1",
+			},
+			Description: inventory.Description{
+				Tradable:       1,
+				MarketHashName: "Professional Killstreak Three-Rune Blade",
+				AppData: map[string]any{
+					"def_index": "457",
+					"quality":   "6",
+				},
+				Descriptions: []struct {
+					Value string `json:"value"`
+					Color string `json:"color,omitempty"`
+				}{
+					{Value: "On Hit: Bleed for 5 seconds", Color: "7ea9d1"},
+					{Value: "Halloween: Exorcism (spell only active during event)", Color: "7ea9d1"},
+					{Value: "Killstreaker: Flames", Color: "7ea9d1"},
+					{Value: "Sheen: Team Shine", Color: "7ea9d1"},
+					{Value: "Killstreaks Active", Color: "7ea9d1"},
+				},
+			},
+		}
+
+		item := mapCEconToTF2(econ, s)
+		assert.Equal(t, 457, item.Defindex)
+
+		hasKS3 := false
+		for _, attr := range item.Attributes {
+			if attr.Defindex == schema.AttrKillstreak && attr.Value == float64(3) {
+				hasKS3 = true
+			}
+		}
+		assert.True(t, hasKS3, "Should extract Professional Killstreak (Tier 3)")
+	})
+}
+
+func TestStrangeIsotopeFlameThrower_SKURoundtrip(t *testing.T) {
+	t.Parallel()
+
+	targetSKU := "208;11;u702;w3;pk417;kt-3;festive"
+
+	// 1. Verify SKU parsing via sku.FromString
+	itemObj, err := sku.FromString(targetSKU)
+	assert.NoError(t, err, "Should successfully parse target SKU string")
+
+	assert.Equal(t, 208, itemObj.Defindex, "Defindex must be 208 (Flame Thrower)")
+	assert.Equal(t, 11, itemObj.Quality, "Quality must be 11 (Strange)")
+	assert.Equal(t, 702, itemObj.Effect, "Effect must be 702 (Isotope)")
+	assert.Equal(t, 3, itemObj.Wear, "Wear must be 3 (Field-Tested)")
+	assert.Equal(t, 417, itemObj.Paintkit, "Paintkit must be 417 (Team Serviced)")
+	assert.Equal(t, 3, itemObj.Killstreak, "Killstreak must be 3 (Professional)")
+	assert.True(t, itemObj.Festivized, "Item must be Festivized")
+
+	// 2. Verify idempotency via sku.FromObject
+	generatedSKU := sku.FromObject(itemObj)
+	assert.Equal(t, targetSKU, generatedSKU, "Generated SKU must exactly match target SKU")
+
+	// 3. Verify mapCEconToTF2 parsing for Community inventory format
+	s := mockSchemaForCoverage()
+	econ := inventory.CEconItem{
+		Asset: inventory.Asset{AssetID: "9999999", Amount: "1"},
+		Description: inventory.Description{
+			Tradable:       1,
+			MarketHashName: "Strange Isotope Festivized Professional Killstreak Team Serviced Flame Thrower (Field-Tested)",
+			AppData: map[string]any{
+				"def_index": "208",
+				"quality":   "11",
+			},
+			Descriptions: []struct {
+				Value string `json:"value"`
+				Color string `json:"color,omitempty"`
+			}{
+				{Value: "★ Unusual Effect: Isotope", Color: "ffd700"},
+				{Value: "Festivized", Color: "ffd700"},
+				{Value: "Killstreaker: Incinerator", Color: "7ea9d1"},
+				{Value: "Sheen: Deadly Daffodil", Color: "7ea9d1"},
+				{Value: "Killstreaks Active", Color: "7ea9d1"},
+			},
+		},
+	}
+
+	tfItem := mapCEconToTF2(econ, s)
+	assert.Equal(t, 208, tfItem.Defindex)
+	assert.Equal(t, 11, tfItem.Quality)
+}
+
+

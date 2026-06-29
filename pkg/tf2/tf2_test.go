@@ -742,7 +742,7 @@ func TestSOCache_Item_ToEconItem_Comprehensive(t *testing.T) {
 		Paintkit:       200,
 		KillstreakTier: 3,
 		Festivized:     true,
-		Paint:          123,
+		PaintPrimary:   123,
 		CrateSeries:    85,
 		IsElevated:     true,
 		Spells: []sku.Spell{

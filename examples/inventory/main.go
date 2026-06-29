@@ -281,13 +281,13 @@ func PrintDetailedInventory(bpMod *backpack.Backpack) {
 			fmt.Printf("  • Crate Series: #%d\n", item.CrateSeries)
 		}
 
-		if item.Paint != 0 {
+		if item.PaintPrimary != 0 {
 			paintName := "Unknown Paint Color"
 			if s != nil {
-				paintName = s.PaintNameByDecimal(int(item.Paint))
+				paintName = s.PaintNameByDecimal(int(item.PaintPrimary))
 			}
 
-			fmt.Printf("  • Applied Paint: %s (Color Decimal: %d)\n", paintName, item.Paint)
+			fmt.Printf("  • Applied Paint: %s (Color Decimal: %d)\n", paintName, item.PaintPrimary)
 		}
 
 		if len(item.Spells) > 0 {

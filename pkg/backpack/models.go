@@ -89,18 +89,16 @@ func mapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 	}
 
 	if desc.AppData != nil {
-		if di, ok := desc.AppData["def_index"].(string); ok {
-			item.Defindex = mustParseInt(di)
+		if di, ok := desc.AppData["def_index"]; ok {
+			item.Defindex = parseIntFromAny(di)
 		}
 
-		if q, ok := desc.AppData["quality"].(string); ok {
-			item.Quality = mustParseInt(q)
+		if q, ok := desc.AppData["quality"]; ok {
+			item.Quality = parseIntFromAny(q)
 		}
 
-		if oi, ok := desc.AppData["original_id"].(string); ok {
-			item.OriginalID = mustParseUint64(oi)
-		} else if oi, ok := desc.AppData["original_id"].(float64); ok {
-			item.OriginalID = uint64(oi)
+		if oi, ok := desc.AppData["original_id"]; ok {
+			item.OriginalID = parseUint64FromAny(oi)
 		}
 	}
 
@@ -167,22 +165,40 @@ func mapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 			continue
 		}
 
-		if strings.Contains(val, "Killstreak Active") {
+		if strings.Contains(val, "Killstreak Active") || strings.Contains(val, "Killstreaks Active") || strings.HasPrefix(val, "Killstreaker:") || strings.HasPrefix(val, "Sheen:") {
 			ksLevel := 0
 			switch {
-			case strings.Contains(val, "Professional"):
+			case strings.Contains(val, "Professional") || strings.HasPrefix(val, "Killstreaker:") || strings.Contains(desc.MarketHashName, "Professional Killstreak"):
 				ksLevel = 3
-			case strings.Contains(val, "Specialized"):
+			case strings.Contains(val, "Specialized") || strings.HasPrefix(val, "Sheen:") || strings.Contains(desc.MarketHashName, "Specialized Killstreak"):
 				ksLevel = 2
-			case strings.Contains(val, "Killstreak"):
+			case strings.Contains(val, "Killstreak") || strings.Contains(desc.MarketHashName, "Killstreak"):
 				ksLevel = 1
 			}
 
 			if ksLevel > 0 {
-				item.Attributes = append(item.Attributes, TF2Attribute{
-					Defindex: schema.AttrKillstreak,
-					Value:    float64(ksLevel),
-				})
+				hasKS := false
+				for i := range item.Attributes {
+					if item.Attributes[i].Defindex == schema.AttrKillstreak {
+						hasKS = true
+						currLevel := 0
+						if fVal, ok := item.Attributes[i].Value.(float64); ok {
+							currLevel = int(fVal)
+						} else if iVal, ok := item.Attributes[i].Value.(int); ok {
+							currLevel = iVal
+						}
+						if currLevel < ksLevel {
+							item.Attributes[i].Value = float64(ksLevel)
+						}
+						break
+					}
+				}
+				if !hasKS {
+					item.Attributes = append(item.Attributes, TF2Attribute{
+						Defindex: schema.AttrKillstreak,
+						Value:    float64(ksLevel),
+					})
+				}
 			}
 		}
 
@@ -451,3 +467,36 @@ func mustParseInt(s string) int {
 	v, _ := strconv.Atoi(s)
 	return v
 }
+
+func parseIntFromAny(v any) int {
+	switch val := v.(type) {
+	case string:
+		i, _ := strconv.Atoi(val)
+		return i
+	case float64:
+		return int(val)
+	case int:
+		return val
+	case int64:
+		return int(val)
+	}
+	return 0
+}
+
+func parseUint64FromAny(v any) uint64 {
+	switch val := v.(type) {
+	case string:
+		u, _ := strconv.ParseUint(val, 10, 64)
+		return u
+	case float64:
+		return uint64(val)
+	case uint64:
+		return val
+	case int64:
+		return uint64(val)
+	case int:
+		return uint64(val)
+	}
+	return 0
+}
+

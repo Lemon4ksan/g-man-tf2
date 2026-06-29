@@ -432,7 +432,7 @@ func (m *Backpack) FindWeaponsByClassForSmelting(class string) []*tf2.Item {
 			continue
 		}
 
-		if item.Paint != 0 {
+		if item.PaintPrimary != 0 || item.PaintSecondary != 0 {
 			continue
 		}
 

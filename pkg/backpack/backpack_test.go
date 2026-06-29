@@ -359,7 +359,7 @@ func TestBackpack_FindWeaponsByClassForSmelting(t *testing.T) {
 				{ID: 4, DefIndex: 1, Quality: 5, IsCraftable: true, IsTradable: true},
 				{ID: 5, DefIndex: 1, Quality: 6, IsElevated: true, IsCraftable: true, IsTradable: true},
 				{ID: 6, DefIndex: 1, Quality: 6, KillstreakTier: 1, IsCraftable: true, IsTradable: true},
-				{ID: 7, DefIndex: 1, Quality: 6, Paint: 1, IsCraftable: true, IsTradable: true},
+				{ID: 7, DefIndex: 1, Quality: 6, PaintPrimary: 1, IsCraftable: true, IsTradable: true},
 				{ID: 8, DefIndex: 1, Quality: 6, Festivized: true, IsCraftable: true, IsTradable: true},
 				{ID: 9, DefIndex: 1, Quality: 6, CustomName: "custom", IsCraftable: true, IsTradable: true},
 				{ID: 10, DefIndex: 1, Quality: 6, CustomDesc: "desc", IsCraftable: true, IsTradable: true},
