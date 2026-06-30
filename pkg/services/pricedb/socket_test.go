@@ -234,6 +234,7 @@ func TestSocketManager_PacketParsing_EdgeCases(t *testing.T) {
 		defer mu.Unlock()
 
 		assert.True(t, priceReceived)
+
 	case <-ctx.Done():
 		t.Fatal("timed out waiting for packet parsing sequence")
 	}

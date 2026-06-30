@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -182,11 +183,11 @@ func TestListingManager(t *testing.T) {
 	})
 
 	t.Run("delete_all_batches", func(t *testing.T) {
-		var callCount int
+		var callCount atomic.Int32
 
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/v2/classifieds/listings/batch" && r.Method == http.MethodDelete {
-				callCount++
+				callCount.Add(1)
 
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte(`{"success":true}`))
@@ -204,7 +205,7 @@ func TestListingManager(t *testing.T) {
 
 		err := mgr.DeleteAll(t.Context())
 		require.NoError(t, err)
-		assert.Equal(t, 2, callCount)
+		assert.Equal(t, int32(2), callCount.Load())
 	})
 
 	t.Run("delete_all_failure", func(t *testing.T) {
