@@ -448,11 +448,13 @@ func TestMapCEconToTF2_GlitchedInventory(t *testing.T) {
 		assert.Equal(t, 11, item.Quality)
 
 		hasKS3 := false
+
 		hasSpell := false
 		for _, attr := range item.Attributes {
 			if attr.Defindex == schema.AttrKillstreak && attr.Value == float64(3) {
 				hasKS3 = true
 			}
+
 			if attr.Defindex >= schema.DefSpellProxy {
 				hasSpell = true
 			}
@@ -497,6 +499,7 @@ func TestMapCEconToTF2_GlitchedInventory(t *testing.T) {
 				hasKS3 = true
 			}
 		}
+
 		assert.True(t, hasKS3, "Should extract Professional Killstreak (Tier 3)")
 	})
 }
@@ -550,5 +553,3 @@ func TestStrangeIsotopeFlameThrower_SKURoundtrip(t *testing.T) {
 	assert.Equal(t, 208, tfItem.Defindex)
 	assert.Equal(t, 11, tfItem.Quality)
 }
-
-

@@ -52,9 +52,12 @@ func loadFixturePayload(t testing.TB) (communityFixturePayload, map[string]struc
 		Value string `json:"value"`
 		Color string `json:"color,omitempty"`
 	} `json:"descriptions"`
-}) {
+},
+) {
 	t.Helper()
+
 	fixturePath := filepath.Join("testdata", "glitched_community_76561197991477148.json")
+
 	data, err := os.ReadFile(fixturePath)
 	if err != nil {
 		t.Fatalf("Failed to load fixture: %v", err)
@@ -102,6 +105,7 @@ func TestFullGlitchedInventoryParsing_76561197991477148(t *testing.T) {
 
 	for _, ast := range payload.Assets {
 		key := ast.ClassID + "_" + ast.InstanceID
+
 		desc, exists := descMap[key]
 		if !exists {
 			continue
@@ -139,23 +143,33 @@ func TestFullGlitchedInventoryParsing_76561197991477148(t *testing.T) {
 
 		// Verify SKU generation stability across all 2,406 items
 		skuStr := item.ToSKU()
-		assert.NotEmpty(t, skuStr, "SKU generation should never produce an empty string for item: %s", desc.MarketHashName)
+		assert.NotEmpty(
+			t,
+			skuStr,
+			"SKU generation should never produce an empty string for item: %s",
+			desc.MarketHashName,
+		)
 
 		hasSpellInDesc := false
 		hasKSInDesc := false
 
-		isFabricatorTool := strings.Contains(desc.MarketHashName, "Fabricator") || strings.Contains(desc.MarketHashName, "Kit")
+		isFabricatorTool := strings.Contains(desc.MarketHashName, "Fabricator") ||
+			strings.Contains(desc.MarketHashName, "Kit")
 
 		for _, dLine := range desc.Descriptions {
 			if dLine.Color == "7ea9d1" && strings.Contains(strings.ToLower(dLine.Value), "spell") {
 				hasSpellInDesc = true
 			}
-			if !isFabricatorTool && (strings.Contains(dLine.Value, "Killstreak Active") || strings.Contains(dLine.Value, "Killstreaks Active")) {
+
+			if !isFabricatorTool &&
+				(strings.Contains(dLine.Value, "Killstreak Active") || strings.Contains(dLine.Value, "Killstreaks Active")) {
 				hasKSInDesc = true
 			}
+
 			if strings.HasPrefix(dLine.Value, "★ Unusual Effect:") {
 				unusualsInDesc++
 			}
+
 			if strings.HasPrefix(dLine.Value, "Paint Color:") {
 				paintsInDesc++
 			}
@@ -172,6 +186,7 @@ func TestFullGlitchedInventoryParsing_76561197991477148(t *testing.T) {
 			if attr.Defindex >= schema.DefSpellProxy {
 				hasSpellAttr = true
 			}
+
 			if attr.Defindex == schema.AttrKillstreak {
 				hasKSAttr = true
 			}
@@ -179,11 +194,24 @@ func TestFullGlitchedInventoryParsing_76561197991477148(t *testing.T) {
 
 		if hasSpellInDesc {
 			spellsDetected++
-			assert.True(t, hasSpellAttr, "Item with spell description should have spell proxy attribute parsed: %s", desc.MarketHashName)
+
+			assert.True(
+				t,
+				hasSpellAttr,
+				"Item with spell description should have spell proxy attribute parsed: %s",
+				desc.MarketHashName,
+			)
 		}
+
 		if hasKSInDesc {
 			killstreaksDetected++
-			assert.True(t, hasKSAttr, "Item with killstreak description should have killstreak attribute parsed: %s", desc.MarketHashName)
+
+			assert.True(
+				t,
+				hasKSAttr,
+				"Item with killstreak description should have killstreak attribute parsed: %s",
+				desc.MarketHashName,
+			)
 		}
 	}
 
@@ -208,6 +236,7 @@ func TestSKURoundtripIdempotency_FullInventory(t *testing.T) {
 
 	for _, ast := range payload.Assets {
 		key := ast.ClassID + "_" + ast.InstanceID
+
 		desc, exists := descMap[key]
 		if !exists {
 			continue
@@ -245,7 +274,14 @@ func TestSKURoundtripIdempotency_FullInventory(t *testing.T) {
 		require.NoError(t, err, "sku.FromString should successfully parse generated SKU: %s", origSKU)
 
 		reserializedSKU := sku.FromObject(parsedItem)
-		assert.Equal(t, origSKU, reserializedSKU, "Roundtrip SKU serialization must be 100%% idempotent for item: %s", desc.MarketHashName)
+		assert.Equal(
+			t,
+			origSKU,
+			reserializedSKU,
+			"Roundtrip SKU serialization must be 100%% idempotent for item: %s",
+			desc.MarketHashName,
+		)
+
 		roundtripSuccesses++
 	}
 
@@ -262,6 +298,7 @@ func TestUltraGlitchedTrophiesParsing(t *testing.T) {
 	require.NoError(t, err, "Should be able to load raw Web API fixture")
 
 	var rawItems []TF2Item
+
 	err = json.Unmarshal(data, &rawItems)
 	require.NoError(t, err, "Should unmarshal raw items")
 
@@ -274,21 +311,25 @@ func TestUltraGlitchedTrophiesParsing(t *testing.T) {
 		switch {
 		case item.Defindex == 5021 && item.Quality == 9:
 			trophiesFound++
+
 			t.Logf("🏆 Verified Self-Made Key -> SKU: %s", skuStr)
 			assert.Equal(t, "5021;9", skuStr, "SKU for Self-Made Key must be 5021;9")
 
 		case item.Defindex == 5000 && item.Quality == 3:
 			trophiesFound++
+
 			t.Logf("🏆 Verified Vintage Scrap Metal -> SKU: %s", skuStr)
 			assert.Equal(t, "5000;3", skuStr, "SKU for Vintage Scrap must be 5000;3")
 
 		case item.Defindex == 5001 && item.Quality == 3:
 			trophiesFound++
+
 			t.Logf("🏆 Verified Vintage Reclaimed Metal -> SKU: %s", skuStr)
 			assert.Equal(t, "5001;3", skuStr, "SKU for Vintage Reclaimed must be 5001;3")
 
 		case item.Defindex == 5002 && item.Quality == 3:
 			trophiesFound++
+
 			t.Logf("🏆 Verified Vintage Refined Metal -> SKU: %s", skuStr)
 			assert.Equal(t, "5002;3", skuStr, "SKU for Vintage Refined must be 5002;3")
 
@@ -301,8 +342,10 @@ func TestUltraGlitchedTrophiesParsing(t *testing.T) {
 					break
 				}
 			}
+
 			if hasStrangeAttr {
 				trophiesFound++
+
 				t.Logf("🏆 Verified Strange Collector's Item (Defindex: %d) -> SKU: %s", item.Defindex, skuStr)
 				assert.Contains(t, skuStr, ";14", "Strange Collector's SKU must have primary Quality 14")
 				assert.Contains(t, skuStr, ";strange", "Strange Collector's SKU must contain ';strange' tag")
@@ -321,6 +364,7 @@ func TestGoldenPanParsing(t *testing.T) {
 	require.NoError(t, err, "Should be able to load raw Web API fixture")
 
 	var rawItems []TF2Item
+
 	err = json.Unmarshal(data, &rawItems)
 	require.NoError(t, err)
 
@@ -356,6 +400,7 @@ func TestSmeltingSimulation_GlitchedInventory(t *testing.T) {
 	assert.NoError(t, err, "Should be able to load raw Web API fixture")
 
 	var rawItems []*tf2.Item
+
 	err = json.Unmarshal(data, &rawItems)
 	assert.NoError(t, err)
 
@@ -370,8 +415,10 @@ func TestSmeltingSimulation_GlitchedInventory(t *testing.T) {
 		candidates := bp.FindWeaponsByClassForSmelting(class)
 		if len(candidates) > 0 {
 			t.Logf("⚔️ Class %s smelting candidates count: %d", class, len(candidates))
+
 			for _, item := range candidates {
 				totalSmeltCandidates++
+
 				t.Logf("   [SMELT CANDIDATE] ID: %d, Defindex: %d, Quality: %d", item.ID, item.DefIndex, item.Quality)
 
 				assert.Equal(t, uint32(schema.QualityUnique), item.Quality, "Only Unique weapons can be smelted")
@@ -395,6 +442,7 @@ func TestSmeltingSimulation_GroundedInventory_76561198315558870(t *testing.T) {
 	assert.NoError(t, err, "Should be able to load grounded raw Web API fixture")
 
 	var rawItems []*tf2.Item
+
 	err = json.Unmarshal(data, &rawItems)
 	assert.NoError(t, err)
 
@@ -403,14 +451,19 @@ func TestSmeltingSimulation_GroundedInventory_76561198315558870(t *testing.T) {
 	classes := []string{"Scout", "Soldier", "Pyro", "Demoman", "Heavy", "Engineer", "Medic", "Sniper", "Spy"}
 	totalSmeltCandidates := 0
 
-	t.Logf("=== RUNNING AUTOMATED SMELTING SIMULATION ON GROUNDED INVENTORY 76561198315558870 (%d ITEMS) ===", len(rawItems))
+	t.Logf(
+		"=== RUNNING AUTOMATED SMELTING SIMULATION ON GROUNDED INVENTORY 76561198315558870 (%d ITEMS) ===",
+		len(rawItems),
+	)
 
 	for _, class := range classes {
 		candidates := bp.FindWeaponsByClassForSmelting(class)
 		if len(candidates) > 0 {
 			t.Logf("⚔️ Class %s smelting candidates count: %d", class, len(candidates))
+
 			for _, item := range candidates {
 				totalSmeltCandidates++
+
 				t.Logf("   [SMELT CANDIDATE] ID: %d, Defindex: %d, Quality: %d", item.ID, item.DefIndex, item.Quality)
 
 				assert.Equal(t, uint32(schema.QualityUnique), item.Quality, "Only Unique weapons can be smelted")
@@ -435,12 +488,14 @@ func BenchmarkFullInventoryParsing_Parallel(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		idx := 0
+
 		numAssets := len(payload.Assets)
 		for pb.Next() {
 			ast := payload.Assets[idx%numAssets]
 			idx++
 
 			key := ast.ClassID + "_" + ast.InstanceID
+
 			desc, exists := descMap[key]
 			if !exists {
 				continue
@@ -460,8 +515,13 @@ func BenchmarkFullInventoryParsing_Parallel(b *testing.B) {
 			econ := inventory.CEconItem{
 				Asset: inventory.Asset{AssetID: ast.AssetID, Amount: ast.Amount},
 				Description: inventory.Description{
-					ClassID: desc.ClassID, InstanceID: desc.InstanceID, Tradable: desc.Tradable,
-					MarketHashName: desc.MarketHashName, Name: desc.Name, AppData: desc.AppData, Descriptions: econDescs,
+					ClassID:        desc.ClassID,
+					InstanceID:     desc.InstanceID,
+					Tradable:       desc.Tradable,
+					MarketHashName: desc.MarketHashName,
+					Name:           desc.Name,
+					AppData:        desc.AppData,
+					Descriptions:   econDescs,
 				},
 			}
 

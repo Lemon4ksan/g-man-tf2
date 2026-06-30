@@ -165,7 +165,9 @@ func mapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 			continue
 		}
 
-		if strings.Contains(val, "Killstreak Active") || strings.Contains(val, "Killstreaks Active") || strings.HasPrefix(val, "Killstreaker:") || strings.HasPrefix(val, "Sheen:") {
+		if strings.Contains(val, "Killstreak Active") || strings.Contains(val, "Killstreaks Active") ||
+			strings.HasPrefix(val, "Killstreaker:") ||
+			strings.HasPrefix(val, "Sheen:") {
 			ksLevel := 0
 			switch {
 			case strings.Contains(val, "Professional") || strings.HasPrefix(val, "Killstreaker:") || strings.Contains(desc.MarketHashName, "Professional Killstreak"):
@@ -181,18 +183,22 @@ func mapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 				for i := range item.Attributes {
 					if item.Attributes[i].Defindex == schema.AttrKillstreak {
 						hasKS = true
+
 						currLevel := 0
 						if fVal, ok := item.Attributes[i].Value.(float64); ok {
 							currLevel = int(fVal)
 						} else if iVal, ok := item.Attributes[i].Value.(int); ok {
 							currLevel = iVal
 						}
+
 						if currLevel < ksLevel {
 							item.Attributes[i].Value = float64(ksLevel)
 						}
+
 						break
 					}
 				}
+
 				if !hasKS {
 					item.Attributes = append(item.Attributes, TF2Attribute{
 						Defindex: schema.AttrKillstreak,
@@ -463,11 +469,6 @@ func mustParseUint64(s string) uint64 {
 	return v
 }
 
-func mustParseInt(s string) int {
-	v, _ := strconv.Atoi(s)
-	return v
-}
-
 func parseIntFromAny(v any) int {
 	switch val := v.(type) {
 	case string:
@@ -480,6 +481,7 @@ func parseIntFromAny(v any) int {
 	case int64:
 		return int(val)
 	}
+
 	return 0
 }
 
@@ -497,6 +499,6 @@ func parseUint64FromAny(v any) uint64 {
 	case int:
 		return uint64(val)
 	}
+
 	return 0
 }
-
