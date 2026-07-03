@@ -31,7 +31,7 @@ type PaymentResponse struct {
 // Permission: Connected + API
 // Payout Providers: "payviox" (Card redirect checkout) or "mannco" (Internal account balance payment)
 func (c *Client) InitiatePayment(ctx context.Context, provider string, req PaymentReq) (*PaymentResponse, error) {
-	return aoni.PostJSON[PaymentResponse](
+	return aoni.PostTo[PaymentResponse](
 		ctx, c.getClient(), "/payment/{provider}", req,
 		aoni.WithVar("provider", provider),
 	)

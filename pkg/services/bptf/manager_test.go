@@ -218,7 +218,7 @@ func TestListingManager(t *testing.T) {
 
 		err := mgr.DeleteAll(t.Context())
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "batch delete failed")
+		assert.ErrorContains(t, err, "batch delete failed")
 	})
 
 	t.Run("matches_sku_variants", func(t *testing.T) {

@@ -6,6 +6,7 @@ package schema
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -25,6 +26,7 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/module"
 	"github.com/lemon4ksan/g-man/pkg/steam/service"
+	"github.com/lemon4ksan/miyako/generic"
 	"github.com/mitchellh/mapstructure"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
@@ -77,10 +79,10 @@ func From(c *steam.Client) *Manager {
 type Manager struct {
 	module.Base
 
-	config        Config
-	svcClient     service.Doer
-	restClient    aoni.Requester
-	pricedbClient *pricedb.Client
+	config  Config
+	service service.Doer
+	rest    aoni.Requester
+	pricedb *pricedb.Client
 
 	mu            sync.RWMutex
 	schema        *Schema
@@ -111,16 +113,16 @@ func (m *Manager) Init(init module.InitContext) error {
 		return err
 	}
 
-	m.svcClient = init.Service()
-	m.restClient = init.Rest()
+	m.service = init.Service()
+	m.rest = init.Rest()
 
-	if aoniClient := aoni.UnwrapClient(m.restClient); aoniClient != nil {
+	if aoniClient := aoni.UnwrapClient(m.rest); aoniClient != nil {
 		unlimitedClient := aoniClient.WithMaxResponseSize(0)
-		m.restClient = unlimitedClient
-		m.pricedbClient = pricedb.NewClient(unlimitedClient)
+		m.rest = unlimitedClient
+		m.pricedb = pricedb.NewClient(unlimitedClient)
 	} else {
 		unlimitedClient := aoni.NewClient(nil).WithMaxResponseSize(0)
-		m.pricedbClient = pricedb.NewClient(unlimitedClient)
+		m.pricedb = pricedb.NewClient(unlimitedClient)
 	}
 
 	return nil
@@ -289,7 +291,7 @@ func (m *Manager) refreshSchema(ctx context.Context, itemsGameURL string) error 
 func (m *Manager) refreshPriceDB(ctx context.Context) error {
 	m.Logger.DebugContext(ctx, "Fetching complete schema from PriceDB...")
 
-	resp, err := m.pricedbClient.GetSchema(ctx)
+	resp, err := m.pricedb.GetSchema(ctx)
 	if err != nil {
 		return fmt.Errorf("pricedb schema fetch failed: %w", err)
 	}
@@ -465,23 +467,17 @@ func (m *Manager) parseTfEnglish(ctx context.Context) map[string]string {
 
 	m.Logger.InfoContext(ctx, "Fetching tf_english.txt for localization...")
 
-	resp, err := m.restClient.Request(ctx, "GET", url)
-	if err != nil || resp == nil || resp.StatusCode != 200 {
-		if resp != nil {
-			_ = resp.Body.Close()
-		}
-
+	resp, err := aoni.GetTo[[]byte](ctx, m.rest, url, aoni.WithRawDecoder())
+	if err != nil {
 		m.Logger.WarnContext(ctx, "Failed to fetch tf_english.txt", log.Err(err))
 
 		return nil
 	}
 
-	defer resp.Body.Close()
-
 	m.Logger.InfoContext(ctx, "tf_english.txt downloaded, parsing...")
 
 	result := make(map[string]string)
-	scanner := bufio.NewScanner(resp.Body)
+	scanner := bufio.NewScanner(bytes.NewReader(*resp))
 	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
 
 	inTokens := false
@@ -541,22 +537,13 @@ func (m *Manager) parseTfEnglish(ctx context.Context) map[string]string {
 }
 
 func (m *Manager) parseItemsGameItems(ctx context.Context, url string) []any {
-	if url == "" {
-		url = m.config.ItemsGameMirrorURL
-	}
+	url = generic.Coalesce(url, m.config.ItemsGameMirrorURL)
 
-	resp, err := m.restClient.Request(ctx, "GET", url)
-	if err != nil || resp == nil || resp.StatusCode != 200 {
-		if resp != nil {
-			_ = resp.Body.Close()
-		}
-
+	resp, err := aoni.GetTo[[]byte](ctx, m.rest, url, aoni.WithRawDecoder())
+	if err != nil {
 		m.Logger.WarnContext(ctx, "Failed to download items_game.txt for item parsing", log.Err(err))
-
 		return nil
 	}
-
-	defer resp.Body.Close()
 
 	type gameItem struct {
 		defindex      int
@@ -572,7 +559,7 @@ func (m *Manager) parseItemsGameItems(ctx context.Context, url string) []any {
 
 	var found []gameItem
 
-	scanner := bufio.NewScanner(resp.Body)
+	scanner := bufio.NewScanner(bytes.NewReader(*resp))
 	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
 
 	inItemsSection := false
@@ -876,11 +863,11 @@ func (m *Manager) pruneItemsGame(raw *Raw) {
 }
 
 func (m *Manager) getSchemaOverview(ctx context.Context) (map[string]any, error) {
-	req := struct {
+	params := struct {
 		Language string `url:"language"`
 	}{"English"}
 
-	resp, err := service.WebAPI[map[string]any](ctx, m.svcClient, "GET", "IEconItems_440", "GetSchemaOverview", 1, req)
+	resp, err := service.WebAPI[map[string]any](ctx, m.service, "GET", "IEconItems_440", "GetSchemaOverview", 1, params)
 	if err != nil {
 		if m.isForbiddenError(err) {
 			m.Logger.Warn("WebAPI returned 403. Attempting to fetch Overview from community mirror...")
@@ -899,19 +886,13 @@ func (m *Manager) getSchemaItems(ctx context.Context) ([]any, error) {
 	next := 0
 
 	for {
-		req := struct {
+		params := struct {
 			Language string `url:"language"`
 			Start    int    `url:"start"`
 		}{"English", next}
 
 		resp, err := service.WebAPI[map[string]any](
-			ctx,
-			m.svcClient,
-			"GET",
-			"IEconItems_440",
-			"GetSchemaItems",
-			1,
-			req,
+			ctx, m.service, "GET", "IEconItems_440", "GetSchemaItems", 1, params,
 		)
 		if err != nil {
 			if m.isForbiddenError(err) {
@@ -943,28 +924,12 @@ func (m *Manager) getSchemaItems(ctx context.Context) ([]any, error) {
 }
 
 func (m *Manager) getPaintKits(ctx context.Context) (map[string]string, error) {
-	resp, err := m.restClient.Request(ctx, "GET", m.config.PaintKitURL)
+	resp, err := aoni.GetTo[[]byte](ctx, m.rest, m.config.PaintKitURL, aoni.WithRawDecoder())
 	if err != nil {
-		if resp != nil {
-			_ = resp.Body.Close()
-		}
-
 		return nil, fmt.Errorf("failed to fetch paint kits: %w", err)
 	}
 
-	if resp == nil {
-		return nil, errors.New("received nil response while fetching paint kits")
-	}
-
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("github returned status: %d", resp.StatusCode)
-	}
-
-	parser := vdf.NewParser(resp.Body)
-
-	parsed, err := parser.Parse()
+	parsed, err := vdf.NewParser(bytes.NewReader(*resp)).Parse()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse VDF: %w", err)
 	}
@@ -1019,47 +984,25 @@ var (
 )
 
 func (m *Manager) getItemsGame(ctx context.Context, url string) (map[string]any, error) {
-	if url == "" {
-		url = m.config.ItemsGameMirrorURL
-	}
+	url = generic.Coalesce(url, m.config.ItemsGameMirrorURL)
 
-	resp, err := m.restClient.Request(ctx, "GET", url)
+	resp, err := aoni.GetTo[[]byte](ctx, m.rest, url, aoni.WithRawDecoder())
 	if err != nil {
-		if resp != nil {
-			_ = resp.Body.Close()
-		}
-
 		return nil, fmt.Errorf("failed to fetch items_game.txt: %w", err)
-	}
-
-	if resp == nil {
-		return nil, errors.New("received nil response while fetching items_game.txt")
-	}
-
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("github returned status: %d", resp.StatusCode)
 	}
 
 	seriesMap := make(map[string]any)
 	recipesMap := make(map[string]any)
+	recipeBuf := new(strings.Builder)
 
-	scanner := bufio.NewScanner(resp.Body)
+	scanner := bufio.NewScanner(bytes.NewReader(*resp))
 	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
 
-	var currentDefindex string
-
-	inItemsSection := false
-	inRecipesSection := false
-
-	var recipeBuf strings.Builder
-
-	var recipeDefindex string
-
-	recipeBracketDepth := 0
-
-	bracketCount := 0
+	var (
+		inItemsSection, inRecipesSection bool
+		currentDefindex, recipeDefindex  string
+		recipeBracketDepth, bracketCount int
+	)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -1211,23 +1154,21 @@ func (m *Manager) fetchFromMirror(ctx context.Context) (map[string]any, error) {
 		return nil, errors.New("mirror URL for schemanot configured")
 	}
 
-	res, err := aoni.GetJSON[map[string]any](ctx, m.restClient, url)
+	resp, err := aoni.GetTo[map[string]any](ctx, m.rest, url)
 	if err != nil {
 		return nil, fmt.Errorf("mirror fetch failed: %w", err)
 	}
 
-	return *res, nil
+	return *resp, nil
 }
 
 func (m *Manager) fetchItemsFromMirror(ctx context.Context) ([]any, error) {
-	url := m.config.ItemsMirrorURL
-
-	res, err := aoni.GetJSON[[]any](ctx, m.restClient, url)
+	resp, err := aoni.GetTo[[]any](ctx, m.rest, m.config.ItemsMirrorURL)
 	if err != nil {
 		return nil, fmt.Errorf("mirror items fetch failed: %w", err)
 	}
 
-	return *res, nil
+	return *resp, nil
 }
 
 func (m *Manager) saveToCache() error {

@@ -297,7 +297,7 @@ type BackpackDetailsResponse struct {
 // Route: GET /item/details/{item}
 // Permission: API Only (No session required)
 func (c *Client) GetItemDetails(ctx context.Context, item string) (*ItemDetails, error) {
-	return aoni.GetJSON[ItemDetails](ctx, c.getClient(), "/item/details/{item}", aoni.WithVar("item", item))
+	return aoni.GetTo[ItemDetails](ctx, c.getClient(), "/item/details/{item}", aoni.WithVar("item", item))
 }
 
 // SalesGraphReq contains query parameters for GetItemSalesGraph.
@@ -313,7 +313,7 @@ type SalesGraphReq struct {
 func (c *Client) GetItemSalesGraph(ctx context.Context, item, period string) (*ItemSalesGraph, error) {
 	req := SalesGraphReq{Period: period}
 
-	return aoni.GetJSON[ItemSalesGraph](
+	return aoni.GetTo[ItemSalesGraph](
 		ctx, c.getClient(), "/item/salesGraph/{item}",
 		aoni.WithVar("item", item),
 		aoni.WithQuery(req),
@@ -337,7 +337,7 @@ func (c *Client) GetListingCount(ctx context.Context, item, userID string) (*Lis
 		opts = append(opts, aoni.WithVar("userid", userID))
 	}
 
-	return aoni.GetJSON[ListingCount](ctx, c.getClient(), path, opts...)
+	return aoni.GetTo[ListingCount](ctx, c.getClient(), path, opts...)
 }
 
 // ListingsReq holds query arguments for GetItemListings.
@@ -367,7 +367,7 @@ func (c *Client) GetItemListings(ctx context.Context, item, userID string, query
 
 	opts = append(opts, aoni.WithQuery(query))
 
-	resp, err := aoni.GetJSON[[]Listing](ctx, c.getClient(), path, opts...)
+	resp, err := aoni.GetTo[[]Listing](ctx, c.getClient(), path, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -380,7 +380,7 @@ func (c *Client) GetItemListings(ctx context.Context, item, userID string, query
 // Route: GET /item/buyorderList/{item}
 // Permission: API Only
 func (c *Client) GetBuyOrderList(ctx context.Context, item string) (*BuyOrderList, error) {
-	return aoni.GetJSON[BuyOrderList](ctx, c.getClient(), "/item/buyorderList/{item}", aoni.WithVar("item", item))
+	return aoni.GetTo[BuyOrderList](ctx, c.getClient(), "/item/buyorderList/{item}", aoni.WithVar("item", item))
 }
 
 // GetItemPricing returns calculated lowest sale, highest buy order, Steam price,
@@ -389,7 +389,7 @@ func (c *Client) GetBuyOrderList(ctx context.Context, item string) (*BuyOrderLis
 // Route: GET /item/pricing/{item}
 // Permission: Connected + API
 func (c *Client) GetItemPricing(ctx context.Context, item string) (*ItemPricing, error) {
-	return aoni.GetJSON[ItemPricing](ctx, c.getClient(), "/item/pricing/{item}", aoni.WithVar("item", item))
+	return aoni.GetTo[ItemPricing](ctx, c.getClient(), "/item/pricing/{item}", aoni.WithVar("item", item))
 }
 
 // BulkPricingReq contains query parameters for GetBulkPricing.
@@ -407,7 +407,7 @@ func (c *Client) GetBulkPricing(ctx context.Context, items []string) (*BulkPrici
 		Items: strings.Join(items, ","),
 	}
 
-	return aoni.GetJSON[BulkPricing](ctx, c.getClient(), "/item/pricing/bulk", aoni.WithQuery(req))
+	return aoni.GetTo[BulkPricing](ctx, c.getClient(), "/item/pricing/bulk", aoni.WithQuery(req))
 }
 
 // GetBackpackDetailsTF2 queries full item details and backpack metrics for a TF2 asset ID.
@@ -415,7 +415,7 @@ func (c *Client) GetBulkPricing(ctx context.Context, items []string) (*BulkPrici
 // Route: GET /item/details/fromid/{backpackid}
 // Permission: API Only
 func (c *Client) GetBackpackDetailsTF2(ctx context.Context, backpackID string) (*BackpackDetailsResponse, error) {
-	return aoni.GetJSON[BackpackDetailsResponse](
+	return aoni.GetTo[BackpackDetailsResponse](
 		ctx, c.getClient(), "/item/details/fromid/{backpackid}",
 		aoni.WithVar("backpackid", backpackID),
 	)
@@ -426,7 +426,7 @@ func (c *Client) GetBackpackDetailsTF2(ctx context.Context, backpackID string) (
 // Route: GET /item/cs/details/fromid/{backpackid}
 // Permission: API Only
 func (c *Client) GetBackpackDetailsCS2(ctx context.Context, backpackID string) (*BackpackDetailsResponse, error) {
-	return aoni.GetJSON[BackpackDetailsResponse](
+	return aoni.GetTo[BackpackDetailsResponse](
 		ctx, c.getClient(), "/item/cs/details/fromid/{backpackid}",
 		aoni.WithVar("backpackid", backpackID),
 	)

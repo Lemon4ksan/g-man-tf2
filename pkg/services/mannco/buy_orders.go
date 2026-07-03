@@ -178,7 +178,7 @@ func (c *Client) CreateBuyOrder(ctx context.Context, itemID, value, amount int) 
 		Amount: amount,
 	}
 
-	return aoni.PostJSON[DetailsResponse](ctx, c.getClient(), "/item/buyorder", req)
+	return aoni.PostTo[DetailsResponse](ctx, c.getClient(), "/item/buyorder", req)
 }
 
 // UpdateBuyOrder updates an existing buy order price and/or quantity.
@@ -194,7 +194,7 @@ func (c *Client) UpdateBuyOrder(ctx context.Context, itemID, value, amount int) 
 		Amount: amount,
 	}
 
-	resp, err := aoni.PostJSON[string](ctx, c.getClient(), "/item/buyorder/update", req)
+	resp, err := aoni.PostTo[string](ctx, c.getClient(), "/item/buyorder/update", req)
 	if err != nil {
 		return "", err
 	}
@@ -211,7 +211,7 @@ func (c *Client) RemoveBuyOrder(ctx context.Context, itemID int) (*DetailsRespon
 		ItemID: itemID,
 	}
 
-	return aoni.PostJSON[DetailsResponse](ctx, c.getClient(), "/item/buyorder/remove", req)
+	return aoni.PostTo[DetailsResponse](ctx, c.getClient(), "/item/buyorder/remove", req)
 }
 
 // GetUserBuyOrdersForItem returns user's active buy orders for a specific item ID.
@@ -219,7 +219,7 @@ func (c *Client) RemoveBuyOrder(ctx context.Context, itemID int) (*DetailsRespon
 // Route: GET /user/buyorder/{item}
 // Permission: Connected + API
 func (c *Client) GetUserBuyOrdersForItem(ctx context.Context, item string) (*UserBuyOrderResponse, error) {
-	return aoni.GetJSON[UserBuyOrderResponse](ctx, c.getClient(), "/user/buyorder/{item}", aoni.WithVar("item", item))
+	return aoni.GetTo[UserBuyOrderResponse](ctx, c.getClient(), "/user/buyorder/{item}", aoni.WithVar("item", item))
 }
 
 // GetUserBuyOrdersQuery holds filtering arguments for GetUserBuyOrders.
@@ -235,5 +235,5 @@ type GetUserBuyOrdersQuery struct {
 // Route: GET /user/getBuyorder
 // Permission: Connected + API
 func (c *Client) GetUserBuyOrders(ctx context.Context, query GetUserBuyOrdersQuery) (*UserAllBuyOrdersResponse, error) {
-	return aoni.GetJSON[UserAllBuyOrdersResponse](ctx, c.getClient(), "/user/getBuyorder", aoni.WithQuery(query))
+	return aoni.GetTo[UserAllBuyOrdersResponse](ctx, c.getClient(), "/user/getBuyorder", aoni.WithQuery(query))
 }

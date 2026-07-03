@@ -50,7 +50,7 @@ type ResendTradeQuery struct {
 // Route: GET /trades/active
 // Permission: Connected + API
 func (c *Client) GetActiveTrades(ctx context.Context) (*GetTradesResponse, error) {
-	return aoni.GetJSON[GetTradesResponse](ctx, c.getClient(), "/trades/active")
+	return aoni.GetTo[GetTradesResponse](ctx, c.getClient(), "/trades/active")
 }
 
 // GetAllTrades returns up to the last 500 historical trades (completed, failed) for the user.
@@ -59,7 +59,7 @@ func (c *Client) GetActiveTrades(ctx context.Context) (*GetTradesResponse, error
 // Route: GET /trades/all
 // Permission: Connected + API
 func (c *Client) GetAllTrades(ctx context.Context) (*GetTradesResponse, error) {
-	return aoni.GetJSON[GetTradesResponse](ctx, c.getClient(), "/trades/all")
+	return aoni.GetTo[GetTradesResponse](ctx, c.getClient(), "/trades/all")
 }
 
 // ResendTrade triggers a retry for a failed or pending withdrawal trade.
@@ -69,5 +69,5 @@ func (c *Client) GetAllTrades(ctx context.Context) (*GetTradesResponse, error) {
 // Permission: Connected + API
 func (c *Client) ResendTrade(ctx context.Context, tradeID int) (*ResendTradeResponse, error) {
 	req := ResendTradeQuery{ID: tradeID}
-	return aoni.GetJSON[ResendTradeResponse](ctx, c.getClient(), "/trade/resend", aoni.WithQuery(req))
+	return aoni.GetTo[ResendTradeResponse](ctx, c.getClient(), "/trade/resend", aoni.WithQuery(req))
 }

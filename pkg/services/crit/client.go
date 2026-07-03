@@ -7,7 +7,6 @@ package crit
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -54,7 +53,7 @@ func NewClient(client *aoni.Client, apiKey string) *Client {
 
 // FetchMyListings retrieves all active listings for the authenticated user.
 func (c *Client) FetchMyListings(ctx context.Context) ([]Listing, error) {
-	resp, err := aoni.GetJSON[ListingsResponse](ctx, c.rest, "listings/my")
+	resp, err := aoni.GetTo[ListingsResponse](ctx, c.rest, "listings/my")
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +69,7 @@ func (c *Client) CreateListing(ctx context.Context, assetID string, currencies p
 		"price_metal": currencies.Metal,
 	}
 
-	resp, err := aoni.PostJSON[ListingsResponse](ctx, c.rest, "listings", payload)
+	resp, err := aoni.PostTo[ListingsResponse](ctx, c.rest, "listings", payload)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +88,7 @@ func (c *Client) UpdateListing(ctx context.Context, listingID string, currencies
 		"price_metal": currencies.Metal,
 	}
 
-	resp, err := aoni.PutJSON[ListingsResponse](
+	resp, err := aoni.PutTo[ListingsResponse](
 		ctx, c.rest, "listings/{listingID}", payload,
 		aoni.WithVar("listingID", listingID),
 	)
@@ -106,7 +105,7 @@ func (c *Client) UpdateListing(ctx context.Context, listingID string, currencies
 
 // DeleteListing deletes an active listing by its database ID.
 func (c *Client) DeleteListing(ctx context.Context, listingID string) error {
-	_, err := aoni.DeleteJSON[Response](
+	_, err := aoni.DeleteTo[Response](
 		ctx, c.rest, "listings/{listingID}", nil,
 		aoni.WithVar("listingID", listingID),
 	)
@@ -116,12 +115,12 @@ func (c *Client) DeleteListing(ctx context.Context, listingID string) error {
 
 // RefreshInventory requests crit.tf to sync the latest inventory status from Steam.
 func (c *Client) RefreshInventory(ctx context.Context) (*InventoryResponse, error) {
-	return aoni.PostJSON[InventoryResponse](ctx, c.rest, "inventory/refresh", nil)
+	return aoni.PostTo[InventoryResponse](ctx, c.rest, "inventory/refresh", nil)
 }
 
 // GetMyGroup retrieves store group details of the authenticated bot.
 func (c *Client) GetMyGroup(ctx context.Context) (*Group, error) {
-	resp, err := aoni.GetJSON[GroupResponse](ctx, c.rest, "groups/my")
+	resp, err := aoni.GetTo[GroupResponse](ctx, c.rest, "groups/my")
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +134,7 @@ func (c *Client) GetMyGroup(ctx context.Context) (*Group, error) {
 
 // InviteToGroup sends a store group membership invite to a user.
 func (c *Client) InviteToGroup(ctx context.Context, groupID int, targetSteamID id.ID) error {
-	_, err := aoni.PostJSON[Response](
+	_, err := aoni.PostTo[Response](
 		ctx, c.rest, "groups/{groupID}/invite",
 		map[string]string{"steam_id": targetSteamID.String()},
 		aoni.WithVar("groupID", groupID),
@@ -146,7 +145,7 @@ func (c *Client) InviteToGroup(ctx context.Context, groupID int, targetSteamID i
 
 // GetPendingInvites retrieves pending store group invitations.
 func (c *Client) GetPendingInvites(ctx context.Context) ([]Invite, error) {
-	resp, err := aoni.GetJSON[InvitesResponse](ctx, c.rest, "groups/invites")
+	resp, err := aoni.GetTo[InvitesResponse](ctx, c.rest, "groups/invites")
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +155,7 @@ func (c *Client) GetPendingInvites(ctx context.Context) ([]Invite, error) {
 
 // AcceptGroupInvite accepts a pending group invite.
 func (c *Client) AcceptGroupInvite(ctx context.Context, groupID int) error {
-	_, err := aoni.PostJSON[Response](
+	_, err := aoni.PostTo[Response](
 		ctx, c.rest, "groups/{groupID}/accept", nil,
 		aoni.WithVar("groupID", groupID),
 	)
@@ -166,7 +165,7 @@ func (c *Client) AcceptGroupInvite(ctx context.Context, groupID int) error {
 
 // LeaveGroup leaves a store group.
 func (c *Client) LeaveGroup(ctx context.Context, groupID int) error {
-	_, err := aoni.PostJSON[Response](
+	_, err := aoni.PostTo[Response](
 		ctx, c.rest, "groups/{groupID}/leave", nil,
 		aoni.WithVar("groupID", groupID),
 	)
@@ -176,24 +175,15 @@ func (c *Client) LeaveGroup(ctx context.Context, groupID int) error {
 
 // FetchAuthToken requests an SSE auth token from Crit.tf API.
 func (c *Client) FetchAuthToken(ctx context.Context) (string, error) {
-	resp, err := c.rest.Request(ctx, http.MethodGet, "bot-api/auth-token")
-	if err != nil {
-		return "", fmt.Errorf("crit: auth token request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("crit: auth token request failed with status %d", resp.StatusCode)
-	}
-
-	var data struct {
+	type tokenResp struct {
 		OK     bool   `json:"ok"`
 		Token  string `json:"token"`
 		Reason string `json:"reason,omitempty"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return "", fmt.Errorf("crit: failed to decode auth token response: %w", err)
+	data, err := aoni.GetTo[tokenResp](ctx, c.rest.WithBaseResponse(nil), "bot-api/auth-token")
+	if err != nil {
+		return "", fmt.Errorf("crit: auth token request failed: %w", err)
 	}
 
 	if !data.OK {
@@ -240,7 +230,7 @@ func (c *Client) StreamEvents(ctx context.Context, streamURL, token string) (<-c
 func (c *Client) SendDeadMansRequest(ctx context.Context) (bool, error) {
 	payload := map[string]bool{"alive": true}
 
-	resp, err := c.rest.Request(ctx, http.MethodPost, "bot-api/alive", aoni.WithJSONBody(payload))
+	resp, err := aoni.Post(ctx, c.rest, "bot-api/alive", payload)
 	if err != nil {
 		return false, fmt.Errorf("crit: dead man request failed: %w", err)
 	}
@@ -251,7 +241,7 @@ func (c *Client) SendDeadMansRequest(ctx context.Context) (bool, error) {
 
 // GetInventory retrieves the cached inventory of the bot from Crit.tf backend.
 func (c *Client) GetInventory(ctx context.Context) ([]any, error) {
-	resp, err := aoni.GetJSON[InventoryResponse](ctx, c.rest, "inventory")
+	resp, err := aoni.GetTo[InventoryResponse](ctx, c.rest, "inventory")
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +253,7 @@ func (c *Client) GetInventory(ctx context.Context) ([]any, error) {
 func (c *Client) UpdateTradeURL(ctx context.Context, tradeURL string) (bool, error) {
 	payload := map[string]string{"trade_url": tradeURL}
 
-	resp, err := aoni.PutJSON[Response](ctx, c.rest, "user/trade-url", payload)
+	resp, err := aoni.PutTo[Response](ctx, c.rest, "user/trade-url", payload)
 	if err != nil {
 		return false, err
 	}
@@ -273,7 +263,7 @@ func (c *Client) UpdateTradeURL(ctx context.Context, tradeURL string) (bool, err
 
 // GetUserInfo retrieves the authenticated user information from Crit.tf.
 func (c *Client) GetUserInfo(ctx context.Context) (*User, error) {
-	resp, err := aoni.GetJSON[UserResponse](ctx, c.rest, "user")
+	resp, err := aoni.GetTo[UserResponse](ctx, c.rest, "user")
 	if err != nil {
 		return nil, err
 	}

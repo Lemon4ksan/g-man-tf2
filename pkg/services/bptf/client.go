@@ -52,7 +52,7 @@ func (c *Client) GetPricesV4(ctx context.Context, raw int, since int64) (*Prices
 		Since int64 `url:"since,omitempty"`
 	}{raw, since}
 
-	return aoni.GetJSON[PricesResponseV4](ctx, c.rest, "IGetPrices/v4", aoni.WithQuery(req))
+	return aoni.GetTo[PricesResponseV4](ctx, c.rest, "IGetPrices/v4", aoni.WithQuery(req))
 }
 
 // GetCurrencies returns a list of currencies (IGetCurrencies/v1).
@@ -61,12 +61,12 @@ func (c *Client) GetCurrencies(ctx context.Context, raw int) (*CurrenciesRespons
 		Raw int `url:"raw,omitempty"`
 	}{raw}
 
-	return aoni.GetJSON[CurrenciesResponseV1](ctx, c.rest, "IGetCurrencies/v1", aoni.WithQuery(req))
+	return aoni.GetTo[CurrenciesResponseV1](ctx, c.rest, "IGetCurrencies/v1", aoni.WithQuery(req))
 }
 
 // CreateListing creates a buy or sell listing.
 func (c *Client) CreateListing(ctx context.Context, listing ListingResolvable) (*ListingResponse, error) {
-	return aoni.PostJSON[ListingResponse](ctx, c.rest, "v2/classifieds/listings", listing)
+	return aoni.PostTo[ListingResponse](ctx, c.rest, "v2/classifieds/listings", listing)
 }
 
 // BatchCreateListings allows you to create up to 100 listings in one request.
@@ -74,7 +74,7 @@ func (c *Client) BatchCreateListings(
 	ctx context.Context,
 	listings []ListingResolvable,
 ) ([]ListingBatchCreateResult, error) {
-	resp, err := aoni.PostJSON[[]ListingBatchCreateResult](
+	resp, err := aoni.PostTo[[]ListingBatchCreateResult](
 		ctx, c.rest, "v2/classifieds/listings/batch", listings,
 	)
 	if err != nil {
@@ -86,7 +86,7 @@ func (c *Client) BatchCreateListings(
 
 // GetInventoryStatus returns the status of a user's inventory on backpack.tf.
 func (c *Client) GetInventoryStatus(ctx context.Context, steamID id.ID) (InventoryStatus, error) {
-	resp, err := aoni.GetJSON[InventoryStatus](
+	resp, err := aoni.GetTo[InventoryStatus](
 		ctx, c.rest, "inventory/{steamID}/status",
 		aoni.WithVar("steamID", steamID),
 	)
@@ -99,7 +99,7 @@ func (c *Client) GetInventoryStatus(ctx context.Context, steamID id.ID) (Invento
 
 // GetInventoryValues returns the total value of a user's inventory.
 func (c *Client) GetInventoryValues(ctx context.Context, steamID id.ID) (InventoryValues, error) {
-	resp, err := aoni.GetJSON[InventoryValues](
+	resp, err := aoni.GetTo[InventoryValues](
 		ctx, c.rest, "inventory/{steamID}/values",
 		aoni.WithVar("steamID", steamID),
 	)
@@ -112,7 +112,7 @@ func (c *Client) GetInventoryValues(ctx context.Context, steamID id.ID) (Invento
 
 // RefreshInventory requests backpack.tf to fetch the latest data from Steam.
 func (c *Client) RefreshInventory(ctx context.Context, steamID id.ID) (InventoryStatus, error) {
-	resp, err := aoni.PostJSON[InventoryStatus](
+	resp, err := aoni.PostTo[InventoryStatus](
 		ctx, c.rest, "inventory/{steamID}/refresh", nil,
 		aoni.WithVar("steamID", steamID),
 	)
@@ -134,7 +134,7 @@ func (c *Client) GetUsersInfo(ctx context.Context, steamIDs []id.ID) (V1UserResp
 		SteamIDs string `url:"steamids"`
 	}{SteamIDs: strings.Join(ids, ",")}
 
-	resp, err := aoni.GetJSON[V1UserResponse](ctx, c.rest, "users/info/v1", aoni.WithQuery(req))
+	resp, err := aoni.GetTo[V1UserResponse](ctx, c.rest, "users/info/v1", aoni.WithQuery(req))
 	if err != nil {
 		return V1UserResponse{}, err
 	}
@@ -149,7 +149,7 @@ func (c *Client) GetAlerts(ctx context.Context, skip, limit int) (AlertsResponse
 		Limit int `url:"limit,omitempty"`
 	}{skip, limit}
 
-	resp, err := aoni.GetJSON[AlertsResponse](ctx, c.rest, "classifieds/alerts", aoni.WithQuery(req))
+	resp, err := aoni.GetTo[AlertsResponse](ctx, c.rest, "classifieds/alerts", aoni.WithQuery(req))
 	if err != nil {
 		return AlertsResponse{}, err
 	}
@@ -167,7 +167,7 @@ func (c *Client) CreateAlert(ctx context.Context, itemName, intent, currency str
 		Max      int    `url:"max,omitempty"`
 	}{itemName, intent, currency, min, max}
 
-	resp, err := aoni.PostJSON[Alert](ctx, c.rest, "classifieds/alerts", nil, aoni.WithQuery(req))
+	resp, err := aoni.PostTo[Alert](ctx, c.rest, "classifieds/alerts", nil, aoni.WithQuery(req))
 	if err != nil {
 		return Alert{}, err
 	}
@@ -182,7 +182,7 @@ func (c *Client) GetListings(ctx context.Context, skip, limit int) (ListingsResp
 		Limit int `url:"limit,omitempty"`
 	}{skip, limit}
 
-	resp, err := aoni.GetJSON[ListingsResponse](ctx, c.rest, "v2/classifieds/listings", aoni.WithQuery(req))
+	resp, err := aoni.GetTo[ListingsResponse](ctx, c.rest, "v2/classifieds/listings", aoni.WithQuery(req))
 	if err != nil {
 		return ListingsResponse{}, err
 	}
@@ -192,7 +192,7 @@ func (c *Client) GetListings(ctx context.Context, skip, limit int) (ListingsResp
 
 // DeleteListing deletes a single listing by its ID.
 func (c *Client) DeleteListing(ctx context.Context, id string) error {
-	_, err := aoni.DeleteJSON[any](
+	_, err := aoni.DeleteTo[aoni.NoResponse](
 		ctx, c.rest, "v2/classifieds/listings/{id}", nil,
 		aoni.WithVar("id", id),
 	)
@@ -206,14 +206,14 @@ func (c *Client) BatchDeleteListings(ctx context.Context, ids []string) error {
 		IDs []string `json:"listing_ids"`
 	}{IDs: ids}
 
-	_, err := aoni.DeleteJSON[any](ctx, c.rest, "v2/classifieds/listings/batch", req)
+	_, err := aoni.DeleteTo[aoni.NoResponse](ctx, c.rest, "v2/classifieds/listings/batch", req)
 
 	return err
 }
 
 // Pulse sends a heartbeat to backpack.tf to keep the bot online and bump listings.
 func (c *Client) Pulse(ctx context.Context) (UserAgentStatus, error) {
-	resp, err := aoni.PostJSON[UserAgentStatus](ctx, c.rest, "agent/pulse", nil)
+	resp, err := aoni.PostTo[UserAgentStatus](ctx, c.rest, "agent/pulse", nil)
 	if err != nil {
 		return UserAgentStatus{}, err
 	}
@@ -223,7 +223,7 @@ func (c *Client) Pulse(ctx context.Context) (UserAgentStatus, error) {
 
 // StopAgent declares the user as no longer under control of the agent.
 func (c *Client) StopAgent(ctx context.Context) (UserAgentStatus, error) {
-	resp, err := aoni.PostJSON[UserAgentStatus](ctx, c.rest, "agent/stop", nil)
+	resp, err := aoni.PostTo[UserAgentStatus](ctx, c.rest, "agent/stop", nil)
 	if err != nil {
 		return UserAgentStatus{}, err
 	}
@@ -233,7 +233,7 @@ func (c *Client) StopAgent(ctx context.Context) (UserAgentStatus, error) {
 
 // GetAgentStatus returns the current status of the user agent.
 func (c *Client) GetAgentStatus(ctx context.Context) (UserAgentStatus, error) {
-	resp, err := aoni.PostJSON[UserAgentStatus](ctx, c.rest, "agent/status", nil)
+	resp, err := aoni.PostTo[UserAgentStatus](ctx, c.rest, "agent/status", nil)
 	if err != nil {
 		return UserAgentStatus{}, err
 	}
@@ -254,7 +254,7 @@ func (c *Client) GetNotifications(ctx context.Context, skip, limit int, unread b
 		Unread int `url:"unread,omitempty"`
 	}{skip, limit, unreadInt}
 
-	resp, err := aoni.GetJSON[NotificationsResponse](ctx, c.rest, "notifications", aoni.WithQuery(req))
+	resp, err := aoni.GetTo[NotificationsResponse](ctx, c.rest, "notifications", aoni.WithQuery(req))
 	if err != nil {
 		return NotificationsResponse{}, err
 	}
@@ -264,7 +264,7 @@ func (c *Client) GetNotifications(ctx context.Context, skip, limit int, unread b
 
 // MarkNotificationsRead marks all unread notifications as read.
 func (c *Client) MarkNotificationsRead(ctx context.Context) (NotificationMarkResponse, error) {
-	resp, err := aoni.PostJSON[NotificationMarkResponse](ctx, c.rest, "notifications/mark", nil)
+	resp, err := aoni.PostTo[NotificationMarkResponse](ctx, c.rest, "notifications/mark", nil)
 	if err != nil {
 		return NotificationMarkResponse{}, err
 	}
@@ -274,7 +274,7 @@ func (c *Client) MarkNotificationsRead(ctx context.Context) (NotificationMarkRes
 
 // DeleteNotification deletes a notification by ID.
 func (c *Client) DeleteNotification(ctx context.Context, id string) error {
-	_, err := aoni.DeleteJSON[any](
+	_, err := aoni.DeleteTo[aoni.NoResponse](
 		ctx, c.rest, "notifications/{id}", nil,
 		aoni.WithVar("id", id),
 	)
@@ -297,7 +297,7 @@ func (c *Client) GetPriceHistory(
 		PriceIndex string `url:"priceindex,omitempty"`
 	}{appid, item, quality, tradable, craftable, priceindex}
 
-	resp, err := aoni.GetJSON[PriceHistoryResponse](ctx, c.rest, "IGetPriceHistory/v1", aoni.WithQuery(req))
+	resp, err := aoni.GetTo[PriceHistoryResponse](ctx, c.rest, "IGetPriceHistory/v1", aoni.WithQuery(req))
 	if err != nil {
 		return PriceHistoryResponse{}, err
 	}
@@ -307,7 +307,7 @@ func (c *Client) GetPriceHistory(
 
 // DeleteAlertByID deletes an alert by its ID.
 func (c *Client) DeleteAlertByID(ctx context.Context, id string) error {
-	_, err := aoni.DeleteJSON[any](
+	_, err := aoni.DeleteTo[aoni.NoResponse](
 		ctx, c.rest, "classifieds/alerts/{id}", nil,
 		aoni.WithVar("id", id),
 	)
@@ -322,7 +322,7 @@ func (c *Client) DeleteAlertByItem(ctx context.Context, itemName, intent string)
 		Intent   string `url:"intent"`
 	}{itemName, intent}
 
-	_, err := aoni.DeleteJSON[any](ctx, c.rest, "classifieds/alerts", nil, aoni.WithQuery(req))
+	_, err := aoni.DeleteTo[aoni.NoResponse](ctx, c.rest, "classifieds/alerts", nil, aoni.WithQuery(req))
 
 	return err
 }
@@ -334,7 +334,7 @@ func (c *Client) GetArchiveListings(ctx context.Context, skip, limit int) (Listi
 		Limit int `url:"limit,omitempty"`
 	}{skip, limit}
 
-	resp, err := aoni.GetJSON[ListingsResponse](ctx, c.rest, "v2/classifieds/archive", aoni.WithQuery(req))
+	resp, err := aoni.GetTo[ListingsResponse](ctx, c.rest, "v2/classifieds/archive", aoni.WithQuery(req))
 	if err != nil {
 		return ListingsResponse{}, err
 	}
@@ -352,7 +352,7 @@ func (c *Client) SearchClassifieds(ctx context.Context, sku, intent string) (*Sn
 		AppID: 440,
 	}
 
-	resp, err := aoni.GetJSON[SnapshotResponse](
+	resp, err := aoni.GetTo[SnapshotResponse](
 		ctx, c.rest, "classifieds/listings/snapshot",
 		aoni.WithQuery(req),
 	)
@@ -375,13 +375,13 @@ func (c *Client) SearchClassifieds(ctx context.Context, sku, intent string) (*Sn
 
 // DeleteArchiveListings deletes all archived listings for the account.
 func (c *Client) DeleteArchiveListings(ctx context.Context, req ListingDropRequest) error {
-	_, err := aoni.DeleteJSON[any](ctx, c.rest, "v2/classifieds/archive", req)
+	_, err := aoni.DeleteTo[aoni.NoResponse](ctx, c.rest, "v2/classifieds/archive", req)
 	return err
 }
 
 // GetArchiveBatchLimit returns the batch operations limit for archived listings.
 func (c *Client) GetArchiveBatchLimit(ctx context.Context) (map[string]any, error) {
-	resp, err := aoni.GetJSON[map[string]any](ctx, c.rest, "v2/classifieds/archive/batch")
+	resp, err := aoni.GetTo[map[string]any](ctx, c.rest, "v2/classifieds/archive/batch")
 	if err != nil {
 		return nil, err
 	}
@@ -391,7 +391,7 @@ func (c *Client) GetArchiveBatchLimit(ctx context.Context) (map[string]any, erro
 
 // BatchDeleteArchiveListings performs a batch deletion of archived listings.
 func (c *Client) BatchDeleteArchiveListings(ctx context.Context) (map[string]any, error) {
-	resp, err := aoni.DeleteJSON[map[string]any](ctx, c.rest, "v2/classifieds/archive/batch", nil)
+	resp, err := aoni.DeleteTo[map[string]any](ctx, c.rest, "v2/classifieds/archive/batch", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -401,7 +401,7 @@ func (c *Client) BatchDeleteArchiveListings(ctx context.Context) (map[string]any
 
 // GetArchiveListing retrieves a single archived listing by its ID.
 func (c *Client) GetArchiveListing(ctx context.Context, listingID string) (ListingResponse, error) {
-	resp, err := aoni.GetJSON[ListingResponse](
+	resp, err := aoni.GetTo[ListingResponse](
 		ctx, c.rest, "v2/classifieds/archive/{listingID}",
 		aoni.WithVar("listingID", listingID),
 	)
@@ -414,7 +414,7 @@ func (c *Client) GetArchiveListing(ctx context.Context, listingID string) (Listi
 
 // DeleteArchiveListing deletes a single archived listing by its ID.
 func (c *Client) DeleteArchiveListing(ctx context.Context, listingID string) error {
-	_, err := aoni.DeleteJSON[any](
+	_, err := aoni.DeleteTo[aoni.NoResponse](
 		ctx, c.rest, "v2/classifieds/archive/{listingID}", nil,
 		aoni.WithVar("listingID", listingID),
 	)
@@ -428,7 +428,7 @@ func (c *Client) PatchArchiveListing(
 	listingID string,
 	req ListingPatchRequest,
 ) (ListingResponse, error) {
-	resp, err := aoni.PatchJSON[ListingResponse](
+	resp, err := aoni.PatchTo[ListingResponse](
 		ctx, c.rest, "v2/classifieds/archive/{listingID}", req,
 		aoni.WithVar("listingID", listingID),
 	)
@@ -441,7 +441,7 @@ func (c *Client) PatchArchiveListing(
 
 // PublishArchiveListing publishes a single archived listing to the active pool.
 func (c *Client) PublishArchiveListing(ctx context.Context, listingID string) (ListingResponse, error) {
-	resp, err := aoni.PostJSON[ListingResponse](
+	resp, err := aoni.PostTo[ListingResponse](
 		ctx, c.rest, "v2/classifieds/archive/{listingID}/publish", nil,
 		aoni.WithVar("listingID", listingID),
 	)
@@ -454,13 +454,13 @@ func (c *Client) PublishArchiveListing(ctx context.Context, listingID string) (L
 
 // DeleteAllListings deletes all active listings for the account.
 func (c *Client) DeleteAllListings(ctx context.Context, req ListingDropRequest) error {
-	_, err := aoni.DeleteJSON[any](ctx, c.rest, "v2/classifieds/listings", req)
+	_, err := aoni.DeleteTo[aoni.NoResponse](ctx, c.rest, "v2/classifieds/listings", req)
 	return err
 }
 
 // GetListingsBatchLimit returns the batch operations limit for active listings.
 func (c *Client) GetListingsBatchLimit(ctx context.Context) (map[string]any, error) {
-	resp, err := aoni.GetJSON[map[string]any](ctx, c.rest, "v2/classifieds/listings/batch")
+	resp, err := aoni.GetTo[map[string]any](ctx, c.rest, "v2/classifieds/listings/batch")
 	if err != nil {
 		return nil, err
 	}
@@ -470,7 +470,7 @@ func (c *Client) GetListingsBatchLimit(ctx context.Context) (map[string]any, err
 
 // GetListing retrieves a single active listing by its ID.
 func (c *Client) GetListing(ctx context.Context, listingID string) (ListingResponse, error) {
-	resp, err := aoni.GetJSON[ListingResponse](
+	resp, err := aoni.GetTo[ListingResponse](
 		ctx, c.rest, "v2/classifieds/listings/{listingID}",
 		aoni.WithVar("listingID", listingID),
 	)
@@ -483,7 +483,7 @@ func (c *Client) GetListing(ctx context.Context, listingID string) (ListingRespo
 
 // PatchListing updates properties of a single active listing by its ID.
 func (c *Client) PatchListing(ctx context.Context, listingID string, req ListingPatchRequest) (ListingResponse, error) {
-	resp, err := aoni.PatchJSON[ListingResponse](
+	resp, err := aoni.PatchTo[ListingResponse](
 		ctx, c.rest, "v2/classifieds/listings/{listingID}", req,
 		aoni.WithVar("listingID", listingID),
 	)

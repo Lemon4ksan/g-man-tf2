@@ -39,10 +39,11 @@ type Remote struct {
 
 	dupeCheckers []DupeChecker
 
-	mu      sync.Mutex
-	items   []TF2Item
-	slots   int
-	fetched bool
+	mu        sync.Mutex
+	items     []TF2Item
+	slots     int
+	fetched   bool
+	descCache *sync.Map
 }
 
 // Option defines configuration setter functions for initializing [Remote] instances.
@@ -59,6 +60,13 @@ func WithLogger(l log.Logger) Option {
 func WithDupeCheckers(dc []DupeChecker) Option {
 	return func(inv *Remote) {
 		inv.dupeCheckers = dc
+	}
+}
+
+// WithAssetClassCache configures a shared cache for asset class descriptions.
+func WithAssetClassCache(cache *sync.Map) Option {
+	return func(inv *Remote) {
+		inv.descCache = cache
 	}
 }
 
@@ -79,6 +87,7 @@ func NewRemote(
 		dupeCheckers: make([]DupeChecker, 0),
 		items:        make([]TF2Item, 0),
 		schema:       schema,
+		descCache:    &sync.Map{},
 	}
 
 	generic.ApplyOptions(p, opts...)
@@ -137,17 +146,17 @@ func (r *Remote) CanTradeWithoutHold(ctx context.Context, token string) (bool, e
 		SteamIDTarget: r.steamID, TradeOfferAccessToken: token,
 	}
 
-	type resp struct {
+	type respType struct {
 		TheirHold int `json:"their_escrow"`
 		MyHold    int `json:"my_escrow"`
 	}
 
-	res, err := webapi.IEconService_GetTradeHoldDurations_v1[resp](ctx, r.client, req)
+	resp, err := webapi.IEconService_GetTradeHoldDurations_v1[respType](ctx, r.client, req)
 	if err != nil {
 		return false, err
 	}
 
-	return res.TheirHold == 0, nil
+	return resp.TheirHold == 0, nil
 }
 
 // IsDuped queries history checking engines to verify if the specified asset is a duplicate.
@@ -238,10 +247,7 @@ func (r *Remote) FindMetalInPartnerInventory(ctx context.Context, amount currenc
 			continue
 		}
 
-		limitRec := (rem1 + 2) / 3
-		if limitRec > lenRec {
-			limitRec = lenRec
-		}
+		limitRec := min((rem1+2)/3, lenRec)
 
 		for rec := 0; rec <= limitRec; rec++ {
 			rem2 := rem1 - 3*rec
@@ -360,17 +366,23 @@ func (r *Remote) fetchCommunity(ctx context.Context) error {
 	return nil
 }
 
+type descKey struct {
+	ClassID    string
+	InstanceID string
+}
+
+type rawAssetClassDescription struct {
+	ClassID    string         `json:"classid"`
+	InstanceID string         `json:"instanceid"`
+	AppData    map[string]any `json:"app_data,omitempty"`
+}
+
 // enrichCommunityItems performs a batch query to ISteamEconomy/GetAssetClassInfo
 // to fill in missing AppData for items obtained from the community web interface.
 func (r *Remote) enrichCommunityItems(ctx context.Context, items []inventory.CEconItem) error {
 	if r.client == nil {
 		r.logger.Warn("No WebAPI client available, skipping community items enrichment")
 		return nil
-	}
-
-	type descKey struct {
-		ClassID    string
-		InstanceID string
 	}
 
 	var missingKeys []descKey
@@ -390,14 +402,17 @@ func (r *Remote) enrichCommunityItems(ctx context.Context, items []inventory.CEc
 
 		if !hasDefIndex {
 			k := descKey{ClassID: desc.ClassID, InstanceID: desc.InstanceID}
-			if !seenKeys[k] {
-				seenKeys[k] = true
-				missingKeys = append(missingKeys, k)
+			if _, cached := r.descCache.Load(k); !cached {
+				if !seenKeys[k] {
+					seenKeys[k] = true
+					missingKeys = append(missingKeys, k)
+				}
 			}
 		}
 	}
 
 	if len(missingKeys) == 0 {
+		r.applyCachedDescriptions(items)
 		return nil
 	}
 
@@ -405,23 +420,16 @@ func (r *Remote) enrichCommunityItems(ctx context.Context, items []inventory.CEc
 		Result map[string]json.RawMessage `json:"result"`
 	}
 
-	type rawAssetClassDescription struct {
-		ClassID    string         `json:"classid"`
-		InstanceID string         `json:"instanceid"`
-		AppData    map[string]any `json:"app_data,omitempty"`
-	}
-
-	resolvedDescs := make(map[descKey]rawAssetClassDescription)
-
 	chunkSize := 50
 	for i := 0; i < len(missingKeys); i += chunkSize {
 		end := min(i+chunkSize, len(missingKeys))
 		chunk := missingKeys[i:end]
 
-		params := make(url.Values)
-		params.Set("appid", "440")
-		params.Set("language", "english")
-		params.Set("class_count", strconv.Itoa(len(chunk)))
+		params := url.Values{
+			"appid":       {"440"},
+			"language":    {"english"},
+			"class_count": {strconv.Itoa(len(chunk))},
+		}
 
 		for idx, k := range chunk {
 			params.Set(fmt.Sprintf("classid%d", idx), k.ClassID)
@@ -432,13 +440,7 @@ func (r *Remote) enrichCommunityItems(ctx context.Context, items []inventory.CEc
 		}
 
 		apiResp, err := service.WebAPI[GetAssetClassInfoResponse](
-			ctx,
-			r.client,
-			"GET",
-			"ISteamEconomy",
-			"GetAssetClassInfo",
-			1,
-			params,
+			ctx, r.client, "GET", "ISteamEconomy", "GetAssetClassInfo", 1, params,
 		)
 		if err != nil {
 			return err
@@ -457,12 +459,19 @@ func (r *Remote) enrichCommunityItems(ctx context.Context, items []inventory.CEc
 						cID = key
 					}
 
-					resolvedDescs[descKey{ClassID: cID, InstanceID: desc.InstanceID}] = desc
+					dk := descKey{ClassID: cID, InstanceID: desc.InstanceID}
+					r.descCache.Store(dk, desc)
 				}
 			}
 		}
 	}
 
+	r.applyCachedDescriptions(items)
+
+	return nil
+}
+
+func (r *Remote) applyCachedDescriptions(items []inventory.CEconItem) {
 	for i := range items {
 		if items[i].Description.ClassID == "" {
 			continue
@@ -479,8 +488,13 @@ func (r *Remote) enrichCommunityItems(ctx context.Context, items []inventory.CEc
 			var resolved rawAssetClassDescription
 
 			found := false
-			if resolved, found = resolvedDescs[k]; !found {
-				resolved, found = resolvedDescs[descKey{ClassID: items[i].Description.ClassID, InstanceID: "0"}]
+
+			if cachedVal, ok := r.descCache.Load(k); ok {
+				resolved = cachedVal.(rawAssetClassDescription)
+				found = true
+			} else if cachedVal, ok := r.descCache.Load(descKey{ClassID: items[i].Description.ClassID, InstanceID: "0"}); ok {
+				resolved = cachedVal.(rawAssetClassDescription)
+				found = true
 			}
 
 			if found && resolved.AppData != nil {
@@ -488,6 +502,4 @@ func (r *Remote) enrichCommunityItems(ctx context.Context, items []inventory.CEc
 			}
 		}
 	}
-
-	return nil
 }

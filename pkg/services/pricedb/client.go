@@ -57,7 +57,7 @@ func (c *Client) UserAgent() string {
 // GetItem fetches the latest price for a specific item SKU.
 func (c *Client) GetItem(ctx context.Context, sku string) (*Price, error) {
 	// Чистая сигнатура без nil!
-	return aoni.GetJSON[Price](ctx, c.rest, "item/{sku}", aoni.WithVar("sku", sku))
+	return aoni.GetTo[Price](ctx, c.rest, "item/{sku}", aoni.WithVar("sku", sku))
 }
 
 // GetItemsBulk fetches the latest prices for an array of SKUs in a single request.
@@ -89,7 +89,7 @@ func (c *Client) GetItemsBulk(ctx context.Context, skus []string) ([]*Price, err
 	}, batches, func(chunkCtx context.Context, batch []string) ([]*Price, error) {
 		req := bulkRequest{SKUs: batch}
 
-		resp, err := aoni.PostJSON[[]*Price](chunkCtx, c.rest, "items-bulk", req)
+		resp, err := aoni.PostTo[[]*Price](chunkCtx, c.rest, "items-bulk", req)
 		if err != nil {
 			return nil, err
 		}
@@ -119,7 +119,7 @@ func (c *Client) Search(ctx context.Context, query string, limit int) (*SearchRe
 		Limit int    `url:"limit,omitempty"`
 	}{query, limit}
 
-	return aoni.GetJSON[SearchResult](ctx, c.rest, "search", aoni.WithQuery(req))
+	return aoni.GetTo[SearchResult](ctx, c.rest, "search", aoni.WithQuery(req))
 }
 
 // GetHistory returns the price history for a specific SKU.
@@ -130,7 +130,7 @@ func (c *Client) GetHistory(ctx context.Context, sku string, start, end int64) (
 		End   int64 `url:"end,omitempty"`
 	}{start, end}
 
-	resp, err := aoni.GetJSON[[]*Price](
+	resp, err := aoni.GetTo[[]*Price](
 		ctx,
 		c.rest,
 		"item-history/{sku}",
@@ -146,12 +146,12 @@ func (c *Client) GetHistory(ctx context.Context, sku string, start, end int64) (
 
 // GetStats returns statistics (min, max, avg) for an item's price history.
 func (c *Client) GetStats(ctx context.Context, sku string) (*ItemStats, error) {
-	return aoni.GetJSON[ItemStats](ctx, c.rest, "item-stats/{sku}", aoni.WithVar("sku", sku))
+	return aoni.GetTo[ItemStats](ctx, c.rest, "item-stats/{sku}", aoni.WithVar("sku", sku))
 }
 
 // Compare compares two items side by side, returning the price differences.
 func (c *Client) Compare(ctx context.Context, sku1, sku2 string) (*CompareResult, error) {
-	return aoni.GetJSON[CompareResult](
+	return aoni.GetTo[CompareResult](
 		ctx, c.rest, "compare/{sku1}/{sku2}",
 		aoni.WithVar("sku1", sku1), aoni.WithVar("sku2", sku2),
 	)
@@ -160,18 +160,18 @@ func (c *Client) Compare(ctx context.Context, sku1, sku2 string) (*CompareResult
 // TriggerPriceCheck requests PriceDB to update the price for a specific SKU.
 // This hits the Autobot integration endpoint.
 func (c *Client) TriggerPriceCheck(ctx context.Context, sku string) error {
-	_, err := aoni.PostJSON[any](ctx, c.rest, "autob/items/{sku}", nil, aoni.WithVar("sku", sku))
+	_, err := aoni.PostTo[aoni.NoResponse](ctx, c.rest, "autob/items/{sku}", nil, aoni.WithVar("sku", sku))
 	return err
 }
 
 // HealthCheck returns the current system statistics and health of the API.
 func (c *Client) HealthCheck(ctx context.Context) (*CacheStats, error) {
-	return aoni.GetJSON[CacheStats](ctx, c.rest, "cache-stats")
+	return aoni.GetTo[CacheStats](ctx, c.rest, "cache-stats")
 }
 
 // ResolveName looks up an item by name using the SKU Service.
 func (c *Client) ResolveName(ctx context.Context, name string) (map[string]any, error) {
-	resp, err := aoni.GetJSON[map[string]any](ctx, c.sku, "name/{name}", aoni.WithVar("name", name))
+	resp, err := aoni.GetTo[map[string]any](ctx, c.sku, "name/{name}", aoni.WithVar("name", name))
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +181,7 @@ func (c *Client) ResolveName(ctx context.Context, name string) (map[string]any, 
 
 // ResolveSKU looks up item properties by its SKU using the SKU Service.
 func (c *Client) ResolveSKU(ctx context.Context, sku string) (map[string]any, error) {
-	resp, err := aoni.GetJSON[map[string]any](ctx, c.sku, "sku/{sku}", aoni.WithVar("sku", sku))
+	resp, err := aoni.GetTo[map[string]any](ctx, c.sku, "sku/{sku}", aoni.WithVar("sku", sku))
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +191,7 @@ func (c *Client) ResolveSKU(ctx context.Context, sku string) (map[string]any, er
 
 // GetSchema fetches the complete TF2 schema from PriceDB.
 func (c *Client) GetSchema(ctx context.Context) (map[string]any, error) {
-	resp, err := aoni.GetJSON[map[string]any](ctx, c.sku, "schema")
+	resp, err := aoni.GetTo[map[string]any](ctx, c.sku, "schema")
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +201,7 @@ func (c *Client) GetSchema(ctx context.Context) (map[string]any, error) {
 
 // GetHealth returns the health status message from the PriceDB API.
 func (c *Client) GetHealth(ctx context.Context) (string, error) {
-	resp, err := aoni.GetJSON[string](ctx, c.rest, "")
+	resp, err := aoni.GetTo[string](ctx, c.rest, "")
 	if err != nil {
 		return "", err
 	}
@@ -211,7 +211,7 @@ func (c *Client) GetHealth(ctx context.Context) (string, error) {
 
 // GetItems returns a list of all unique items (name and SKU) in the database.
 func (c *Client) GetItems(ctx context.Context) ([]*ItemBrief, error) {
-	resp, err := aoni.GetJSON[[]*ItemBrief](ctx, c.rest, "items")
+	resp, err := aoni.GetTo[[]*ItemBrief](ctx, c.rest, "items")
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +221,7 @@ func (c *Client) GetItems(ctx context.Context) ([]*ItemBrief, error) {
 
 // GetLatestPrices returns the 10 most recent price entries from the database.
 func (c *Client) GetLatestPrices(ctx context.Context) ([]*Price, error) {
-	resp, err := aoni.GetJSON[[]*Price](ctx, c.rest, "latest-prices")
+	resp, err := aoni.GetTo[[]*Price](ctx, c.rest, "latest-prices")
 	if err != nil {
 		return nil, err
 	}
@@ -236,12 +236,12 @@ func (c *Client) GetPrices(ctx context.Context, limit, offset int) (*PriceHistor
 		Offset int `url:"offset,omitempty"`
 	}{Limit: limit, Offset: offset}
 
-	return aoni.GetJSON[PriceHistoryResponse](ctx, c.rest, "prices", aoni.WithQuery(req))
+	return aoni.GetTo[PriceHistoryResponse](ctx, c.rest, "prices", aoni.WithQuery(req))
 }
 
 // GetSnapshot returns the most recent price for each SKU as of the given unix timestamp.
 func (c *Client) GetSnapshot(ctx context.Context, timestamp int64) ([]*Price, error) {
-	resp, err := aoni.GetJSON[[]*Price](
+	resp, err := aoni.GetTo[[]*Price](
 		ctx, c.rest, "snapshot/{timestamp}",
 		aoni.WithVar("timestamp", timestamp),
 	)
@@ -260,7 +260,7 @@ func (c *Client) GetGraph(ctx context.Context, sku string, header bool, height i
 		Width  string `url:"width,omitempty"`
 	}{Header: header, Height: height, Width: width}
 
-	resp, err := aoni.GetJSON[string](
+	resp, err := aoni.GetTo[string](
 		ctx,
 		c.rest,
 		"graph/{sku}",
@@ -276,17 +276,17 @@ func (c *Client) GetGraph(ctx context.Context, sku string, header bool, height i
 
 // GetAutobItems fetches the full pricelist in TF2Autobot-compatible format.
 func (c *Client) GetAutobItems(ctx context.Context) (*AutobItemsResponse, error) {
-	return aoni.GetJSON[AutobItemsResponse](ctx, c.rest, "autob/items")
+	return aoni.GetTo[AutobItemsResponse](ctx, c.rest, "autob/items")
 }
 
 // GetAutobItem fetches the latest price for a single SKU in TF2Autobot-compatible format.
 func (c *Client) GetAutobItem(ctx context.Context, sku string) (*Price, error) {
-	return aoni.GetJSON[Price](ctx, c.rest, "autob/items/{sku}", aoni.WithVar("sku", sku))
+	return aoni.GetTo[Price](ctx, c.rest, "autob/items/{sku}", aoni.WithVar("sku", sku))
 }
 
 // GetImageBySKU returns the raw image data for a SKU from the SKU service.
 func (c *Client) GetImageBySKU(ctx context.Context, sku string) ([]byte, error) {
-	resp, err := aoni.GetJSON[[]byte](ctx, c.sku, "sku/{sku}/image", aoni.WithVar("sku", sku))
+	resp, err := aoni.GetTo[[]byte](ctx, c.sku, "sku/{sku}/image", aoni.WithVar("sku", sku))
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +296,7 @@ func (c *Client) GetImageBySKU(ctx context.Context, sku string) ([]byte, error) 
 
 // GetImageByName returns the raw image data for an item by name from the SKU service.
 func (c *Client) GetImageByName(ctx context.Context, name string) ([]byte, error) {
-	resp, err := aoni.GetJSON[[]byte](ctx, c.sku, "name/{name}/image", aoni.WithVar("name", name))
+	resp, err := aoni.GetTo[[]byte](ctx, c.sku, "name/{name}/image", aoni.WithVar("name", name))
 	if err != nil {
 		return nil, err
 	}
@@ -311,7 +311,7 @@ func (c *Client) ListEffects(ctx context.Context) ([]*EffectInfo, error) {
 		Data    []*EffectInfo `json:"data"`
 	}
 
-	resp, err := aoni.GetJSON[response](ctx, c.sku, "effect/list")
+	resp, err := aoni.GetTo[response](ctx, c.sku, "effect/list")
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +326,7 @@ func (c *Client) GetEffectByID(ctx context.Context, id int) (*EffectInfo, error)
 		Data    *EffectInfo `json:"data"`
 	}
 
-	resp, err := aoni.GetJSON[response](ctx, c.sku, "effect/{id}", aoni.WithVar("id", id))
+	resp, err := aoni.GetTo[response](ctx, c.sku, "effect/{id}", aoni.WithVar("id", id))
 	if err != nil {
 		return nil, err
 	}
@@ -341,7 +341,7 @@ func (c *Client) GetEffectByName(ctx context.Context, name string) (*EffectInfo,
 		Data    *EffectInfo `json:"data"`
 	}
 
-	resp, err := aoni.GetJSON[response](ctx, c.sku, "effect/name/{name}", aoni.WithVar("name", name))
+	resp, err := aoni.GetTo[response](ctx, c.sku, "effect/name/{name}", aoni.WithVar("name", name))
 	if err != nil {
 		return nil, err
 	}
@@ -356,7 +356,7 @@ func (c *Client) ListPaints(ctx context.Context) ([]*PaintInfo, error) {
 		Data    []*PaintInfo `json:"data"`
 	}
 
-	resp, err := aoni.GetJSON[response](ctx, c.sku, "paint/list")
+	resp, err := aoni.GetTo[response](ctx, c.sku, "paint/list")
 	if err != nil {
 		return nil, err
 	}
@@ -371,7 +371,7 @@ func (c *Client) GetPaintByID(ctx context.Context, id int) (*PaintInfo, error) {
 		Data    *PaintInfo `json:"data"`
 	}
 
-	resp, err := aoni.GetJSON[response](ctx, c.sku, "paint/{id}", aoni.WithVar("id", id))
+	resp, err := aoni.GetTo[response](ctx, c.sku, "paint/{id}", aoni.WithVar("id", id))
 	if err != nil {
 		return nil, err
 	}
@@ -386,7 +386,7 @@ func (c *Client) GetPaintByName(ctx context.Context, name string) (*PaintInfo, e
 		Data    *PaintInfo `json:"data"`
 	}
 
-	resp, err := aoni.GetJSON[response](ctx, c.sku, "paint/name/{name}", aoni.WithVar("name", name))
+	resp, err := aoni.GetTo[response](ctx, c.sku, "paint/name/{name}", aoni.WithVar("name", name))
 	if err != nil {
 		return nil, err
 	}
@@ -401,7 +401,7 @@ func (c *Client) ListWears(ctx context.Context) ([]*WearInfo, error) {
 		Data    []*WearInfo `json:"data"`
 	}
 
-	resp, err := aoni.GetJSON[response](ctx, c.sku, "wear/list")
+	resp, err := aoni.GetTo[response](ctx, c.sku, "wear/list")
 	if err != nil {
 		return nil, err
 	}
@@ -416,7 +416,7 @@ func (c *Client) GetWearByID(ctx context.Context, id int) (*WearInfo, error) {
 		Data    *WearInfo `json:"data"`
 	}
 
-	resp, err := aoni.GetJSON[response](ctx, c.sku, "wear/{id}", aoni.WithVar("id", id))
+	resp, err := aoni.GetTo[response](ctx, c.sku, "wear/{id}", aoni.WithVar("id", id))
 	if err != nil {
 		return nil, err
 	}
@@ -426,7 +426,7 @@ func (c *Client) GetWearByID(ctx context.Context, id int) (*WearInfo, error) {
 
 // DownloadSchema downloads the TF2 item schema as a map.
 func (c *Client) DownloadSchema(ctx context.Context) (map[string]any, error) {
-	resp, err := aoni.GetJSON[map[string]any](ctx, c.sku, "download")
+	resp, err := aoni.GetTo[map[string]any](ctx, c.sku, "download")
 	if err != nil {
 		return nil, err
 	}
@@ -441,7 +441,7 @@ func (c *Client) PredictSpellPrice(ctx context.Context, spells, item string) (*S
 		Item   string `url:"item"`
 	}{Spells: spells, Item: item}
 
-	return aoni.GetJSON[SpellPredictionResponse](ctx, c.spell, "spell/predict", aoni.WithQuery(req))
+	return aoni.GetTo[SpellPredictionResponse](ctx, c.spell, "spell/predict", aoni.WithQuery(req))
 }
 
 // PredictSpellItem predicts spelled item price premium via POST.
@@ -452,7 +452,7 @@ func (c *Client) PredictSpellItem(
 ) (*PredictSpellItemResponse, error) {
 	req := PredictSpellItemRequest{ItemName: itemName, SpellIDs: spellIDs}
 
-	resp, err := aoni.PostJSON[PredictSpellItemResponse](
+	resp, err := aoni.PostTo[PredictSpellItemResponse](
 		ctx, c.spell, "spell/predict-spell-item", req,
 	)
 	if err != nil {
@@ -468,12 +468,12 @@ func (c *Client) GetSpellValue(ctx context.Context, ids string) (*SpellValueResp
 		IDs string `url:"ids"`
 	}{IDs: ids}
 
-	return aoni.GetJSON[SpellValueResponse](ctx, c.spell, "spell/spell-value", aoni.WithQuery(req))
+	return aoni.GetTo[SpellValueResponse](ctx, c.spell, "spell/spell-value", aoni.WithQuery(req))
 }
 
 // GetSpellAnalytics returns comprehensive market analytics for all tracked spell combinations.
 func (c *Client) GetSpellAnalytics(ctx context.Context) ([]*SpellAnalyticsEntry, error) {
-	resp, err := aoni.GetJSON[[]*SpellAnalyticsEntry](ctx, c.spell, "spell/spell-analytics")
+	resp, err := aoni.GetTo[[]*SpellAnalyticsEntry](ctx, c.spell, "spell/spell-analytics")
 	if err != nil {
 		return nil, err
 	}
@@ -488,7 +488,7 @@ func (c *Client) GetItemSpellPremium(ctx context.Context, item, ids string) (*It
 		IDs  string `url:"ids"`
 	}{Item: item, IDs: ids}
 
-	return aoni.GetJSON[ItemSpellPremiumResponse](
+	return aoni.GetTo[ItemSpellPremiumResponse](
 		ctx, c.spell, "spell/item-spell-premium",
 		aoni.WithQuery(req),
 	)
@@ -500,7 +500,7 @@ func (c *Client) GetSpellByID(ctx context.Context, id int) (*SpellMetadata, erro
 		ID int `url:"id"`
 	}{ID: id}
 
-	return aoni.GetJSON[SpellMetadata](ctx, c.spell, "spell/spell-id-to-name", aoni.WithQuery(req))
+	return aoni.GetTo[SpellMetadata](ctx, c.spell, "spell/spell-id-to-name", aoni.WithQuery(req))
 }
 
 // GetSpellByName returns spell metadata for a given spell name.
@@ -509,12 +509,12 @@ func (c *Client) GetSpellByName(ctx context.Context, name string) (*SpellMetadat
 		Name string `url:"name"`
 	}{Name: name}
 
-	return aoni.GetJSON[SpellMetadata](ctx, c.spell, "spell/spell-name-to-id", aoni.WithQuery(req))
+	return aoni.GetTo[SpellMetadata](ctx, c.spell, "spell/spell-name-to-id", aoni.WithQuery(req))
 }
 
 // ListSpells lists all available TF2 spell definitions.
 func (c *Client) ListSpells(ctx context.Context) ([]*SpellMetadata, error) {
-	resp, err := aoni.GetJSON[[]*SpellMetadata](ctx, c.spell, "spell/spells")
+	resp, err := aoni.GetTo[[]*SpellMetadata](ctx, c.spell, "spell/spells")
 	if err != nil {
 		return nil, err
 	}
@@ -524,20 +524,20 @@ func (c *Client) ListSpells(ctx context.Context) ([]*SpellMetadata, error) {
 
 // GetSpellFetcherStatus returns the status and statistics of the spell data collection fetcher.
 func (c *Client) GetSpellFetcherStatus(ctx context.Context) (*FetcherStatusResponse, error) {
-	return aoni.GetJSON[FetcherStatusResponse](ctx, c.spell, "spell/fetcher-status")
+	return aoni.GetTo[FetcherStatusResponse](ctx, c.spell, "spell/fetcher-status")
 }
 
 // GetSpellHealth returns health status for the spell service.
 func (c *Client) GetSpellHealth(ctx context.Context) (*SpellHealthResponse, error) {
-	return aoni.GetJSON[SpellHealthResponse](ctx, c.spell, "spell/health")
+	return aoni.GetTo[SpellHealthResponse](ctx, c.spell, "spell/health")
 }
 
 // GetServiceStats returns comprehensive service statistics.
 func (c *Client) GetServiceStats(ctx context.Context) (*ServiceStatsResponse, error) {
-	return aoni.GetJSON[ServiceStatsResponse](ctx, c.spell, "stats")
+	return aoni.GetTo[ServiceStatsResponse](ctx, c.spell, "stats")
 }
 
 // GetUnifiedStatus returns unified operational status across all services.
 func (c *Client) GetUnifiedStatus(ctx context.Context) (*UnifiedStatusResponse, error) {
-	return aoni.GetJSON[UnifiedStatusResponse](ctx, c.spell, "spell/status-proxy")
+	return aoni.GetTo[UnifiedStatusResponse](ctx, c.spell, "spell/status-proxy")
 }

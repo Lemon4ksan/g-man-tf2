@@ -143,7 +143,7 @@ type OfferActionReq struct {
 // Route: GET /offers/received
 // Permission: Connected + API
 func (c *Client) GetReceivedOffers(ctx context.Context) ([]Offer, error) {
-	resp, err := aoni.GetJSON[GetReceivedOffersResponse](ctx, c.getClient(), "/offers/received")
+	resp, err := aoni.GetTo[GetReceivedOffersResponse](ctx, c.getClient(), "/offers/received")
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +156,7 @@ func (c *Client) GetReceivedOffers(ctx context.Context) ([]Offer, error) {
 // Route: GET /offers/my
 // Permission: Connected + API
 func (c *Client) GetMyOffers(ctx context.Context) ([]Offer, error) {
-	resp, err := aoni.GetJSON[[]Offer](ctx, c.getClient(), "/offers/my")
+	resp, err := aoni.GetTo[[]Offer](ctx, c.getClient(), "/offers/my")
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +177,7 @@ func (c *Client) CreateOffer(ctx context.Context, itemAssetID int64, priceCents 
 		Price: priceCents,
 	}
 
-	return aoni.PostJSON[OfferMessageResponse](ctx, c.getClient(), "/offers/create", req)
+	return aoni.PostTo[OfferMessageResponse](ctx, c.getClient(), "/offers/create", req)
 }
 
 // AcceptOffer accepts a received offer and completes the checkout transaction (Seller action).
@@ -186,7 +186,7 @@ func (c *Client) CreateOffer(ctx context.Context, itemAssetID int64, priceCents 
 // Permission: Connected + API
 func (c *Client) AcceptOffer(ctx context.Context, offerID int64) (*OfferMessageResponse, error) {
 	req := OfferActionReq{ID: offerID}
-	return aoni.PostJSON[OfferMessageResponse](ctx, c.getClient(), "/offers/accept", req)
+	return aoni.PostTo[OfferMessageResponse](ctx, c.getClient(), "/offers/accept", req)
 }
 
 // DeclineOffer declines an incoming trade offer (Seller action).
@@ -195,7 +195,7 @@ func (c *Client) AcceptOffer(ctx context.Context, offerID int64) (*OfferMessageR
 // Permission: Connected + API
 func (c *Client) DeclineOffer(ctx context.Context, offerID int64) (*OfferMessageResponse, error) {
 	req := OfferActionReq{ID: offerID}
-	return aoni.PostJSON[OfferMessageResponse](ctx, c.getClient(), "/offers/decline", req)
+	return aoni.PostTo[OfferMessageResponse](ctx, c.getClient(), "/offers/decline", req)
 }
 
 // RemoveOffer cancels and removes an outgoing trade offer (Buyer action).
@@ -204,5 +204,5 @@ func (c *Client) DeclineOffer(ctx context.Context, offerID int64) (*OfferMessage
 // Permission: Connected + API
 func (c *Client) RemoveOffer(ctx context.Context, offerID int64) (*OfferMessageResponse, error) {
 	req := OfferActionReq{ID: offerID}
-	return aoni.PostJSON[OfferMessageResponse](ctx, c.getClient(), "/offers/remove", req)
+	return aoni.PostTo[OfferMessageResponse](ctx, c.getClient(), "/offers/remove", req)
 }

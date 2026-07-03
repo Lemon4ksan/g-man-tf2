@@ -113,7 +113,7 @@ type TradeStatusResponse struct {
 // Route: GET /deposit/{game}
 // Permission: Connected + API
 func (c *Client) GetDepositInfo(ctx context.Context, game int) (*GetDepositInfoResponse, error) {
-	return aoni.GetJSON[GetDepositInfoResponse](ctx, c.getClient(), "/deposit/{game}", aoni.WithVar("game", game))
+	return aoni.GetTo[GetDepositInfoResponse](ctx, c.getClient(), "/deposit/{game}", aoni.WithVar("game", game))
 }
 
 // CreateDepositTrade initiates a trade offer to deposit items onto the site.
@@ -125,7 +125,7 @@ func (c *Client) CreateDepositTrade(
 	ctx context.Context,
 	req CreateDepositTradeReq,
 ) (*CreateDepositTradeResponse, error) {
-	return aoni.PostJSON[CreateDepositTradeResponse](ctx, c.getClient(), "/deposit/trade", req)
+	return aoni.PostTo[CreateDepositTradeResponse](ctx, c.getClient(), "/deposit/trade", req)
 }
 
 // GetInstantSellInfo returns enriched inventory data with instant-sell price values.
@@ -134,7 +134,7 @@ func (c *Client) CreateDepositTrade(
 // Route: GET /deposit/instantSell/{game}
 // Permission: Connected + API
 func (c *Client) GetInstantSellInfo(ctx context.Context, game int) (*GetDepositInfoResponse, error) {
-	return aoni.GetJSON[GetDepositInfoResponse](
+	return aoni.GetTo[GetDepositInfoResponse](
 		ctx, c.getClient(), "/deposit/instantSell/{game}",
 		aoni.WithVar("game", game),
 	)
@@ -149,7 +149,7 @@ func (c *Client) CreateInstantSellTrade(
 	ctx context.Context,
 	req CreateInstantSellTradeReq,
 ) (*CreateDepositTradeResponse, error) {
-	return aoni.PostJSON[CreateDepositTradeResponse](ctx, c.getClient(), "/deposit/trade/instant", req)
+	return aoni.PostTo[CreateDepositTradeResponse](ctx, c.getClient(), "/deposit/trade/instant", req)
 }
 
 // GetDepositTradeStatus returns the current status and bot metadata of a deposit trade row.
@@ -157,7 +157,7 @@ func (c *Client) CreateInstantSellTrade(
 // Route: GET /deposit/tradeStatus/{tradeid}
 // Permission: Connected + API
 func (c *Client) GetDepositTradeStatus(ctx context.Context, tradeID int) (*TradeStatusResponse, error) {
-	return aoni.GetJSON[TradeStatusResponse](
+	return aoni.GetTo[TradeStatusResponse](
 		ctx, c.getClient(), "/deposit/tradeStatus/{tradeid}",
 		aoni.WithVar("tradeid", tradeID),
 	)

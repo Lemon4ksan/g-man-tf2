@@ -51,7 +51,7 @@ func DefaultConfig() Config {
 // PriceManager manages backpack.tf prices.
 type PriceManager struct {
 	config Config
-	client *bptf.Client
+	bptf   *bptf.Client
 	logger log.Logger
 
 	mu    sync.RWMutex
@@ -62,7 +62,7 @@ type PriceManager struct {
 func NewPriceManager(c *bptf.Client, l log.Logger, cfg Config) *PriceManager {
 	return &PriceManager{
 		config: cfg,
-		client: c,
+		bptf:   c,
 		logger: l.With(log.Module(BehaviorName)),
 		index:  make(map[string]bptf.PriceEntry),
 	}
@@ -107,7 +107,7 @@ func (m *PriceManager) Run(ctx context.Context) error {
 func (m *PriceManager) Update(ctx context.Context) error {
 	m.logger.Debug("Fetching full pricelist from backpack.tf...")
 
-	res, err := m.client.GetPricesV4(ctx, 1, 0)
+	resp, err := m.bptf.GetPricesV4(ctx, 1, 0)
 	if err != nil {
 		return fmt.Errorf("bptf update failed: %w", err)
 	}
@@ -115,7 +115,7 @@ func (m *PriceManager) Update(ctx context.Context) error {
 	newIndex := make(map[string]bptf.PriceEntry)
 
 	// Quality -> Tradability -> Craftability -> PriceIndex -> PriceEntry.
-	for _, itemData := range res.Items {
+	for _, itemData := range resp.Items {
 		// An item can have multiple defindexes (Valve shenanigans)
 		// We'll take the first one, as they usually overlap for different styles.
 		if len(itemData.Defindexes) == 0 {

@@ -96,7 +96,7 @@ func (m *BansManager) checkMarketplaceTF(ctx context.Context, steamID id.ID) (bo
 		} `json:"results"`
 	}
 
-	resp, err := aoni.PostJSON[MPTFResponse](ctx, m.restClient, url, req, nil)
+	resp, err := aoni.PostTo[MPTFResponse](ctx, m.restClient, url, req, nil)
 	if err != nil {
 		return false, err
 	}

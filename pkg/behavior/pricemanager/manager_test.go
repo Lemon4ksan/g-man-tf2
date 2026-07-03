@@ -231,9 +231,9 @@ func TestListingManager(t *testing.T) {
 		client := bptf.New(aoni.NewClient(stub), "", "")
 		mgr := bptf.NewListingManager(client, nil, log.Discard)
 
-		res, err := mgr.Upsert(t.Context(), bptf.ListingResolvable{})
+		resp, err := mgr.Upsert(t.Context(), bptf.ListingResolvable{})
 		require.NoError(t, err)
-		assert.Equal(t, "list_123", res.ID)
+		assert.Equal(t, "list_123", resp.ID)
 
 		err = mgr.Delete(t.Context(), "list_123")
 		require.NoError(t, err)

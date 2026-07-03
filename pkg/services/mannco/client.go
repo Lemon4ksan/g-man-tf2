@@ -101,7 +101,7 @@ func (c *Client) Login(ctx context.Context, apiKey string) error {
 		JWT string `json:"jwt"`
 	}
 
-	r, err := aoni.PostJSON[resp](ctx, c.getClient(), "user/login", body)
+	r, err := aoni.PostTo[resp](ctx, c.getClient(), "user/login", body)
 	if err != nil {
 		return err
 	}

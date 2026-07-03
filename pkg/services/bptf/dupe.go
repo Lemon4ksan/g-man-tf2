@@ -5,6 +5,7 @@
 package bptf
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -35,23 +36,17 @@ func NewBackpackTFChecker(client *Client) *BackpackTFChecker {
 func (c *BackpackTFChecker) CheckHistory(ctx context.Context, assetID uint64) (backpack.HistoryStatus, error) {
 	path := "https://backpack.tf/item/" + strconv.FormatUint(assetID, 10)
 
-	resp, err := c.bptfClient.REST().Request(ctx, http.MethodGet, path, nil, nil)
+	resp, err := aoni.GetTo[[]byte](ctx, c.bptfClient.REST(), path, aoni.WithRawDecoder())
 	if err != nil {
-		apiErr := &aoni.APIError{}
-		if errors.As(err, &apiErr) {
+		var apiErr *aoni.APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 			return backpack.HistoryStatus{Recorded: false}, nil
 		}
 
 		return backpack.HistoryStatus{}, fmt.Errorf("bptf dupe check request failed: %w", err)
 	}
 
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return backpack.HistoryStatus{}, fmt.Errorf("bptf returned unexpected status: %d", resp.StatusCode)
-	}
-
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(*resp))
 	if err != nil {
 		return backpack.HistoryStatus{}, fmt.Errorf("failed to parse bptf HTML: %w", err)
 	}

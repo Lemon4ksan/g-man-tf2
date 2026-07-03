@@ -77,10 +77,11 @@ func TestBackpackTFChecker_CheckHistory(t *testing.T) {
 				return &http.Response{
 					StatusCode: 404,
 					Body:       io.NopCloser(strings.NewReader(`{"success":false,"message":"not found"}`)),
+					Request:    req,
 				}, nil
 			},
 			wantStatus: backpack.HistoryStatus{Recorded: false},
-			wantErr:    true,
+			wantErr:    false,
 		},
 		{
 			name: "connection_failed_error",
@@ -128,6 +129,7 @@ func TestBackpackTFChecker_CheckHistory(t *testing.T) {
 						return &http.Response{
 							StatusCode: tt.statusCode,
 							Body:       io.NopCloser(strings.NewReader(tt.body)),
+							Request:    req,
 						}, nil
 					},
 				}
