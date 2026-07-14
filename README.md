@@ -66,9 +66,12 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/auth"
+	"github.com/lemon4ksan/g-man/pkg/steam/sys/apps"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/directory"
+	"github.com/lemon4ksan/g-man/pkg/steam/sys/gc"
 	"github.com/lemon4ksan/g-man/pkg/storage/jsonfile"
-	
+	"github.com/lemon4ksan/g-man/pkg/trading/web"
+
 	// G-MAN TF2 Imports
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
@@ -81,11 +84,15 @@ func main() {
 	logger := log.New(log.DefaultConfig(log.LevelInfo))
 
 	// 1. Initialize Steam Client with modular G-MAN TF2 plugins
-	client, err := steam.NewClient(steam.Config{Storage: store},
+	client, err := steam.NewClient(steam.DefaultConfig(),
 		steam.WithLogger(logger),
+		steam.WithStorage(store),
+		gc.WithModule(),
+		apps.WithModule(),
 		tf2.WithModule(),
 		schema.WithModule(schema.DefaultConfig()),
 		backpack.WithModule(),
+		web.WithModule(web.DefaultConfig()),
 	)
 	if err != nil {
 		panic(err)
@@ -93,7 +100,6 @@ func main() {
 	defer client.Close()
 
 	// 2. Fetch registered module references
-	tf2Mod := tf2.From(client)
 	bpMod := backpack.From(client)
 
 	// 3. Listen for inventory updates synced via GC SOCache
@@ -101,10 +107,10 @@ func main() {
 	go func() {
 		for event := range sub.C() {
 			if bpEvent, ok := event.(*tf2.BackpackLoadedEvent); ok {
-				logger.Info("TF2 Inventory synchronized via SOCache!", 
+				logger.Info("TF2 Inventory synchronized via SOCache!",
 					log.Int("items_count", bpEvent.Count),
 				)
-				
+
 				pure := bpMod.GetPureStock()
 				logger.Info("Current balances",
 					log.Int("keys", pure.Keys),
@@ -114,14 +120,14 @@ func main() {
 		}
 	}()
 
-	// 4. Discover optimal connection server and login
-	dir := directory.New(client.Service())
-	server, _ := dir.GetOptimalCMServer(ctx)
-	login := auth.NewLogOnDetails(os.Getenv("STEAM_USER"), os.Getenv("STEAM_PASS"))
-
 	if err := client.Run(); err != nil {
 		panic(err)
 	}
+
+	// 4. Discover optimal connection server and login
+	dir := directory.New(client)
+	server, _ := dir.GetOptimalCMServer(ctx)
+	login := auth.NewLogOnDetails(os.Getenv("STEAM_USER"), os.Getenv("STEAM_PASS"))
 
 	if err := client.ConnectAndLogin(ctx, server, login); err != nil {
 		panic(err)
@@ -140,9 +146,10 @@ package main
 import (
 	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/trading/engine"
-	
+
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
-	"github.com/lemon4ksan/g-man-tf2/pkg/pricedb"
+	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
+	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 	"github.com/lemon4ksan/g-man-tf2/pkg/trading"
 )
 
@@ -150,6 +157,7 @@ func RegisterPipeline(
 	tradeEngine *engine.Engine,
 	bp *backpack.Backpack,
 	priceMgr *pricedb.Manager,
+	schemaMod *schema.Manager,
 	logger log.Logger,
 ) {
 	stockCfg := trading.StockConfig{
@@ -163,9 +171,9 @@ func RegisterPipeline(
 	tradeEngine.Use(
 		// 1. Stock checking middleware
 		trading.StockLimitMiddleware(bp, stockCfg, logger),
-		
+
 		// 2. Price DB validation middleware
-		trading.PricerMiddleware(priceMgr, logger),
+		trading.PricerMiddleware(priceMgr, schemaMod.Get, logger),
 	)
 }
 ```

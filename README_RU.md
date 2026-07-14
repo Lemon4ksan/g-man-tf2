@@ -68,9 +68,12 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/auth"
+	"github.com/lemon4ksan/g-man/pkg/steam/sys/apps"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/directory"
+	"github.com/lemon4ksan/g-man/pkg/steam/sys/gc"
 	"github.com/lemon4ksan/g-man/pkg/storage/jsonfile"
-	
+	"github.com/lemon4ksan/g-man/pkg/trading/web"
+
 	// Импорты модулей G-MAN TF2
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
@@ -82,31 +85,34 @@ func main() {
 	store, _ := jsonfile.New("storage.json")
 	logger := log.New(log.DefaultConfig(log.LevelInfo))
 
-	// 1. Инициализация клиента Steam с регистрацией TF2-плагинов
-	client, err := steam.NewClient(steam.Config{Storage: store},
+	// 1. Инициализация клиента Steam с модульными G-MAN TF2 плагинами
+	client, err := steam.NewClient(steam.DefaultConfig(),
 		steam.WithLogger(logger),
-		schema.WithModule(schema.DefaultConfig()),
+		steam.WithStorage(store),
+		gc.WithModule(),
+		apps.WithModule(),
 		tf2.WithModule(),
+		schema.WithModule(schema.DefaultConfig()),
 		backpack.WithModule(),
+		web.WithModule(web.DefaultConfig()),
 	)
 	if err != nil {
 		panic(err)
 	}
 	defer client.Close()
 
-	// 2. Получение ссылок на инициализированные модули
-	tf2Mod := tf2.From(client)
+	// 2. Получение ссылок на зарегистрированные модули
 	bpMod := backpack.From(client)
 
-	// 3. Подписка на реалтайм-обновления инвентаря из SOCache
+	// 3. Подписка на реалтайм-обновления инвентаря через GC SOCache
 	sub := client.Bus().Subscribe(&tf2.BackpackLoadedEvent{})
 	go func() {
 		for event := range sub.C() {
 			if bpEvent, ok := event.(*tf2.BackpackLoadedEvent); ok {
-				logger.Info("Инвентарь TF2 успешно синхронизирован через SOCache!", 
+				logger.Info("Инвентарь TF2 успешно синхронизирован через SOCache!",
 					log.Int("items_count", bpEvent.Count),
 				)
-				
+
 				pure := bpMod.GetPureStock()
 				logger.Info("Доступный баланс металлов и ключей",
 					log.Int("keys", pure.Keys),
@@ -116,14 +122,14 @@ func main() {
 		}
 	}()
 
-	// 4. Поиск оптимального сервера подключения и логин
-	dir := directory.New(client.Service())
-	server, _ := dir.GetOptimalCMServer(ctx)
-	login := auth.NewLogOnDetails(os.Getenv("STEAM_USER"), os.Getenv("STEAM_PASS"))
-
 	if err := client.Run(); err != nil {
 		panic(err)
 	}
+
+	// 4. Поиск оптимального сервера подключения и логин
+	dir := directory.New(client)
+	server, _ := dir.GetOptimalCMServer(ctx)
+	login := auth.NewLogOnDetails(os.Getenv("STEAM_USER"), os.Getenv("STEAM_PASS"))
 
 	if err := client.ConnectAndLogin(ctx, server, login); err != nil {
 		panic(err)
@@ -144,7 +150,7 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/trading/engine"
 	
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
-	"github.com/lemon4ksan/g-man-tf2/pkg/pricedb"
+	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 	"github.com/lemon4ksan/g-man-tf2/pkg/trading"
 )
 
@@ -152,6 +158,7 @@ func RegisterPipeline(
 	tradeEngine *engine.Engine,
 	bp *backpack.Backpack,
 	priceMgr *pricedb.Manager,
+	schemaMod *schema.Manager,
 	logger log.Logger,
 ) {
 	stockCfg := trading.StockConfig{
@@ -167,7 +174,7 @@ func RegisterPipeline(
 		trading.StockLimitMiddleware(bp, stockCfg, logger),
 		
 		// 2. Валидация цен предметов через локальную базу данных
-		trading.PricerMiddleware(priceMgr, logger),
+		trading.PricerMiddleware(priceMgr, schemaMod, logger),
 	)
 }
 ```
