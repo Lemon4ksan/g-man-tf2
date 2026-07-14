@@ -174,7 +174,7 @@ func RegisterPipeline(
 		trading.StockLimitMiddleware(bp, stockCfg, logger),
 		
 		// 2. Валидация цен предметов через локальную базу данных
-		trading.PricerMiddleware(priceMgr, schemaMod, logger),
+		trading.PricerMiddleware(priceMgr, schemaMod.Get, logger),
 	)
 }
 ```
