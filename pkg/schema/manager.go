@@ -8,7 +8,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/gob"
 	"errors"
 	"fmt"
 	"os"
@@ -764,7 +763,11 @@ func (m *Manager) buildSchema(
 		schemaData = result
 	}
 
-	overviewBytes, _ := json.Marshal(schemaData)
+	overviewBytes, err := json.Marshal(schemaData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal schema overview: %w", err)
+	}
+
 	if err := json.Unmarshal(overviewBytes, &raw.Schema); err != nil {
 		return fmt.Errorf("failed to parse schema overview: %w", err)
 	}
@@ -781,47 +784,65 @@ func (m *Manager) buildSchema(
 		if s == "" {
 			return ""
 		}
-
 		if val, ok := strPool[s]; ok {
 			return val
 		}
-
 		strPool[s] = s
-
 		return s
 	}
 
-	raw.Schema.Items = make([]*Item, 0, len(items))
+	for _, item := range raw.Schema.Items {
+		if item == nil {
+			continue
+		}
+		item.ItemClass = intern(item.ItemClass)
+		item.CraftClass = intern(item.CraftClass)
+		item.ItemName = intern(item.ItemName)
+		item.ImageURL = intern(item.ImageURL)
+		item.ImageURLLarge = intern(item.ImageURLLarge)
 
-	var targetItem Item
-
-	config := &mapstructure.DecoderConfig{
-		TagName:          "json",
-		WeaklyTypedInput: true,
-		Result:           &targetItem,
+		for i, class := range item.UsedByClasses {
+			item.UsedByClasses[i] = intern(class)
+		}
 	}
 
-	decoder, err := mapstructure.NewDecoder(config)
-	if err != nil {
-		return err
+	existingDefs := make(map[int]bool, len(raw.Schema.Items))
+	for _, it := range raw.Schema.Items {
+		if it != nil {
+			existingDefs[it.Defindex] = true
+		}
+	}
+
+	decodeItem := func(input any, target *Item) error {
+		cfg := &mapstructure.DecoderConfig{
+			TagName:          "json",
+			WeaklyTypedInput: true,
+			Result:           target,
+		}
+		dec, err := mapstructure.NewDecoder(cfg)
+		if err != nil {
+			return err
+		}
+		return dec.Decode(input)
 	}
 
 	for _, it := range items {
-		targetItem = Item{}
+		var item Item
+		if err := decodeItem(it, &item); err == nil && item.Defindex > 0 {
+			if !existingDefs[item.Defindex] {
+				item.ItemClass = intern(item.ItemClass)
+				item.CraftClass = intern(item.CraftClass)
+				item.ItemName = intern(item.ItemName)
+				item.ImageURL = intern(item.ImageURL)
+				item.ImageURLLarge = intern(item.ImageURLLarge)
 
-		if err := decoder.Decode(it); err == nil {
-			itemCopy := targetItem
-			itemCopy.ItemClass = intern(itemCopy.ItemClass)
-			itemCopy.CraftClass = intern(itemCopy.CraftClass)
-			itemCopy.ItemName = intern(itemCopy.ItemName)
-			itemCopy.ImageURL = intern(itemCopy.ImageURL)
-			itemCopy.ImageURLLarge = intern(itemCopy.ImageURLLarge)
+				for i, class := range item.UsedByClasses {
+					item.UsedByClasses[i] = intern(class)
+				}
 
-			for i, class := range itemCopy.UsedByClasses {
-				itemCopy.UsedByClasses[i] = intern(class)
+				raw.Schema.Items = append(raw.Schema.Items, &item)
+				existingDefs[item.Defindex] = true
 			}
-
-			raw.Schema.Items = append(raw.Schema.Items, &itemCopy)
 		}
 	}
 
@@ -1184,16 +1205,16 @@ func (m *Manager) saveToCache() error {
 	s := m.schema
 	m.mu.RUnlock()
 
-	if s == nil {
+	if s == nil || s.Raw == nil {
 		return nil
 	}
 
-	var buf bytes.Buffer
-	if err := gob.NewEncoder(&buf).Encode(s.Raw); err != nil {
-		return err
+	data, err := json.Marshal(s.Raw)
+	if err != nil {
+		return fmt.Errorf("failed to marshal schema for cache: %w", err)
 	}
 
-	return writeFile(m.config.CachePath+".gob", buf.Bytes())
+	return writeFile(m.config.CachePath+".json", data)
 }
 
 func (m *Manager) loadFromCache() error {
@@ -1201,14 +1222,22 @@ func (m *Manager) loadFromCache() error {
 		return errors.New("cache path not configured")
 	}
 
-	data, err := readFile(m.config.CachePath + ".gob")
+	data, err := readFile(m.config.CachePath + ".json")
 	if err != nil {
-		return err
+		// Фолбэк на старый путь, если был .gob
+		data, err = readFile(m.config.CachePath + ".gob")
+		if err != nil {
+			return err
+		}
 	}
 
 	var raw Raw
-	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&raw); err != nil {
-		return err
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("failed to unmarshal cached schema JSON: %w", err)
+	}
+
+	if len(raw.Schema.Items) == 0 {
+		return errors.New("cached schema contains 0 items (corrupted cache)")
 	}
 
 	loadedSchema := New(&raw)

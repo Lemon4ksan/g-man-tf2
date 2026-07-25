@@ -2545,6 +2545,10 @@ func (s *Schema) IsPromoItem(it *Item) bool {
 
 // NormalizeItem adjusts the [sku.Item] defindex and quality parameters to follow trading standards.
 func (s *Schema) NormalizeItem(item *sku.Item) {
+	if item == nil {
+		return
+	}
+
 	item.Defindex = NormalizeDefindex(item.Defindex)
 
 	schemaItem := s.ItemByDef(item.Defindex)
@@ -2552,9 +2556,9 @@ func (s *Schema) NormalizeItem(item *sku.Item) {
 		return
 	}
 
-	if strings.Contains(schemaItem.Name, strings.ToUpper(schemaItem.ItemClass)) {
+	if schemaItem.ItemClass != "" && strings.Contains(schemaItem.Name, strings.ToUpper(schemaItem.ItemClass)) {
 		for _, it := range s.Raw.Schema.Items {
-			if it.ItemClass == schemaItem.ItemClass && strings.HasPrefix(it.Name, "Upgradeable ") {
+			if it.ItemClass != "" && it.ItemClass == schemaItem.ItemClass && strings.HasPrefix(it.Name, "Upgradeable ") {
 				item.Defindex = it.Defindex
 				break
 			}
@@ -2589,7 +2593,6 @@ func (s *Schema) NormalizeItem(item *sku.Item) {
 			if item.Quality == QualityStrange || item.Quality2 == QualityStrange {
 				item.Quality2 = QualityStrange
 			}
-
 			item.Quality = QualityDecorated
 		} else if item.Quality == QualityStrange || item.Quality2 == QualityStrange {
 			item.Quality = QualityUnusual
