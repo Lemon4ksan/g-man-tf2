@@ -5,12 +5,12 @@
 package schema
 
 import (
-	"encoding/json"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
 
+	json "github.com/goccy/go-json"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

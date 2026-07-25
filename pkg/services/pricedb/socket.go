@@ -6,7 +6,6 @@ package pricedb
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -14,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	json "github.com/goccy/go-json"
 	"github.com/gorilla/websocket"
 	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/mod"

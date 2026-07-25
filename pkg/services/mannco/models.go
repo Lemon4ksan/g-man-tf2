@@ -5,8 +5,9 @@
 package mannco
 
 import (
-	"encoding/json"
 	"errors"
+
+	json "github.com/goccy/go-json"
 )
 
 // BaseResponse represents the standard Mannco.store API response envelope.

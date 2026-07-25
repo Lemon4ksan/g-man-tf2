@@ -8,19 +8,19 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/gob"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/andygrunwald/vdf"
+	json "github.com/goccy/go-json"
 	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/codec/decode"
 	"github.com/lemon4ksan/aoni/option"
@@ -776,7 +776,7 @@ func (m *Manager) buildSchema(
 		}
 	}
 
-	strPool := make(map[string]string)
+	strPool := make(map[string]string, 1024)
 	intern := func(s string) string {
 		if s == "" {
 			return ""
@@ -792,33 +792,36 @@ func (m *Manager) buildSchema(
 	}
 
 	raw.Schema.Items = make([]*Item, 0, len(items))
+
+	var targetItem Item
+
+	config := &mapstructure.DecoderConfig{
+		TagName:          "json",
+		WeaklyTypedInput: true,
+		Result:           &targetItem,
+	}
+
+	decoder, err := mapstructure.NewDecoder(config)
+	if err != nil {
+		return err
+	}
+
 	for _, it := range items {
-		var item Item
-
-		config := &mapstructure.DecoderConfig{
-			TagName:          "json",
-			WeaklyTypedInput: true,
-			Result:           &item,
-		}
-
-		decoder, err := mapstructure.NewDecoder(config)
-		if err != nil {
-			m.Logger.Error("Failed to build schema decoder", log.Err(err))
-			return err
-		}
+		targetItem = Item{}
 
 		if err := decoder.Decode(it); err == nil {
-			item.ItemClass = intern(item.ItemClass)
-			item.CraftClass = intern(item.CraftClass)
-			item.ItemName = intern(item.ItemName)
-			item.ImageURL = intern(item.ImageURL)
-			item.ImageURLLarge = intern(item.ImageURLLarge)
+			itemCopy := targetItem
+			itemCopy.ItemClass = intern(itemCopy.ItemClass)
+			itemCopy.CraftClass = intern(itemCopy.CraftClass)
+			itemCopy.ItemName = intern(itemCopy.ItemName)
+			itemCopy.ImageURL = intern(itemCopy.ImageURL)
+			itemCopy.ImageURLLarge = intern(itemCopy.ImageURLLarge)
 
-			for i, class := range item.UsedByClasses {
-				item.UsedByClasses[i] = intern(class)
+			for i, class := range itemCopy.UsedByClasses {
+				itemCopy.UsedByClasses[i] = intern(class)
 			}
 
-			raw.Schema.Items = append(raw.Schema.Items, &item)
+			raw.Schema.Items = append(raw.Schema.Items, &itemCopy)
 		}
 	}
 
@@ -835,8 +838,6 @@ func (m *Manager) buildSchema(
 	m.mu.Lock()
 	m.schema = newSchema
 	m.mu.Unlock()
-
-	debug.FreeOSMemory()
 
 	return nil
 }
@@ -1187,12 +1188,12 @@ func (m *Manager) saveToCache() error {
 		return nil
 	}
 
-	data, err := json.Marshal(s)
-	if err != nil {
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(s.Raw); err != nil {
 		return err
 	}
 
-	return writeFile(m.config.CachePath, data)
+	return writeFile(m.config.CachePath+".gob", buf.Bytes())
 }
 
 func (m *Manager) loadFromCache() error {
@@ -1200,23 +1201,17 @@ func (m *Manager) loadFromCache() error {
 		return errors.New("cache path not configured")
 	}
 
-	data, err := readFile(m.config.CachePath)
+	data, err := readFile(m.config.CachePath + ".gob")
 	if err != nil {
 		return err
 	}
 
-	var s Schema
-	if err := json.Unmarshal(data, &s); err != nil {
+	var raw Raw
+	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&raw); err != nil {
 		return err
 	}
 
-	if s.Raw == nil || len(s.Raw.Schema.Items) == 0 {
-		return errors.New("cached schema is incomplete")
-	}
-
-	loadedSchema := New(s.Raw)
-	loadedSchema.Version = s.Version
-	loadedSchema.Time = s.Time
+	loadedSchema := New(&raw)
 
 	m.mu.Lock()
 	m.schema = loadedSchema

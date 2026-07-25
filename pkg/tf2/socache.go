@@ -212,6 +212,18 @@ func (c *SOCache) GetMetal(defIndex uint32, count int) []uint64 {
 	return ids
 }
 
+// ForEachItem iterates over all items in the cache, calling fn for each item.
+func (c *SOCache) ForEachItem(fn func(item *Item) bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	for _, item := range c.items {
+		if !fn(item) {
+			break
+		}
+	}
+}
+
 // FindCraftableItems returns up to count tradable and craftable item IDs matching the defIndex.
 func (c *SOCache) FindCraftableItems(defIndex uint32, count int) []uint64 {
 	c.mu.RLock()

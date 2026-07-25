@@ -6,9 +6,9 @@ package mannco
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 
+	json "github.com/goccy/go-json"
 	"github.com/lemon4ksan/aoni/request"
 )
 

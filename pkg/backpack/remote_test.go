@@ -6,11 +6,11 @@ package backpack
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strconv"
 	"testing"
 
+	json "github.com/goccy/go-json"
 	"github.com/lemon4ksan/g-man/pkg/steam/community/inventory"
 	"github.com/lemon4ksan/g-man/pkg/steam/transport"
 	"github.com/lemon4ksan/g-man/pkg/test/mock"

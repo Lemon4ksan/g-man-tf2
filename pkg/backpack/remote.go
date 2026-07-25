@@ -6,7 +6,6 @@ package backpack
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -14,6 +13,7 @@ import (
 	"strconv"
 	"sync"
 
+	json "github.com/goccy/go-json"
 	"github.com/lemon4ksan/g-man/pkg/steam/community"
 	"github.com/lemon4ksan/g-man/pkg/steam/community/inventory"
 	"github.com/lemon4ksan/g-man/pkg/steam/service"

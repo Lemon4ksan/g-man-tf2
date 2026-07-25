@@ -368,6 +368,18 @@ func (m *Backpack) GetStock(sku string) int {
 	}
 
 	count := 0
+	if soCache, ok := m.cache.(interface{ ForEachItem(func(*tf2.Item) bool) }); ok {
+		soCache.ForEachItem(func(item *tf2.Item) bool {
+			if item.GetSKU(s) == sku {
+				count++
+			}
+
+			return true
+		})
+
+		return count
+	}
+
 	for _, item := range m.cache.GetItems() {
 		if item.GetSKU(s) == sku {
 			count++

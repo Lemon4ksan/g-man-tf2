@@ -6,13 +6,13 @@ package pricemanager
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
 
+	json "github.com/goccy/go-json"
 	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 	"github.com/lemon4ksan/g-man/pkg/test/mock"

@@ -5,7 +5,6 @@
 package schema
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -14,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	json "github.com/goccy/go-json"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
@@ -59,42 +59,42 @@ type Raw struct {
 
 // Item represents a single TF2 item definition in the schema.
 type Item struct {
-	// Defindex represents the unique item definition index.
-	Defindex int `json:"defindex"`
-	// Name represents the unique internal string identifier.
-	Name string `json:"name"`
-	// ItemName represents the localized display name.
-	ItemName string `json:"item_name"`
-	// ItemClass represents the internal item class name.
-	ItemClass string `json:"item_class"`
-	// ItemQuality represents the default quality ID of the item.
-	ItemQuality int `json:"item_quality"`
-	// ProperName indicates whether "The" should prepend the item name.
-	ProperName bool `json:"proper_name"`
-	// CraftClass represents the craft class name (e.g. "weapon", "hat").
-	CraftClass string `json:"craft_class"`
 	// Capabilities defines the customization actions permitted on this item.
 	Capabilities *Capabilities `json:"capabilities"`
 	// UsedByClasses lists character classes that can equip this item.
 	UsedByClasses []string `json:"used_by_classes"`
 	// Attributes contains static attributes defined on this item.
 	Attributes []ItemAttribute `json:"attributes"`
+	// Name represents the unique internal string identifier.
+	Name string `json:"name"`
+	// ItemName represents the localized display name.
+	ItemName string `json:"item_name"`
+	// ItemClass represents the internal item class name.
+	ItemClass string `json:"item_class"`
+	// CraftClass represents the craft class name (e.g. "weapon", "hat").
+	CraftClass string `json:"craft_class"`
 	// ImageURL represents the URL of the small (128x128) backpack icon.
 	ImageURL string `json:"image_url"`
 	// ImageURLLarge represents the URL of the large (512x512) backpack image.
 	ImageURLLarge string `json:"image_url_large"`
+	// ItemClass specifies the item class for equipping.
+	ItemSlot string `json:"item_slot,omitempty"`
+	// Defindex represents the unique item definition index.
+	Defindex int `json:"defindex"`
+	// ItemQuality represents the default quality ID of the item.
+	ItemQuality int `json:"item_quality"`
 	// Flags represents item flags bitmask (trade/craft restrictions).
 	Flags int `json:"flags,omitempty"`
 	// Origin represents the item origin/provenance ID.
 	Origin int `json:"origin,omitempty"`
 	// LoadoutSlot represents the default loadout slot position.
 	LoadoutSlot int `json:"loadoutslot,omitempty"`
-	// ItemClass specifies the item class for equipping.
-	ItemSlot string `json:"item_slot,omitempty"`
 	// StyleCount represents the number of available styles.
-	StyleCount any `json:"styles,omitempty"`
+	StyleCount int `json:"styles,omitempty"`
 	// UsedByClassesRaw is the raw class usability bitmask (if present).
 	UsedByClassesRaw int `json:"used_by_classes_mask,omitempty"`
+	// ProperName indicates whether "The" should prepend the item name.
+	ProperName bool `json:"proper_name"`
 }
 
 // IsTradableByFlags checks if the item is tradable based on its flags bitmask.
@@ -522,29 +522,29 @@ func New(raw *Raw) *Schema {
 		}
 	}
 
-	s := &Schema{
-		Raw:            raw,
-		itemsByDef:     make(map[int]*Item),
-		itemsByName:    make(map[string]*Item),
-		attrsByDef:     make(map[int]*AttributeSchema),
-		qualByID:       make(map[int]string),
-		qualByName:     make(map[string]int),
-		effByID:        make(map[int]string),
-		effByName:      make(map[string]int),
-		paintKitByID:   make(map[int]string),
-		paintKitByName: make(map[string]int),
-		paintByDecimal: make(map[int]string),
-		paintByName:    make(map[string]int),
-		spellsByName:   make(map[string]sku.Spell),
-		spellsByID:     make(map[string]string),
-	}
+	s := &Schema{Raw: raw}
 	s.buildIndices()
 
 	return s
 }
 
 func (s *Schema) buildIndices() {
-	s.itemsByNameStripped = make(map[string]*Item)
+	numItems := len(s.Raw.Schema.Items)
+	numAttrs := len(s.Raw.Schema.Attributes)
+	numQual := len(s.Raw.Schema.Qualities)
+
+	s.itemsByDef = make(map[int]*Item, numItems)
+	s.itemsByName = make(map[string]*Item, numItems)
+	s.itemsByNameStripped = make(map[string]*Item, numItems)
+	s.attrsByDef = make(map[int]*AttributeSchema, numAttrs)
+	s.qualByID = make(map[int]string, numQual)
+	s.qualByName = make(map[string]int, numQual)
+	s.effByID = make(map[int]string, len(s.Raw.Schema.AttributeControlledAttachedParticles))
+	s.effByName = make(map[string]int, len(s.Raw.Schema.AttributeControlledAttachedParticles))
+	s.paintKitByID = make(map[int]string, len(s.Raw.Schema.PaintKits))
+	s.paintKitByName = make(map[string]int, len(s.Raw.Schema.PaintKits))
+	s.paintByDecimal = make(map[int]string, 32)
+	s.paintByName = make(map[string]int, 32)
 
 	for _, item := range s.Raw.Schema.Items {
 		lowName := strings.ToLower(item.ItemName)

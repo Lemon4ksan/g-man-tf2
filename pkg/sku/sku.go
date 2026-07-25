@@ -6,10 +6,13 @@
 package sku
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 var rxPriceKey = regexp.MustCompile(
@@ -52,116 +55,77 @@ type Spell struct {
 	Value     int
 }
 
+var skuBufferPool = sync.Pool{
+	New: func() any {
+		b := new(bytes.Buffer)
+		b.Grow(64)
+		return b
+	},
+}
+
 // FromString parses a SKU string into an Item.
 // The expected format is "defindex;quality[;attribute]*".
 // Attributes may include dashes (e.g., "kt-2") which are ignored during parsing.
 func FromString(sku string) (*Item, error) {
-	parts := strings.Split(sku, ";")
-	if len(parts) < 2 {
-		return nil, fmt.Errorf("invalid SKU: %s", sku)
+	if len(sku) == 0 {
+		return nil, errors.New("invalid SKU: empty")
 	}
 
 	item := &Item{
 		Craftable: true,
 		Tradable:  true,
-		// all other fields default to zero/false
 	}
 
-	// defindex
-	defindex, err := strconv.Atoi(parts[0])
-	if err != nil {
-		return nil, fmt.Errorf("invalid defindex: %s", parts[0])
-	}
+	start := 0
+	partIdx := 0
 
-	item.Defindex = defindex
+	for start < len(sku) {
+		end := strings.IndexByte(sku[start:], ';')
 
-	// quality
-	quality, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return nil, fmt.Errorf("invalid quality: %s", parts[1])
-	}
-
-	item.Quality = quality
-
-	// process remaining attributes
-	for _, part := range parts[2:] {
-		attr := part
-		// Special case: some attributes use dashes (kt-3, td-400), we should normalize them for matching
-		// but keep them for others (like spells s-1009-1)
-		normAttr := strings.ReplaceAll(attr, "-", "")
-
-		switch {
-		case normAttr == "uncraftable":
-			item.Craftable = false
-		case normAttr == "untradeable" || normAttr == "untradable":
-			item.Tradable = false
-		case normAttr == "australium":
-			item.Australium = true
-		case normAttr == "festive":
-			item.Festivized = true
-		case normAttr == "strange":
-			item.Quality2 = 11
-		case strings.HasPrefix(normAttr, "kt") && len(normAttr) > 2:
-			if val, err := strconv.Atoi(normAttr[2:]); err == nil {
-				item.Killstreak = val
-			}
-		case strings.HasPrefix(normAttr, "u") && len(normAttr) > 1:
-			if val, err := strconv.Atoi(normAttr[1:]); err == nil {
-				item.Effect = val
-			}
-		case strings.HasPrefix(normAttr, "pk") && len(normAttr) > 2:
-			if val, err := strconv.Atoi(normAttr[2:]); err == nil {
-				item.Paintkit = val
-			}
-		case strings.HasPrefix(normAttr, "sd") && len(normAttr) > 2:
-			if val, err := strconv.Atoi(normAttr[2:]); err == nil {
-				item.Seed = val
-			}
-		case strings.HasPrefix(normAttr, "w") && len(normAttr) > 1:
-			if val, err := strconv.Atoi(normAttr[1:]); err == nil {
-				item.Wear = val
-			}
-		case strings.HasPrefix(normAttr, "td") && len(normAttr) > 2:
-			if val, err := strconv.Atoi(normAttr[2:]); err == nil {
-				item.Target = val
-			}
-		case strings.HasPrefix(normAttr, "n") && len(normAttr) > 1:
-			if val, err := strconv.Atoi(normAttr[1:]); err == nil {
-				item.Craftnumber = val
-			}
-		case strings.HasPrefix(normAttr, "c") && len(normAttr) > 1:
-			if val, err := strconv.Atoi(normAttr[1:]); err == nil {
-				item.Crateseries = val
-			}
-		case strings.HasPrefix(normAttr, "od") && len(normAttr) > 2:
-			if val, err := strconv.Atoi(normAttr[2:]); err == nil {
-				item.Output = val
-			}
-		case strings.HasPrefix(normAttr, "oq") && len(normAttr) > 2:
-			if val, err := strconv.Atoi(normAttr[2:]); err == nil {
-				item.OutputQuality = val
-			}
-		case strings.HasPrefix(normAttr, "p") && len(normAttr) > 1 && !strings.Contains(attr, "-"):
-			if val, err := strconv.Atoi(normAttr[1:]); err == nil {
-				item.Paint = val
-			}
-		case strings.HasPrefix(attr, "s-") && len(attr) > 2:
-			spellParts := strings.Split(attr[2:], "-")
-			if len(spellParts) == 2 {
-				a, _ := strconv.Atoi(spellParts[0])
-				v, _ := strconv.Atoi(spellParts[1])
-				item.Spells = append(item.Spells, Spell{Attribute: a, Value: v})
-			}
-
-		case strings.HasPrefix(attr, "sp") && len(attr) > 2:
-			if val, err := strconv.Atoi(attr[2:]); err == nil {
-				item.Parts = append(item.Parts, val)
-			}
-		case strings.HasPrefix(attr, "s") && len(attr) > 1:
-			if val, err := strconv.Atoi(attr[1:]); err == nil {
-				item.Spells = append(item.Spells, Spell{Attribute: val, Value: 1})
-			}
+		var part string
+		if end == -1 {
+			part = sku[start:]
+			start = len(sku)
+		} else {
+			part = sku[start : start+end]
+			start += end + 1
 		}
+
+		if len(part) == 0 {
+			continue
+		}
+
+		if partIdx == 0 {
+			defindex, err := strconv.Atoi(part)
+			if err != nil {
+				return nil, fmt.Errorf("invalid defindex: %s", part)
+			}
+
+			item.Defindex = defindex
+			partIdx++
+
+			continue
+		}
+
+		if partIdx == 1 {
+			quality, err := strconv.Atoi(part)
+			if err != nil {
+				return nil, fmt.Errorf("invalid quality: %s", part)
+			}
+
+			item.Quality = quality
+			partIdx++
+
+			continue
+		}
+
+		parseSKUAttribute(item, part)
+
+		partIdx++
+	}
+
+	if partIdx < 2 {
+		return nil, fmt.Errorf("invalid SKU: %s", sku)
 	}
 
 	return item, nil
@@ -170,85 +134,85 @@ func FromString(sku string) (*Item, error) {
 // FromObject converts an Item into its SKU string representation.
 // The output format follows the conventions used in the original JavaScript code.
 func FromObject(item *Item) string {
-	var b strings.Builder
-	b.Grow(64)
+	buf := skuBufferPool.Get().(*bytes.Buffer)
 
-	b.WriteString(strconv.Itoa(item.Defindex))
-	b.WriteByte(';')
-	b.WriteString(strconv.Itoa(item.Quality))
+	buf.Reset()
+	defer skuBufferPool.Put(buf)
+
+	var numBuf [20]byte
+
+	buf.Write(strconv.AppendInt(numBuf[:0], int64(item.Defindex), 10))
+	buf.WriteByte(';')
+	buf.Write(strconv.AppendInt(numBuf[:0], int64(item.Quality), 10))
 
 	if item.Effect != 0 {
-		b.WriteString(";u")
-		b.WriteString(strconv.Itoa(item.Effect))
+		buf.WriteString(";u")
+		buf.Write(strconv.AppendInt(numBuf[:0], int64(item.Effect), 10))
 	}
 
 	if item.Australium {
-		b.WriteString(";australium")
+		buf.WriteString(";australium")
 	}
 
 	if !item.Craftable {
-		b.WriteString(";uncraftable")
+		buf.WriteString(";uncraftable")
 	}
 
 	if !item.Tradable {
-		b.WriteString(";untradable")
+		buf.WriteString(";untradable")
 	}
 
 	if item.Wear != 0 {
-		b.WriteByte(';')
-		b.WriteByte('w')
-		b.WriteString(strconv.Itoa(item.Wear))
+		buf.WriteString(";w")
+		buf.Write(strconv.AppendInt(numBuf[:0], int64(item.Wear), 10))
 	}
 
 	if item.Paintkit != 0 {
-		b.WriteString(";pk")
-		b.WriteString(strconv.Itoa(item.Paintkit))
+		buf.WriteString(";pk")
+		buf.Write(strconv.AppendInt(numBuf[:0], int64(item.Paintkit), 10))
 	}
 
 	if item.Quality2 == 11 {
-		b.WriteString(";strange")
+		buf.WriteString(";strange")
 	}
 
 	if item.Killstreak != 0 {
-		b.WriteString(";kt-")
-		b.WriteString(strconv.Itoa(item.Killstreak))
+		buf.WriteString(";kt-")
+		buf.Write(strconv.AppendInt(numBuf[:0], int64(item.Killstreak), 10))
 	}
 
 	if item.Target != 0 {
-		b.WriteString(";td-")
-		b.WriteString(strconv.Itoa(item.Target))
+		buf.WriteString(";td-")
+		buf.Write(strconv.AppendInt(numBuf[:0], int64(item.Target), 10))
 	}
 
 	if item.Festivized {
-		b.WriteString(";festive")
+		buf.WriteString(";festive")
 	}
 
 	if item.Craftnumber != 0 {
-		b.WriteByte(';')
-		b.WriteByte('n')
-		b.WriteString(strconv.Itoa(item.Craftnumber))
+		buf.WriteString(";n")
+		buf.Write(strconv.AppendInt(numBuf[:0], int64(item.Craftnumber), 10))
 	}
 
 	if item.Crateseries != 0 {
-		b.WriteByte(';')
-		b.WriteByte('c')
-		b.WriteString(strconv.Itoa(item.Crateseries))
+		buf.WriteString(";c")
+		buf.Write(strconv.AppendInt(numBuf[:0], int64(item.Crateseries), 10))
 	}
 
 	if item.Output != 0 {
-		b.WriteString(";od-")
-		b.WriteString(strconv.Itoa(item.Output))
+		buf.WriteString(";od-")
+		buf.Write(strconv.AppendInt(numBuf[:0], int64(item.Output), 10))
 	}
 
 	if item.OutputQuality != 0 {
-		b.WriteString(";oq-")
-		b.WriteString(strconv.Itoa(item.OutputQuality))
+		buf.WriteString(";oq-")
+		buf.Write(strconv.AppendInt(numBuf[:0], int64(item.OutputQuality), 10))
 	}
 
 	if item.Paint != 0 {
-		b.WriteByte(';')
-		b.WriteByte('p')
-		b.WriteString(strconv.Itoa(item.Paint))
+		buf.WriteString(";p")
+		buf.Write(strconv.AppendInt(numBuf[:0], int64(item.Paint), 10))
 	}
 
 	for _, spell := range item.Spells {
@@ -256,23 +220,23 @@ func FromObject(item *Item) string {
 			continue
 		}
 
-		b.WriteString(";s-")
-		b.WriteString(strconv.Itoa(spell.Attribute))
-		b.WriteByte('-')
-		b.WriteString(strconv.Itoa(spell.Value))
+		buf.WriteString(";s-")
+		buf.Write(strconv.AppendInt(numBuf[:0], int64(spell.Attribute), 10))
+		buf.WriteByte('-')
+		buf.Write(strconv.AppendInt(numBuf[:0], int64(spell.Value), 10))
 	}
 
 	for _, partID := range item.Parts {
-		b.WriteString(";sp")
-		b.WriteString(strconv.Itoa(partID))
+		buf.WriteString(";sp")
+		buf.Write(strconv.AppendInt(numBuf[:0], int64(partID), 10))
 	}
 
 	if item.Seed != 0 {
-		b.WriteString(";sd")
-		b.WriteString(strconv.Itoa(item.Seed))
+		buf.WriteString(";sd")
+		buf.Write(strconv.AppendInt(numBuf[:0], int64(item.Seed), 10))
 	}
 
-	return b.String()
+	return buf.String()
 }
 
 // ToPricingSKU normalizes the specified SKU string by stripping transient flags
@@ -292,4 +256,78 @@ func ToPricingSKU(skuStr string) string {
 	it.Paint = 0
 
 	return FromObject(it)
+}
+
+func parseSKUAttribute(item *Item, part string) {
+	switch {
+	case part == "uncraftable":
+		item.Craftable = false
+	case part == "untradable" || part == "untradeable":
+		item.Tradable = false
+	case part == "australium":
+		item.Australium = true
+	case part == "festive":
+		item.Festivized = true
+	case part == "strange":
+		item.Quality2 = 11
+	case strings.HasPrefix(part, "kt-") && len(part) > 3:
+		if val, err := strconv.Atoi(part[3:]); err == nil {
+			item.Killstreak = val
+		}
+	case strings.HasPrefix(part, "u") && len(part) > 1:
+		if val, err := strconv.Atoi(part[1:]); err == nil {
+			item.Effect = val
+		}
+	case strings.HasPrefix(part, "pk") && len(part) > 2:
+		if val, err := strconv.Atoi(part[2:]); err == nil {
+			item.Paintkit = val
+		}
+	case strings.HasPrefix(part, "sd") && len(part) > 2:
+		if val, err := strconv.Atoi(part[2:]); err == nil {
+			item.Seed = val
+		}
+	case strings.HasPrefix(part, "w") && len(part) > 1:
+		if val, err := strconv.Atoi(part[1:]); err == nil {
+			item.Wear = val
+		}
+	case strings.HasPrefix(part, "td-") && len(part) > 3:
+		if val, err := strconv.Atoi(part[3:]); err == nil {
+			item.Target = val
+		}
+	case strings.HasPrefix(part, "n") && len(part) > 1:
+		if val, err := strconv.Atoi(part[1:]); err == nil {
+			item.Craftnumber = val
+		}
+	case strings.HasPrefix(part, "c") && len(part) > 1:
+		if val, err := strconv.Atoi(part[1:]); err == nil {
+			item.Crateseries = val
+		}
+	case strings.HasPrefix(part, "od-") && len(part) > 3:
+		if val, err := strconv.Atoi(part[3:]); err == nil {
+			item.Output = val
+		}
+	case strings.HasPrefix(part, "oq-") && len(part) > 3:
+		if val, err := strconv.Atoi(part[3:]); err == nil {
+			item.OutputQuality = val
+		}
+	case strings.HasPrefix(part, "p") && len(part) > 1 && !strings.Contains(part, "-"):
+		if val, err := strconv.Atoi(part[1:]); err == nil {
+			item.Paint = val
+		}
+	case strings.HasPrefix(part, "s-") && len(part) > 2:
+		if idx := strings.IndexByte(part[2:], '-'); idx != -1 {
+			a, _ := strconv.Atoi(part[2 : 2+idx])
+			v, _ := strconv.Atoi(part[2+idx+1:])
+			item.Spells = append(item.Spells, Spell{Attribute: a, Value: v})
+		}
+
+	case strings.HasPrefix(part, "sp") && len(part) > 2:
+		if val, err := strconv.Atoi(part[2:]); err == nil {
+			item.Parts = append(item.Parts, val)
+		}
+	case strings.HasPrefix(part, "s") && len(part) > 1:
+		if val, err := strconv.Atoi(part[1:]); err == nil {
+			item.Spells = append(item.Spells, Spell{Attribute: val, Value: 1})
+		}
+	}
 }

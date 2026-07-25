@@ -6,12 +6,12 @@ package trading
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	json "github.com/goccy/go-json"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 	"github.com/lemon4ksan/miyako/log"
 	"github.com/stretchr/testify/assert"

@@ -5,7 +5,6 @@
 package bptf
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	json "github.com/goccy/go-json"
 	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/option"
 	"github.com/lemon4ksan/g-man/pkg/test/mock"

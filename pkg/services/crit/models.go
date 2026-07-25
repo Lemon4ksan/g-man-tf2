@@ -5,10 +5,10 @@
 package crit
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 
+	json "github.com/goccy/go-json"
 	"github.com/lemon4ksan/aoni/codec/values"
 )
 
