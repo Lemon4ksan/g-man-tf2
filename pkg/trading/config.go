@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package trading implements Team Fortress 2 automated trading, valuation, and security logic.
+//
+// The package uses [ConfigManager] to manage active strategy boundaries and integrates TF2-specific
+// valuation, item pricing, and inventory constraints into the core G-man trade engine.
 package trading
 
 import (
@@ -13,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lemon4ksan/g-man/pkg/log"
+	"github.com/lemon4ksan/miyako/log"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
 )

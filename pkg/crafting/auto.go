@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/lemon4ksan/g-man/pkg/behavior"
-	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/miyako/generic"
+	"github.com/lemon4ksan/miyako/log"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 )

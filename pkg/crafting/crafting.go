@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package crafting automates metal condensing, weapon smelting, and trade change balancing.
+//
+// The package uses [Manager] to dispatch blueprints to the Game Coordinator and [Automator]
+// to manage background duplicate weapon smelting and low-grade metal consolidation.
 package crafting
 
 import (

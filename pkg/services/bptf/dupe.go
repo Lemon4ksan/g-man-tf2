@@ -14,6 +14,8 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/lemon4ksan/aoni"
+	"github.com/lemon4ksan/aoni/codec/decode"
+	"github.com/lemon4ksan/aoni/request"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 )
@@ -36,7 +38,7 @@ func NewBackpackTFChecker(client *Client) *BackpackTFChecker {
 func (c *BackpackTFChecker) CheckHistory(ctx context.Context, assetID uint64) (backpack.HistoryStatus, error) {
 	path := "https://backpack.tf/item/" + strconv.FormatUint(assetID, 10)
 
-	resp, err := aoni.GetTo[[]byte](ctx, c.bptfClient.REST(), path, aoni.WithRawDecoder())
+	resp, err := request.GetTo[[]byte](ctx, c.bptfClient.REST(), path, decode.WithRaw())
 	if err != nil {
 		var apiErr *aoni.APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {

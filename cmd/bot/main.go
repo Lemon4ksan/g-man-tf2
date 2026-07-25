@@ -20,7 +20,6 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/behavior"
 	"github.com/lemon4ksan/g-man/pkg/behavior/achievements"
 	"github.com/lemon4ksan/g-man/pkg/behavior/guard"
-	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/auth"
 	"github.com/lemon4ksan/g-man/pkg/steam/social/friends"
@@ -35,6 +34,7 @@ import (
 	webtrading "github.com/lemon4ksan/g-man/pkg/trading/web"
 	"github.com/lemon4ksan/miyako/bus"
 	"github.com/lemon4ksan/miyako/generic"
+	"github.com/lemon4ksan/miyako/log"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 	"github.com/lemon4ksan/g-man-tf2/pkg/crafting"
@@ -74,7 +74,6 @@ type Bot struct {
 	logger          log.Logger
 	client          *steam.Client
 	sub             *bus.Subscription
-	orchestrator    *behavior.Orchestrator
 	wg              sync.WaitGroup
 	tradeCfgManager *tf2trading.ConfigManager
 	bptfClient      *bptf.Client
@@ -88,30 +87,15 @@ type Bot struct {
 // NewBot creates and initializes a new bot instance using the provided configuration
 // and injected storage and logger dependencies.
 func NewBot(cfg Config, store storage.Provider, logger log.Logger) (*Bot, error) {
-	// 1. Initialize TF2 Trade Configuration
+	// Initialize TF2 Trade Configuration
 	tradeCfgManager, err := tf2trading.NewConfigManager("trading_config.json")
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize trade config: %w", err)
 	}
 
-	var logFields []log.Field
-	if cfg.Username != "" {
-		logFields = append(logFields, log.String("account", cfg.Username))
-	}
-
-	if cfg.RefreshToken != "" {
-		if id := auth.ExtractSteamIDFromJWT(cfg.RefreshToken); id != 0 {
-			logFields = append(logFields, log.SteamID(id.Uint64()))
-		}
-	}
-
-	if len(logFields) > 0 {
-		logger = logger.With(logFields...)
-	}
-
 	logger = logger.With(log.String("module", "bot"))
 
-	// 2. Setup standard HTTP clients and TF2 API services
+	// Setup standard HTTP clients and TF2 API services
 	restClient := aoni.NewClient(&http.Client{Timeout: 30 * time.Second})
 	bptfClient := bptf.New(restClient, cfg.BptfAPIKey, cfg.BptfUserToken)
 	pdbClient := pricedb.NewClient(restClient)
@@ -121,7 +105,7 @@ func NewBot(cfg Config, store storage.Provider, logger log.Logger) (*Bot, error)
 	bansManager := rep.NewBansManager(bptfClient, cfg.MptfAPIKey)
 	bptfChecker := bptf.NewBackpackTFChecker(bptfClient)
 
-	// 3. Configure the Steam Client with all necessary modules
+	// Configure the Steam Client with all necessary modules
 	opts := []steam.Option{
 		steam.WithStorage(store),
 		steam.WithLogger(logger),
@@ -132,8 +116,9 @@ func NewBot(cfg Config, store storage.Provider, logger log.Logger) (*Bot, error)
 		tf2.WithModule(),
 		schema.WithModule(schema.DefaultConfig()),
 		backpack.WithModule(),
-		guard.WithModule(guard.DefaultGuardConfig(cfg.SharedSecret, cfg.IdentitySecret, cfg.DeviceID)),
+		guard.WithModule(guard.DefaultConfig(cfg.SharedSecret, cfg.IdentitySecret, cfg.DeviceID)),
 		webtrading.WithModule(webtrading.Config{PollInterval: 30 * time.Second}),
+		behavior.WithModule(),
 	}
 
 	client, err := steam.NewClient(steam.DefaultConfig(), opts...)
@@ -209,16 +194,12 @@ func (b *Bot) Run(ctx context.Context) error {
 	}
 
 	if steamID := b.client.Session().SteamID(); steamID != 0 {
-		b.logger = b.logger.With(log.SteamID(steamID.Uint64()))
+		b.logger = b.logger.With(log.Uint64("steam_id", steamID.Uint64()))
 	}
 
-	b.logger.Info("Bot logged in. Starting background behaviors...")
+	b.logger.Info("Bot logged in. Setting up behaviors...")
 
-	b.setupOrchestrator()
-
-	if err := b.orchestrator.Start(ctx); err != nil {
-		return fmt.Errorf("orchestrator start failed: %w", err)
-	}
+	b.setupBehaviors()
 
 	b.logger.Info("Bot fully operational")
 
@@ -229,11 +210,6 @@ func (b *Bot) Run(ctx context.Context) error {
 
 // Close gracefully shuts down the bot, stopping the orchestrator and closing the client connection.
 func (b *Bot) Close() {
-	if b.orchestrator != nil {
-		b.orchestrator.Stop()
-		b.logger.Info("Behavior orchestrator stopped")
-	}
-
 	if b.sub != nil {
 		b.sub.Unsubscribe()
 	}
@@ -260,14 +236,13 @@ func (b *Bot) discoverCMServer(ctx context.Context) (socket.CMServer, error) {
 	return dir.GetOptimalCMServer(dirCtx)
 }
 
-func (b *Bot) setupOrchestrator() {
-	b.orchestrator = behavior.NewOrchestrator(b.client.Bus(), b.logger)
-	b.orchestrator.Register(b.pdbManager)
+func (b *Bot) setupBehaviors() {
+	orch := behavior.From(b.client)
+	orch.Register(b.pdbManager)
 
 	bp := backpack.From(b.client)
 	tf2Mod := tf2.From(b.client)
 	webTradeManager := webtrading.From(b.client)
-	guardian := guard.From(b.client)
 
 	craftingManager := crafting.NewManager(bp, tf2Mod)
 	metalManager := crafting.NewMetalManager(bp, craftingManager, b.logger)
@@ -277,10 +252,10 @@ func (b *Bot) setupOrchestrator() {
 		PollOnStart:     true,
 	}
 
-	guard.AutoAccept(b.orchestrator, guardian, guardBehaviorCfg)
-	achievements.Simulate(b.orchestrator, tf2Mod, tf2.AchievementConfig())
+	guard.AutoAccept(b.client, guardBehaviorCfg)
+	achievements.Simulate(orch, tf2Mod, tf2.AchievementConfig())
 
-	// 5. Setup the TF2 Trading Engine Middlewares
+	// Setup the TF2 Trading Engine Middlewares
 	tradeEngine := engine.New()
 
 	tradeCfg := b.tradeCfgManager.GetConfig()
@@ -319,7 +294,7 @@ func (b *Bot) setupOrchestrator() {
 		),
 	)
 
-	// 6. Connect the Engine to the Trade Manager
+	// Connect the Engine to the Trade Manager
 	// We use the built-in engine.BotHandler to bridge our engine with the SDK's processor.
 	webTradeManager.SetOfferHandler(context.Background(), engine.NewBotHandler(tradeEngine, b.logger), bp)
 }

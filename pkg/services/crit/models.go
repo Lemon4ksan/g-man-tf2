@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/lemon4ksan/aoni"
+	"github.com/lemon4ksan/aoni/codec/values"
 )
 
 // critResponse implements [aoni.BaseResponse] to automatically parse API wrappers.
@@ -57,17 +57,17 @@ func (r *critResponse) UnmarshalJSON(data []byte) error {
 
 // Listing represents a crit.tf showcase classified listing.
 type Listing struct {
-	ID         aoni.Int64String   `json:"id,omitempty"`
-	SteamID    string             `json:"steam_id,omitempty"`
-	ItemName   string             `json:"item_name,omitempty"`
-	ItemImage  string             `json:"item_image,omitempty"`
-	AssetID    string             `json:"asset_id"`
-	PriceKeys  int                `json:"price_keys"`
-	PriceMetal aoni.Float64String `json:"price_metal"`
-	Quality    string             `json:"quality,omitempty"`
-	Type       string             `json:"type,omitempty"`
-	SKU        string             `json:"sku,omitempty"`
-	CreatedAt  string             `json:"created_at,omitempty"`
+	ID         values.Int64String   `json:"id,omitempty"`
+	SteamID    string               `json:"steam_id,omitempty"`
+	ItemName   string               `json:"item_name,omitempty"`
+	ItemImage  string               `json:"item_image,omitempty"`
+	AssetID    string               `json:"asset_id"`
+	PriceKeys  int                  `json:"price_keys"`
+	PriceMetal values.Float64String `json:"price_metal"`
+	Quality    string               `json:"quality,omitempty"`
+	Type       string               `json:"type,omitempty"`
+	SKU        string               `json:"sku,omitempty"`
+	CreatedAt  string               `json:"created_at,omitempty"`
 }
 
 // GroupMember defines a store group membership state.

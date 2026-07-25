@@ -10,6 +10,8 @@ import (
 	"sync"
 
 	"github.com/lemon4ksan/aoni"
+	"github.com/lemon4ksan/aoni/option"
+	"github.com/lemon4ksan/aoni/request"
 )
 
 // BaseURL is the default endpoint host for the Mannco.store API.
@@ -64,26 +66,31 @@ const (
 // Client is a thread-safe client for the Mannco.store API.
 // It wraps aoni.Client and synchronizes token updates.
 type Client struct {
-	mu         sync.Mutex
-	restClient *aoni.Client
+	mu   sync.Mutex
+	rest *aoni.Client
 }
 
 // NewClient initializes a new client with the predefined Mannco.store host,
 // standard User-Agent, and BaseResponse envelope configurations.
-func NewClient(restClient *aoni.Client) *Client {
-	return &Client{
-		restClient: restClient.
-			WithUserAgent("G-man Bot/1.0").
-			WithBaseURL(BaseURL).
-			WithBaseResponse(func() aoni.BaseResponse { return new(BaseResponse) }),
+func NewClient(rest *aoni.Client) *Client {
+	if rest == nil {
+		rest = aoni.NewClient(nil)
 	}
+
+	opts := []aoni.ClientOption{
+		option.WithUserAgent("G-man Bot/1.0"),
+		option.WithBaseURL(BaseURL),
+		option.WithBaseResponse(func() aoni.BaseResponse { return new(BaseResponse) }),
+	}
+
+	return &Client{rest: rest.With(opts...)}
 }
 
 // getClient retrieves the underlying aoni.Client pointer thread-safely.
 func (c *Client) getClient() *aoni.Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.restClient
+	return c.rest
 }
 
 // Login authenticates the client using a Mannco API key.
@@ -101,13 +108,13 @@ func (c *Client) Login(ctx context.Context, apiKey string) error {
 		JWT string `json:"jwt"`
 	}
 
-	r, err := aoni.PostTo[resp](ctx, c.getClient(), "user/login", body)
+	r, err := request.PostTo[resp](ctx, c.getClient(), "user/login", body)
 	if err != nil {
 		return err
 	}
 
 	c.mu.Lock()
-	c.restClient = c.restClient.WithBearer(r.JWT)
+	c.rest = c.rest.With(option.WithBearer(r.JWT))
 	c.mu.Unlock()
 
 	return nil

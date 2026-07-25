@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/lemon4ksan/aoni"
+	"github.com/lemon4ksan/aoni/request"
 )
 
 // InventoryItem represents a user's backpack item in inventory or on sale.
@@ -88,7 +88,7 @@ type WithdrawResponse struct {
 // Route: GET /inventory/onSale
 // Permission: Connected + API
 func (c *Client) GetItemsOnSale(ctx context.Context) (*GetInventoryResponse, error) {
-	return aoni.GetTo[GetInventoryResponse](ctx, c.getClient(), "/inventory/onSale")
+	return request.GetTo[GetInventoryResponse](ctx, c.getClient(), "/inventory/onSale")
 }
 
 // GetItemsInInventory returns items currently in user inventory (not on sale, state = 0).
@@ -96,7 +96,7 @@ func (c *Client) GetItemsOnSale(ctx context.Context) (*GetInventoryResponse, err
 // Route: GET /inventory/onInventory
 // Permission: Connected + API
 func (c *Client) GetItemsInInventory(ctx context.Context) (*GetInventoryResponse, error) {
-	return aoni.GetTo[GetInventoryResponse](ctx, c.getClient(), "/inventory/onInventory")
+	return request.GetTo[GetInventoryResponse](ctx, c.getClient(), "/inventory/onInventory")
 }
 
 // SetItemPrice updates pricing for a list of inventory item asset IDs.
@@ -112,7 +112,7 @@ func (c *Client) SetItemPrice(ctx context.Context, ids []string, price int) (*In
 		Price: price,
 	}
 
-	return aoni.PostTo[InventoryMessageResponse](ctx, c.getClient(), "/inventory/price", req)
+	return request.PostTo[InventoryMessageResponse](ctx, c.getClient(), "/inventory/price", req)
 }
 
 // WithdrawItems pulls items from Mannco.store inventory to the user's Steam Account.
@@ -125,5 +125,5 @@ func (c *Client) WithdrawItems(ctx context.Context, ids []string) (*WithdrawResp
 		IDs: strings.Join(ids, ","),
 	}
 
-	return aoni.PostTo[WithdrawResponse](ctx, c.getClient(), "/inventory/withdraw", req)
+	return request.PostTo[WithdrawResponse](ctx, c.getClient(), "/inventory/withdraw", req)
 }

@@ -13,7 +13,6 @@ import (
 	"slices"
 	"syscall"
 
-	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/auth"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/apps"
@@ -21,6 +20,7 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/gc"
 	"github.com/lemon4ksan/g-man/pkg/storage/jsonfile"
 	"github.com/lemon4ksan/miyako/generic"
+	"github.com/lemon4ksan/miyako/log"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"

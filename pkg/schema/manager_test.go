@@ -21,7 +21,7 @@ import (
 
 	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/g-man/pkg/steam/service"
-	"github.com/lemon4ksan/g-man/test/mock"
+	"github.com/lemon4ksan/g-man/pkg/test/mock"
 	"github.com/lemon4ksan/miyako/generic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -46,9 +46,14 @@ func setupSchema(t *testing.T, cfg Config) (*Manager, *mock.ServiceMock) {
 
 	rt := &mockRoundTripper{
 		OnRoundTrip: func(req *http.Request) (*http.Response, error) {
-			return mockAPI.Request(req.Context(), req.Method, req.URL.String(), func(r *http.Request) {
-				r.Header = req.Header
-				r.Body = req.Body
+			return mockAPI.Request(req.Context(), req.Method, req.URL.String(), func(r aoni.Request) {
+				for key, values := range req.Header {
+					for _, value := range values {
+						r.SetHeader(key, value)
+					}
+				}
+
+				r.SetBodyStream(req.Body, req.ContentLength)
 			})
 		},
 	}

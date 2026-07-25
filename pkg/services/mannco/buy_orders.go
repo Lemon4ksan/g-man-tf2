@@ -9,7 +9,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/lemon4ksan/aoni"
+	"github.com/lemon4ksan/aoni/mod"
+	"github.com/lemon4ksan/aoni/request"
 )
 
 // CreateBuyOrderReq represents the request body to create a buy order.
@@ -178,7 +179,7 @@ func (c *Client) CreateBuyOrder(ctx context.Context, itemID, value, amount int) 
 		Amount: amount,
 	}
 
-	return aoni.PostTo[DetailsResponse](ctx, c.getClient(), "/item/buyorder", req)
+	return request.PostTo[DetailsResponse](ctx, c.getClient(), "/item/buyorder", req)
 }
 
 // UpdateBuyOrder updates an existing buy order price and/or quantity.
@@ -194,7 +195,7 @@ func (c *Client) UpdateBuyOrder(ctx context.Context, itemID, value, amount int) 
 		Amount: amount,
 	}
 
-	resp, err := aoni.PostTo[string](ctx, c.getClient(), "/item/buyorder/update", req)
+	resp, err := request.PostTo[string](ctx, c.getClient(), "/item/buyorder/update", req)
 	if err != nil {
 		return "", err
 	}
@@ -211,7 +212,7 @@ func (c *Client) RemoveBuyOrder(ctx context.Context, itemID int) (*DetailsRespon
 		ItemID: itemID,
 	}
 
-	return aoni.PostTo[DetailsResponse](ctx, c.getClient(), "/item/buyorder/remove", req)
+	return request.PostTo[DetailsResponse](ctx, c.getClient(), "/item/buyorder/remove", req)
 }
 
 // GetUserBuyOrdersForItem returns user's active buy orders for a specific item ID.
@@ -219,7 +220,7 @@ func (c *Client) RemoveBuyOrder(ctx context.Context, itemID int) (*DetailsRespon
 // Route: GET /user/buyorder/{item}
 // Permission: Connected + API
 func (c *Client) GetUserBuyOrdersForItem(ctx context.Context, item string) (*UserBuyOrderResponse, error) {
-	return aoni.GetTo[UserBuyOrderResponse](ctx, c.getClient(), "/user/buyorder/{item}", aoni.WithVar("item", item))
+	return request.GetTo[UserBuyOrderResponse](ctx, c.getClient(), "/user/buyorder/{item}", mod.WithVar("item", item))
 }
 
 // GetUserBuyOrdersQuery holds filtering arguments for GetUserBuyOrders.
@@ -235,5 +236,5 @@ type GetUserBuyOrdersQuery struct {
 // Route: GET /user/getBuyorder
 // Permission: Connected + API
 func (c *Client) GetUserBuyOrders(ctx context.Context, query GetUserBuyOrdersQuery) (*UserAllBuyOrdersResponse, error) {
-	return aoni.GetTo[UserAllBuyOrdersResponse](ctx, c.getClient(), "/user/getBuyorder", aoni.WithQuery(query))
+	return request.GetTo[UserAllBuyOrdersResponse](ctx, c.getClient(), "/user/getBuyorder", mod.WithQuery(query))
 }

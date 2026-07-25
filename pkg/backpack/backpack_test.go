@@ -9,14 +9,14 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/apps"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/gc"
+	"github.com/lemon4ksan/g-man/pkg/test/mock"
 	"github.com/lemon4ksan/g-man/pkg/trading"
-	"github.com/lemon4ksan/g-man/test/mock"
 	"github.com/lemon4ksan/miyako/bus"
 	"github.com/lemon4ksan/miyako/generic"
+	"github.com/lemon4ksan/miyako/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -76,39 +76,39 @@ type mockLogRecorder struct {
 	messages []string
 }
 
-func (m *mockLogRecorder) Debug(msg string, fields ...log.Field) {
+func (m *mockLogRecorder) Debug(msg string, fields ...any) {
 	m.messages = append(m.messages, msg)
 }
 
-func (m *mockLogRecorder) DebugContext(ctx context.Context, msg string, fields ...log.Field) {
+func (m *mockLogRecorder) DebugContext(ctx context.Context, msg string, fields ...any) {
 	m.messages = append(m.messages, msg)
 }
 
-func (m *mockLogRecorder) Info(msg string, fields ...log.Field) {
+func (m *mockLogRecorder) Info(msg string, fields ...any) {
 	m.messages = append(m.messages, msg)
 }
 
-func (m *mockLogRecorder) InfoContext(ctx context.Context, msg string, fields ...log.Field) {
+func (m *mockLogRecorder) InfoContext(ctx context.Context, msg string, fields ...any) {
 	m.messages = append(m.messages, msg)
 }
 
-func (m *mockLogRecorder) Warn(msg string, fields ...log.Field) {
+func (m *mockLogRecorder) Warn(msg string, fields ...any) {
 	m.messages = append(m.messages, msg)
 }
 
-func (m *mockLogRecorder) WarnContext(ctx context.Context, msg string, fields ...log.Field) {
+func (m *mockLogRecorder) WarnContext(ctx context.Context, msg string, fields ...any) {
 	m.messages = append(m.messages, msg)
 }
 
-func (m *mockLogRecorder) Error(msg string, fields ...log.Field) {
+func (m *mockLogRecorder) Error(msg string, fields ...any) {
 	m.messages = append(m.messages, msg)
 }
 
-func (m *mockLogRecorder) ErrorContext(ctx context.Context, msg string, fields ...log.Field) {
+func (m *mockLogRecorder) ErrorContext(ctx context.Context, msg string, fields ...any) {
 	m.messages = append(m.messages, msg)
 }
 
-func (m *mockLogRecorder) With(fields ...log.Field) log.Logger {
+func (m *mockLogRecorder) With(fields ...any) log.Logger {
 	return m
 }
 

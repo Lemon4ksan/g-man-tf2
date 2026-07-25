@@ -17,11 +17,12 @@ import (
 	"time"
 
 	"github.com/lemon4ksan/aoni"
+	"github.com/lemon4ksan/aoni/codec/values"
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 	"github.com/lemon4ksan/g-man/pkg/steam/social/chat"
 	"github.com/lemon4ksan/g-man/pkg/steam/social/chat/commands"
-	"github.com/lemon4ksan/g-man/test/mock"
+	"github.com/lemon4ksan/g-man/pkg/test/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
@@ -242,7 +243,7 @@ func TestManager(t *testing.T) {
 		case res := <-ch:
 			require.NoError(t, res.Err)
 			assert.Equal(t, "99999", res.Listing.AssetID)
-			assert.Equal(t, aoni.Int64String(202), res.Listing.ID)
+			assert.Equal(t, values.Int64String(202), res.Listing.ID)
 		case <-time.After(2 * time.Second):
 			t.Fatal("Timeout waiting for transaction worker")
 		}
@@ -631,7 +632,7 @@ func TestManager(t *testing.T) {
 
 		l, ok := mgr.FindListingByAssetID("asset-1")
 		assert.True(t, ok)
-		assert.Equal(t, aoni.Int64String(123), l.ID)
+		assert.Equal(t, values.Int64String(123), l.ID)
 
 		_, ok = mgr.FindListingByAssetID("asset-unknown")
 		assert.False(t, ok)
@@ -842,7 +843,7 @@ func TestManager(t *testing.T) {
 		listings, err := mgr.FetchMyListings(ctx)
 		require.NoError(t, err)
 		assert.Len(t, listings, 1)
-		assert.Equal(t, aoni.Int64String(111), listings[0].ID)
+		assert.Equal(t, values.Int64String(111), listings[0].ID)
 
 		stub.ClearCalls()
 
@@ -930,7 +931,7 @@ func TestManager(t *testing.T) {
 		r.SetData(&target)
 		err = json.Unmarshal([]byte(`{"success":true,"id":999}`), &r)
 		require.NoError(t, err)
-		assert.Equal(t, aoni.Int64String(999), target.ID)
+		assert.Equal(t, values.Int64String(999), target.ID)
 	})
 
 	t.Run("event_loop_target_for_sale_false", func(t *testing.T) {

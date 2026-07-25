@@ -16,8 +16,11 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/lemon4ksan/aoni"
-	"github.com/lemon4ksan/g-man/pkg/log"
+	"github.com/lemon4ksan/aoni/mod"
+	"github.com/lemon4ksan/aoni/realtime/ws"
+	"github.com/lemon4ksan/aoni/request"
 	"github.com/lemon4ksan/miyako/generic"
+	"github.com/lemon4ksan/miyako/log"
 )
 
 // SocketManager handles the real-time price updates via Socket.IO.
@@ -36,7 +39,7 @@ type SocketManager struct {
 // NewSocketManager creates a new Socket.IO client for PriceDB.
 func NewSocketManager(rawURL string, client *aoni.Client, logger log.Logger) *SocketManager {
 	if client == nil {
-		client = aoni.DefaultClient
+		client = request.DefaultClient
 	}
 
 	return &SocketManager{
@@ -90,10 +93,10 @@ func (s *SocketManager) connectAndListen(ctx context.Context) error {
 
 	var mods []aoni.RequestModifier
 	if s.userAgent != "" {
-		mods = append(mods, aoni.WithUserAgent(s.userAgent))
+		mods = append(mods, mod.WithUserAgent(s.userAgent))
 	}
 
-	wsConn, resp, err := aoni.DialWebSocket(ctx, s.client, u.String(), mods...)
+	wsConn, resp, err := ws.DialWebSocket(ctx, s.client, u.String(), mods...)
 	if err != nil {
 		return err
 	}

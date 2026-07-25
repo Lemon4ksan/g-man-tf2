@@ -14,11 +14,11 @@ import (
 	"time"
 
 	"github.com/lemon4ksan/aoni"
-	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 	"github.com/lemon4ksan/g-man/pkg/steam/module"
 	"github.com/lemon4ksan/g-man/pkg/steam/social/chat/commands"
+	"github.com/lemon4ksan/miyako/log"
 	"golang.org/x/time/rate"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
@@ -214,7 +214,7 @@ func (m *Manager) StartAuthed(ctx context.Context, auth module.AuthContext) erro
 	m.Logger.InfoContext(
 		ctx,
 		"Crit storefront manager authenticated. Scheduling bootstrap...",
-		log.SteamID(m.steamID.Uint64()),
+		log.Uint64("steam_id", m.steamID.Uint64()),
 	)
 
 	m.Go(func(ctx context.Context) {

@@ -16,8 +16,9 @@ import (
 	"time"
 
 	"github.com/lemon4ksan/aoni"
-	"github.com/lemon4ksan/g-man/pkg/log"
-	"github.com/lemon4ksan/g-man/test/mock"
+	"github.com/lemon4ksan/aoni/option"
+	"github.com/lemon4ksan/g-man/pkg/test/mock"
+	"github.com/lemon4ksan/miyako/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -125,7 +126,7 @@ func TestListingManager(t *testing.T) {
 		defer server.Close()
 
 		client := New(aoni.NewClient(nil), "", "")
-		client.rest = client.rest.WithBaseURL(server.URL)
+		client.rest = client.rest.With(option.WithBaseURL(server.URL))
 
 		mgr := NewListingManager(client, nil, log.Discard)
 
@@ -196,7 +197,7 @@ func TestListingManager(t *testing.T) {
 		defer server.Close()
 
 		client := New(aoni.NewClient(nil), "", "")
-		client.rest = client.rest.WithBaseURL(server.URL)
+		client.rest = client.rest.With(option.WithBaseURL(server.URL))
 
 		mgr := NewListingManager(client, nil, log.Discard)
 		for i := range 150 {

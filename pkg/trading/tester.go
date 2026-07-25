@@ -4,7 +4,7 @@
 package trading
 
 import (
-	"github.com/lemon4ksan/g-man/test/trading"
+	"github.com/lemon4ksan/g-man/pkg/test/trading"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 )

@@ -22,11 +22,14 @@ import (
 
 	"github.com/andygrunwald/vdf"
 	"github.com/lemon4ksan/aoni"
-	"github.com/lemon4ksan/g-man/pkg/log"
+	"github.com/lemon4ksan/aoni/codec/decode"
+	"github.com/lemon4ksan/aoni/option"
+	"github.com/lemon4ksan/aoni/request"
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/module"
 	"github.com/lemon4ksan/g-man/pkg/steam/service"
 	"github.com/lemon4ksan/miyako/generic"
+	"github.com/lemon4ksan/miyako/log"
 	"github.com/mitchellh/mapstructure"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
@@ -81,7 +84,7 @@ type Manager struct {
 
 	config  Config
 	service service.Doer
-	rest    aoni.Requester
+	rest    request.Requester
 	pricedb *pricedb.Client
 
 	mu            sync.RWMutex
@@ -116,12 +119,12 @@ func (m *Manager) Init(init module.InitContext) error {
 	m.service = init.Service()
 	m.rest = init.Rest()
 
-	if aoniClient := aoni.UnwrapClient(m.rest); aoniClient != nil {
-		unlimitedClient := aoniClient.WithMaxResponseSize(0)
+	if aoniClient := request.UnwrapClient(m.rest); aoniClient != nil {
+		unlimitedClient := aoniClient.With(option.WithMaxResponseSize(0))
 		m.rest = unlimitedClient
 		m.pricedb = pricedb.NewClient(unlimitedClient)
 	} else {
-		unlimitedClient := aoni.NewClient(nil).WithMaxResponseSize(0)
+		unlimitedClient := aoni.NewClient(nil, option.WithMaxResponseSize(0))
 		m.pricedb = pricedb.NewClient(unlimitedClient)
 	}
 
@@ -467,7 +470,7 @@ func (m *Manager) parseTfEnglish(ctx context.Context) map[string]string {
 
 	m.Logger.InfoContext(ctx, "Fetching tf_english.txt for localization...")
 
-	resp, err := aoni.GetTo[[]byte](ctx, m.rest, url, aoni.WithRawDecoder())
+	resp, err := request.GetTo[[]byte](ctx, m.rest, url, decode.WithRaw())
 	if err != nil {
 		m.Logger.WarnContext(ctx, "Failed to fetch tf_english.txt", log.Err(err))
 
@@ -539,7 +542,7 @@ func (m *Manager) parseTfEnglish(ctx context.Context) map[string]string {
 func (m *Manager) parseItemsGameItems(ctx context.Context, url string) []any {
 	url = generic.Coalesce(url, m.config.ItemsGameMirrorURL)
 
-	resp, err := aoni.GetTo[[]byte](ctx, m.rest, url, aoni.WithRawDecoder())
+	resp, err := request.GetTo[[]byte](ctx, m.rest, url, decode.WithRaw())
 	if err != nil {
 		m.Logger.WarnContext(ctx, "Failed to download items_game.txt for item parsing", log.Err(err))
 		return nil
@@ -924,7 +927,7 @@ func (m *Manager) getSchemaItems(ctx context.Context) ([]any, error) {
 }
 
 func (m *Manager) getPaintKits(ctx context.Context) (map[string]string, error) {
-	resp, err := aoni.GetTo[[]byte](ctx, m.rest, m.config.PaintKitURL, aoni.WithRawDecoder())
+	resp, err := request.GetTo[[]byte](ctx, m.rest, m.config.PaintKitURL, decode.WithRaw())
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch paint kits: %w", err)
 	}
@@ -986,7 +989,7 @@ var (
 func (m *Manager) getItemsGame(ctx context.Context, url string) (map[string]any, error) {
 	url = generic.Coalesce(url, m.config.ItemsGameMirrorURL)
 
-	resp, err := aoni.GetTo[[]byte](ctx, m.rest, url, aoni.WithRawDecoder())
+	resp, err := request.GetTo[[]byte](ctx, m.rest, url, decode.WithRaw())
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch items_game.txt: %w", err)
 	}
@@ -1154,7 +1157,7 @@ func (m *Manager) fetchFromMirror(ctx context.Context) (map[string]any, error) {
 		return nil, errors.New("mirror URL for schemanot configured")
 	}
 
-	resp, err := aoni.GetTo[map[string]any](ctx, m.rest, url)
+	resp, err := request.GetTo[map[string]any](ctx, m.rest, url)
 	if err != nil {
 		return nil, fmt.Errorf("mirror fetch failed: %w", err)
 	}
@@ -1163,7 +1166,7 @@ func (m *Manager) fetchFromMirror(ctx context.Context) (map[string]any, error) {
 }
 
 func (m *Manager) fetchItemsFromMirror(ctx context.Context) ([]any, error) {
-	resp, err := aoni.GetTo[[]any](ctx, m.rest, m.config.ItemsMirrorURL)
+	resp, err := request.GetTo[[]any](ctx, m.rest, m.config.ItemsMirrorURL)
 	if err != nil {
 		return nil, fmt.Errorf("mirror items fetch failed: %w", err)
 	}

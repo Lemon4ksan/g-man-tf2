@@ -2,6 +2,21 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package backpack manages Team Fortress 2 inventory states, layout sorting, and trade item locking.
+//
+// The package replicates the local bot inventory via [Backpack] (synchronized with the Game Coordinator)
+// and handles external player profiles using [Remote] for anti-scam and duplicate verification.
+//
+// # Quick Start
+//
+// Retrieve the local backpack and check stock levels:
+//
+//	bp := backpack.From(client)
+//	if bp == nil {
+//		return
+//	}
+//
+//	count := bp.GetStock("5021;6") // Check key stock by SKU
 package backpack
 
 import (
@@ -12,12 +27,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/module"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 	"github.com/lemon4ksan/miyako/bus"
 	"github.com/lemon4ksan/miyako/generic"
+	"github.com/lemon4ksan/miyako/log"
 	"github.com/lemon4ksan/miyako/sync/keylock"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"

@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package tf2 integrates with the Team Fortress 2 Game Coordinator.
 package tf2
 
 import (
@@ -13,7 +14,6 @@ import (
 	"time"
 
 	"github.com/lemon4ksan/g-man/pkg/behavior/achievements"
-	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/protobuf/custom"
 	pb_steam "github.com/lemon4ksan/g-man/pkg/protobuf/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam"
@@ -27,6 +27,7 @@ import (
 	"github.com/lemon4ksan/miyako/bus"
 	"github.com/lemon4ksan/miyako/jobs"
 	"github.com/lemon4ksan/miyako/kata"
+	"github.com/lemon4ksan/miyako/log"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/protoadapt"
 

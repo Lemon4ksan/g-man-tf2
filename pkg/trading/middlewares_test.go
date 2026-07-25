@@ -12,11 +12,11 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 	"github.com/lemon4ksan/g-man/pkg/trading/engine"
 	"github.com/lemon4ksan/g-man/pkg/trading/reason"
+	"github.com/lemon4ksan/miyako/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -1066,11 +1066,11 @@ func TestHalloweenSpellMiddleware(t *testing.T) {
 	err := handler(ctx)
 	assert.NoError(t, err)
 
-	ourVal, okOur := ctx.Get("our_spell_premium_scrap")
+	ourVal, okOur := ctx.Get("our_spell_premium_scrap").Value()
 	assert.True(t, okOur)
 	assert.Equal(t, currency.Scrap(45), ourVal.(currency.Scrap))
 
-	theirVal, okTheir := ctx.Get("their_spell_premium_scrap")
+	theirVal, okTheir := ctx.Get("their_spell_premium_scrap").Value()
 	assert.True(t, okTheir)
 	assert.Equal(t, currency.Scrap(72), theirVal.(currency.Scrap))
 
@@ -1133,7 +1133,7 @@ func TestHalloweenSpellMiddleware_Fallback(t *testing.T) {
 	err := handler(ctx)
 	assert.NoError(t, err)
 
-	ourVal, okOur := ctx.Get("our_spell_premium_scrap")
+	ourVal, okOur := ctx.Get("our_spell_premium_scrap").Value()
 	assert.True(t, okOur)
 	assert.Equal(t, currency.Scrap(36), ourVal.(currency.Scrap))
 
@@ -1546,7 +1546,7 @@ func TestHalloweenSpellMiddleware_PredictionEmpty(t *testing.T) {
 	err := handler(ctx)
 	assert.NoError(t, err)
 
-	ourVal, ok := ctx.Get("our_spell_premium_scrap")
+	ourVal, ok := ctx.Get("our_spell_premium_scrap").Value()
 	assert.True(t, ok)
 	assert.Equal(t, currency.Scrap(36), ourVal.(currency.Scrap))
 }

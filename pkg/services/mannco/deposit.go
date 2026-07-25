@@ -9,7 +9,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/lemon4ksan/aoni"
+	"github.com/lemon4ksan/aoni/mod"
+	"github.com/lemon4ksan/aoni/request"
 )
 
 // DepositInfoItem represents an item in user's Steam inventory with pricing hints and stock limits.
@@ -113,7 +114,7 @@ type TradeStatusResponse struct {
 // Route: GET /deposit/{game}
 // Permission: Connected + API
 func (c *Client) GetDepositInfo(ctx context.Context, game int) (*GetDepositInfoResponse, error) {
-	return aoni.GetTo[GetDepositInfoResponse](ctx, c.getClient(), "/deposit/{game}", aoni.WithVar("game", game))
+	return request.GetTo[GetDepositInfoResponse](ctx, c.getClient(), "/deposit/{game}", mod.WithVar("game", game))
 }
 
 // CreateDepositTrade initiates a trade offer to deposit items onto the site.
@@ -125,7 +126,7 @@ func (c *Client) CreateDepositTrade(
 	ctx context.Context,
 	req CreateDepositTradeReq,
 ) (*CreateDepositTradeResponse, error) {
-	return aoni.PostTo[CreateDepositTradeResponse](ctx, c.getClient(), "/deposit/trade", req)
+	return request.PostTo[CreateDepositTradeResponse](ctx, c.getClient(), "/deposit/trade", req)
 }
 
 // GetInstantSellInfo returns enriched inventory data with instant-sell price values.
@@ -134,9 +135,9 @@ func (c *Client) CreateDepositTrade(
 // Route: GET /deposit/instantSell/{game}
 // Permission: Connected + API
 func (c *Client) GetInstantSellInfo(ctx context.Context, game int) (*GetDepositInfoResponse, error) {
-	return aoni.GetTo[GetDepositInfoResponse](
+	return request.GetTo[GetDepositInfoResponse](
 		ctx, c.getClient(), "/deposit/instantSell/{game}",
-		aoni.WithVar("game", game),
+		mod.WithVar("game", game),
 	)
 }
 
@@ -149,7 +150,7 @@ func (c *Client) CreateInstantSellTrade(
 	ctx context.Context,
 	req CreateInstantSellTradeReq,
 ) (*CreateDepositTradeResponse, error) {
-	return aoni.PostTo[CreateDepositTradeResponse](ctx, c.getClient(), "/deposit/trade/instant", req)
+	return request.PostTo[CreateDepositTradeResponse](ctx, c.getClient(), "/deposit/trade/instant", req)
 }
 
 // GetDepositTradeStatus returns the current status and bot metadata of a deposit trade row.
@@ -157,8 +158,8 @@ func (c *Client) CreateInstantSellTrade(
 // Route: GET /deposit/tradeStatus/{tradeid}
 // Permission: Connected + API
 func (c *Client) GetDepositTradeStatus(ctx context.Context, tradeID int) (*TradeStatusResponse, error) {
-	return aoni.GetTo[TradeStatusResponse](
+	return request.GetTo[TradeStatusResponse](
 		ctx, c.getClient(), "/deposit/tradeStatus/{tradeid}",
-		aoni.WithVar("tradeid", tradeID),
+		mod.WithVar("tradeid", tradeID),
 	)
 }

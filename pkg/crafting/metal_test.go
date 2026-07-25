@@ -7,7 +7,7 @@ package crafting
 import (
 	"testing"
 
-	"github.com/lemon4ksan/g-man/pkg/log"
+	"github.com/lemon4ksan/miyako/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 

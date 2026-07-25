@@ -12,11 +12,11 @@ import (
 	"math"
 	"strings"
 
-	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 	"github.com/lemon4ksan/g-man/pkg/trading/engine"
 	"github.com/lemon4ksan/g-man/pkg/trading/reason"
+	"github.com/lemon4ksan/miyako/log"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 	"github.com/lemon4ksan/g-man-tf2/pkg/crafting"
@@ -315,7 +315,7 @@ func HalloweenSpellMiddleware(
 ) engine.Middleware {
 	return func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
-			pricesRaw, ok := ctx.Get("prices")
+			pricesRaw, ok := ctx.Get("prices").Value()
 			if !ok {
 				return next(ctx)
 			}
@@ -552,13 +552,13 @@ func SmartCounterMiddleware(
 					return nil
 				}
 
-				keyPriceVar, _ := ctx.Get("key_price_scrap")
+				keyPriceVar, _ := ctx.Get("key_price_scrap").Value()
 				keyPrice, _ := keyPriceVar.(currency.Scrap)
 
 				needed := -diff
 
 				var sch *schema.Schema
-				if val, ok := ctx.Get("schema"); ok {
+				if val, ok := ctx.Get("schema").Value(); ok {
 					if s, ok := val.(*schema.Schema); ok {
 						sch = s
 					}
@@ -698,7 +698,7 @@ func GetPricingSKU(skuStr string) string {
 // Result > 0: We were overpaid (need change).
 // Result < 0: We were underpaid (we should reject or request more).
 func calculateValueDiff(ctx *engine.TradeContext, useSeparateKeyRates bool) (currency.Scrap, error) {
-	pricesRaw, ok := ctx.Get("prices")
+	pricesRaw, ok := ctx.Get("prices").Value()
 	if !ok {
 		return 0, errors.New("prices not found in context")
 	}
@@ -722,7 +722,7 @@ func calculateValueDiff(ctx *engine.TradeContext, useSeparateKeyRates bool) (cur
 	ctx.Set("key_price_scrap", keyBuyPriceScrap)
 
 	var sch *schema.Schema
-	if val, ok := ctx.Get("schema"); ok {
+	if val, ok := ctx.Get("schema").Value(); ok {
 		if s, ok := val.(*schema.Schema); ok {
 			sch = s
 		}
@@ -731,11 +731,11 @@ func calculateValueDiff(ctx *engine.TradeContext, useSeparateKeyRates bool) (cur
 	var ourTotalScrapVal, theirTotalScrapVal float64
 
 	var ourSpellPremium, theirSpellPremium currency.Scrap
-	if val, ok := ctx.Get("our_spell_premium_scrap"); ok {
+	if val, ok := ctx.Get("our_spell_premium_scrap").Value(); ok {
 		ourSpellPremium = val.(currency.Scrap)
 	}
 
-	if val, ok := ctx.Get("their_spell_premium_scrap"); ok {
+	if val, ok := ctx.Get("their_spell_premium_scrap").Value(); ok {
 		theirSpellPremium = val.(currency.Scrap)
 	}
 

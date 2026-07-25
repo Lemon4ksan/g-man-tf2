@@ -7,9 +7,9 @@ package trading
 import (
 	"testing"
 
+	tradingTest "github.com/lemon4ksan/g-man/pkg/test/trading"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 	"github.com/lemon4ksan/g-man/pkg/trading/engine"
-	tradingTest "github.com/lemon4ksan/g-man/test/trading"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
@@ -21,7 +21,7 @@ func TestTF2TradeTester_WithPricesAndMiddleware_ProcessesTradeSuccessfully(t *te
 	mockMiddleware := func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
 			for _, item := range ctx.Offer.ItemsToReceive {
-				val, ok := ctx.Get("price_" + item.SKU)
+				val, ok := ctx.Get("price_" + item.SKU).Value()
 				if ok {
 					price, ok := val.(int)
 					if ok && price < 10 {
@@ -74,7 +74,7 @@ func TestTF2TradeTester_WithTF2PricesAndMiddleware_ProcessesTradeSuccessfully(t 
 
 	mockPriceDBMiddleware := func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
-			pricesRaw, ok := ctx.Get("prices")
+			pricesRaw, ok := ctx.Get("prices").Value()
 			if !ok {
 				return next(ctx)
 			}

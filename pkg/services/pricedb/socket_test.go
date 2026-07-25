@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/lemon4ksan/g-man/pkg/log"
+	"github.com/lemon4ksan/miyako/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,11 +25,11 @@ type mockLogRecorder struct {
 	messages []string
 }
 
-func (m *mockLogRecorder) Warn(msg string, fields ...log.Field) {
+func (m *mockLogRecorder) Warn(msg string, fields ...any) {
 	m.messages = append(m.messages, msg)
 }
 
-func (m *mockLogRecorder) With(fields ...log.Field) log.Logger {
+func (m *mockLogRecorder) With(fields ...any) log.Logger {
 	return m
 }
 
@@ -267,60 +267,4 @@ func TestSocketManager_HandshakeErr(t *testing.T) {
 	err := sm.connectAndListen(t.Context())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unexpected handshake packet")
-}
-
-func TestSocketManager_CustomUserAgent(t *testing.T) {
-	t.Parallel()
-
-	upgrader := websocket.Upgrader{}
-	customUA := "MySpecialTestUserAgent/1.0"
-
-	var (
-		receivedUA string
-		done       sync.WaitGroup
-	)
-	done.Add(1)
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedUA = r.Header.Get("User-Agent")
-
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err == nil {
-			_ = conn.WriteMessage(websocket.TextMessage, []byte(`0{"sid":"123"}`))
-			conn.Close()
-		}
-
-		done.Done()
-	}))
-	defer server.Close()
-
-	wsURL := strings.Replace(server.URL, "http://", "ws://", 1)
-	logger := log.New(log.DefaultConfig(log.LevelError))
-	client := NewClient(nil).WithUserAgent(customUA)
-
-	manager := NewManager(client, logger)
-	manager.socket.url = wsURL
-
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-
-	go func() {
-		_ = manager.socket.connectAndListen(ctx)
-	}()
-
-	select {
-	case <-time.After(1 * time.Second):
-		t.Fatal("timed out waiting for socket connection")
-	case <-func() chan struct{} {
-		ch := make(chan struct{})
-		go func() {
-			done.Wait()
-			close(ch)
-		}()
-
-		return ch
-	}():
-	}
-
-	assert.Equal(t, customUA, receivedUA)
 }

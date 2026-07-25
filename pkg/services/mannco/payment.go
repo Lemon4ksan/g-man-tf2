@@ -7,7 +7,8 @@ package mannco
 import (
 	"context"
 
-	"github.com/lemon4ksan/aoni"
+	"github.com/lemon4ksan/aoni/mod"
+	"github.com/lemon4ksan/aoni/request"
 )
 
 // PaymentReq represents the request body to initiate a checkout session.
@@ -31,8 +32,8 @@ type PaymentResponse struct {
 // Permission: Connected + API
 // Payout Providers: "payviox" (Card redirect checkout) or "mannco" (Internal account balance payment)
 func (c *Client) InitiatePayment(ctx context.Context, provider string, req PaymentReq) (*PaymentResponse, error) {
-	return aoni.PostTo[PaymentResponse](
+	return request.PostTo[PaymentResponse](
 		ctx, c.getClient(), "/payment/{provider}", req,
-		aoni.WithVar("provider", provider),
+		mod.WithVar("provider", provider),
 	)
 }

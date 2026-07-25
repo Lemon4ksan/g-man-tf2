@@ -14,12 +14,12 @@ import (
 	"time"
 
 	"github.com/lemon4ksan/aoni"
-	"github.com/lemon4ksan/g-man/pkg/log"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
+	"github.com/lemon4ksan/g-man/pkg/test/mock"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 	"github.com/lemon4ksan/g-man/pkg/trading/engine"
-	"github.com/lemon4ksan/g-man/test/mock"
 	"github.com/lemon4ksan/miyako/generic"
+	"github.com/lemon4ksan/miyako/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -364,11 +364,11 @@ func TestMiddlewares(t *testing.T) {
 
 		assert.True(t, handlerCalled)
 
-		val, ok := ctx.Get("partner_inv_value")
+		val, ok := ctx.Get("partner_inv_value").Value()
 		assert.True(t, ok)
 		assert.Equal(t, 600.0, val)
 
-		isWhale, ok := ctx.Get("is_whale")
+		isWhale, ok := ctx.Get("is_whale").Value()
 		assert.True(t, ok)
 		assert.True(t, isWhale.(bool))
 	})

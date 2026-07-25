@@ -3,7 +3,6 @@
 // license that can be found in the LICENSE file.
 
 // Package sku implements the TF2 Stock Keeping Unit format.
-// It allows converting complex item attributes into a compact string representation.
 package sku
 
 import (
