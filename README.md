@@ -5,7 +5,6 @@
 ### The Ultimate Team Fortress 2 Domain Module & Economy Engine for G-MAN
 
 [![Go Reference](https://img.shields.io/badge/go-reference-007d9c?logo=go&logoColor=white&style=flat-square)](https://pkg.go.dev/github.com/lemon4ksan/g-man-tf2)
-[![Go Report Card](https://goreportcard.com/badge/github.com/lemon4ksan/g-man-tf2?style=flat-square)](https://goreportcard.com/report/github.com/lemon4ksan/g-man-tf2)
 [![License](https://img.shields.io/github/license/lemon4ksan/g-man-tf2?style=flat-square)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/lemon4ksan/g-man-tf2?style=flat-square)](https://github.com/lemon4ksan/g-man-tf2/stargazers)
 
@@ -38,6 +37,7 @@ pkg/
 │   ├── pricedb/      # Pricing and PriceDB Socket.IO connection sync
 │   ├── bptf/         # backpack.tf integrations (listing management, snap scraper)
 │   ├── crit/         # Crit.tf storefront listing synchronizer
+│   ├── mannco/       # mann.co integrations (listing management, snap scraper)
 │   └── rep/          # Trust, feedback, and user reputation lookup utilities
 ├── trading/          # Onion-style trading middlewares (pricer, limits, counters)
 ├── reason/           # TF2-specific trade rejection reasons

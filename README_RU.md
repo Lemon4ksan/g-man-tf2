@@ -5,7 +5,6 @@
 ### Экономический движок и доменный модуль Team Fortress 2 для G-MAN
 
 [![Go Reference](https://img.shields.io/badge/go-reference-007d9c?logo=go&logoColor=white&style=flat-square)](https://pkg.go.dev/github.com/lemon4ksan/g-man-tf2)
-[![Go Report Card](https://goreportcard.com/badge/github.com/lemon4ksan/g-man-tf2?style=flat-square)](https://goreportcard.com/report/github.com/lemon4ksan/g-man-tf2)
 [![License](https://img.shields.io/github/license/lemon4ksan/g-man-tf2?style=flat-square)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/lemon4ksan/g-man-tf2?style=flat-square)](https://github.com/lemon4ksan/g-man-tf2/stargazers)
 
@@ -40,6 +39,7 @@ pkg/
 │   ├── pricedb/      # Автопрайсинг и адаптер WebSockets (Socket.IO) для PriceDB
 │   ├── bptf/         # Интеграция с backpack.tf (управление листингами, скрейпинг)
 │   ├── crit/         # Синхронизация витрины листингов Crit.tf
+│   ├── mannco/       # Интеграция с mann.co (управление листингами, скрейпинг)
 │   └── rep/          # Утилиты проверки репутации и отзывов пользователей
 ├── trading/          # Многослойные цепочки проверок трейдов (Onion Middlewares)
 ├── reason/           # Специфичные для TF2 причины отклонения сделок
