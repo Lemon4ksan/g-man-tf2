@@ -9,10 +9,8 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 )
 
-// ItemFlags represents packed bitmask flags for trade/craft/quality attributes.
 type ItemFlags uint8
 
-// Supported ItemFlags bitmask flags.
 const (
 	FlagTradable ItemFlags = 1 << iota
 	FlagCraftable
@@ -21,14 +19,11 @@ const (
 	FlagElevatedStrange
 )
 
-// Has reports whether the specified flag is set.
 func (f ItemFlags) Has(flag ItemFlags) bool {
 	return (f & flag) != 0
 }
 
-// PackedItem represents a ultra-compact 32-byte value struct without pointers.
-// Because it contains zero pointer fields, Go runtime allocates []PackedItem
-// with the noscan memory flag, completely skipping GC scanning overhead.
+// PackedItem represents an ultra-compact 32-byte struct without pointers for zero GC overhead.
 type PackedItem struct {
 	AssetID     uint64
 	OriginalID  uint64
@@ -45,7 +40,6 @@ type PackedItem struct {
 	_           uint8
 }
 
-// PackGCItem converts a Game Coordinator Item struct into a PackedItem.
 func PackGCItem(it *Item) PackedItem {
 	if it == nil {
 		return PackedItem{}
@@ -79,7 +73,7 @@ func PackGCItem(it *Item) PackedItem {
 		DefIndex:    uint16(it.DefIndex),
 		Effect:      uint16(it.Effect),
 		Paintkit:    uint16(it.Paintkit),
-		Position:    uint16(it.Position()), // Preserves backpack slot position!
+		Position:    uint16(it.Position()),
 		Quality:     uint8(it.Quality),
 		Flags:       flags,
 		Killstreak:  uint8(it.KillstreakTier),
@@ -88,7 +82,6 @@ func PackGCItem(it *Item) PackedItem {
 	}
 }
 
-// ToItem expands a PackedItem back into a full Item struct with exact position restoration.
 func (p PackedItem) ToItem(s *schema.Schema) *Item {
 	item := &Item{
 		ID:             p.AssetID,
@@ -117,7 +110,6 @@ func (p PackedItem) ToItem(s *schema.Schema) *Item {
 	return item
 }
 
-// ToSKU generates a standardized SKU string from the packed item attributes.
 func (p PackedItem) ToSKU(s *schema.Schema) string {
 	quality := int(p.Quality)
 	quality2 := 0
@@ -154,12 +146,5 @@ func (p PackedItem) ToSKU(s *schema.Schema) string {
 	return sku.FromObject(sItem)
 }
 
-// IsTradable reports whether the item can be traded.
-func (p PackedItem) IsTradable() bool {
-	return p.Flags.Has(FlagTradable)
-}
-
-// IsCraftable reports whether the item is usable in crafting.
-func (p PackedItem) IsCraftable() bool {
-	return p.Flags.Has(FlagCraftable)
-}
+func (p PackedItem) IsTradable() bool  { return p.Flags.Has(FlagTradable) }
+func (p PackedItem) IsCraftable() bool { return p.Flags.Has(FlagCraftable) }

@@ -88,6 +88,7 @@ type mockDescription struct {
 	Name           string         `json:"name"`
 	MarketHashName string         `json:"market_hash_name"`
 	AppData        map[string]any `json:"app_data,omitempty"`
+	AppDataAlt     map[string]any `json:"appdata,omitempty"`
 }
 
 func TestRemote_Fetch(t *testing.T) {
@@ -168,12 +169,14 @@ func TestRemote_IsDuped(t *testing.T) {
 				{
 					ClassID: "131", InstanceID: "0", Tradable: 1,
 					Name: "Paint Can 1", MarketHashName: "Paint Can 1",
-					AppData: map[string]any{"def_index": "13", "quality": "6", "original_id": "50"},
+					AppData:    map[string]any{"def_index": "13", "quality": "6", "original_id": "50"},
+					AppDataAlt: map[string]any{"def_index": "13", "quality": "6", "original_id": "50"},
 				},
 				{
 					ClassID: "132", InstanceID: "0", Tradable: 1,
 					Name: "Paint Can 2", MarketHashName: "Paint Can 2",
-					AppData: map[string]any{"def_index": "13", "quality": "6", "original_id": "200"},
+					AppData:    map[string]any{"def_index": "13", "quality": "6", "original_id": "200"},
+					AppDataAlt: map[string]any{"def_index": "13", "quality": "6", "original_id": "200"},
 				},
 			},
 		}

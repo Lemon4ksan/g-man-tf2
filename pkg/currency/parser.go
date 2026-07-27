@@ -12,19 +12,19 @@ import (
 	"strings"
 )
 
-// Parse converts a formatted text string into a [Currency] instance.
-// Supported string patterns include "1.33 ref", "2 keys, 1.33", "50 scrap", or "10k".
-// Suffixes are case-insensitive and support abbreviations: "key"/"k" for keys,
-// "ref"/"r" for refined, "rec" for reclaimed, and "scr"/"s" for scrap.
-// Returns an error if the input string contains no recognizable numeric currency values.
+// ErrEmptyInput indicates empty input string was passed to parser.
+var ErrEmptyInput = errors.New("currency: empty input")
+
+// Parse parses string representations into a Currency structure (e.g., "2 keys, 1.33 ref", "50 scrap", "10k").
 func Parse(input string) (Currency, error) {
 	if len(input) == 0 {
-		return Currency{}, errors.New("currency: empty input")
+		return Currency{}, ErrEmptyInput
 	}
 
-	var res Currency
-
-	foundAny := false
+	var (
+		res      Currency
+		foundAny bool
+	)
 
 	i := 0
 	for i < len(input) {
@@ -41,9 +41,7 @@ func Parse(input string) (Currency, error) {
 			i++
 		}
 
-		numStr := input[numStart:i]
-
-		val, err := strconv.ParseFloat(numStr, 64)
+		val, err := strconv.ParseFloat(input[numStart:i], 64)
 		if err != nil || math.IsNaN(val) || math.IsInf(val, 0) {
 			continue
 		}
@@ -58,23 +56,9 @@ func Parse(input string) (Currency, error) {
 		}
 
 		suffix := strings.ToLower(input[sufStart:i])
+		applyCurrencyToken(&res, val, suffix)
 
 		foundAny = true
-
-		switch {
-		case strings.HasPrefix(suffix, "key") || suffix == "k":
-			res.Keys += val
-		case strings.HasPrefix(suffix, "ref") || suffix == "r" || suffix == "":
-			res.Metal = AddRefined(res.Metal, val)
-		case strings.HasPrefix(suffix, "rec"):
-			scrap := math.Round(val * float64(ScrapInRec))
-			res.Metal = AddRefined(res.Metal, scrap/float64(ScrapInRef))
-		case strings.HasPrefix(suffix, "scr") || strings.HasPrefix(suffix, "s"):
-			scrap := math.Round(val)
-			res.Metal = AddRefined(res.Metal, scrap/float64(ScrapInRef))
-		default:
-			res.Metal = AddRefined(res.Metal, val)
-		}
 	}
 
 	if !foundAny {
@@ -84,9 +68,28 @@ func Parse(input string) (Currency, error) {
 	return res, nil
 }
 
-// ParseToScrap converts a formatted text string and returns its total value in [Scrap] units.
-// It uses the provided key exchange rate in refined units to resolve key values.
-// Returns an error if parsing fails or if keys are parsed but the exchange rate is zero or negative.
+func applyCurrencyToken(res *Currency, val float64, suffix string) {
+	switch {
+	case strings.HasPrefix(suffix, "key") || suffix == "k":
+		res.Keys += val
+
+	case strings.HasPrefix(suffix, "ref") || suffix == "r" || suffix == "":
+		res.Metal = AddRefined(res.Metal, val)
+
+	case strings.HasPrefix(suffix, "rec"):
+		scrap := math.Round(val * float64(ScrapInRec))
+		res.Metal = AddRefined(res.Metal, scrap/float64(ScrapInRef))
+
+	case strings.HasPrefix(suffix, "scr") || strings.HasPrefix(suffix, "s"):
+		scrap := math.Round(val)
+		res.Metal = AddRefined(res.Metal, scrap/float64(ScrapInRef))
+
+	default:
+		res.Metal = AddRefined(res.Metal, val)
+	}
+}
+
+// ParseToScrap parses string input directly into total atomic Scrap units.
 func ParseToScrap(input string, keyPriceRef float64) (Scrap, error) {
 	curr, err := Parse(input)
 	if err != nil {

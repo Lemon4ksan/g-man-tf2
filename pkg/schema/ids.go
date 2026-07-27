@@ -549,12 +549,16 @@ func initSpellMap() {
 			shortName = strings.TrimPrefix(shortName, p)
 		}
 
-		normalizedSpellMap[shortName] = s
+		if shortName != "" {
+			normalizedSpellMap[shortName] = s
+		}
 
 		noEvent := strings.TrimSuffix(shortName, " (spell only active during event)")
-		normalizedSpellMap[noEvent] = s
+		if noEvent != "" {
+			normalizedSpellMap[noEvent] = s
+		}
 
-		if veryShort, _, ok := strings.Cut(shortName, " ("); ok {
+		if veryShort, _, ok := strings.Cut(shortName, " ("); ok && veryShort != "" {
 			normalizedSpellMap[veryShort] = s
 		}
 	}
@@ -581,15 +585,10 @@ func IdentifySpell(name string) (sku.Spell, bool) {
 	}
 
 	shortName = strings.TrimSuffix(shortName, " (spell only active during event)")
+	shortName = strings.TrimSuffix(shortName, " (paint)")
 
 	if s, ok := normalizedSpellMap[shortName]; ok {
 		return s, true
-	}
-
-	if veryShortName, _, ok := strings.Cut(shortName, " ("); ok {
-		if s, ok := normalizedSpellMap[veryShortName]; ok {
-			return s, true
-		}
 	}
 
 	return sku.Spell{}, false

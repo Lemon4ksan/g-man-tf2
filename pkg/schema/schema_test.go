@@ -1110,6 +1110,7 @@ func createMockSchema() *Schema {
 
 	s := &Schema{
 		Raw:             raw,
+		itemList:        items,
 		itemsByDef:      make(map[int]*Item),
 		crateSeriesList: map[int]int{5022: 42},
 	}
@@ -1584,11 +1585,11 @@ func TestSchema_NormalizeItem_AdvancedCases_NormalizesAttributes(t *testing.T) {
 func TestSchema_StrangeParts_ValidCounters_MapsToSKUSuffix(t *testing.T) {
 	t.Parallel()
 
-	s := New(minimalRawSchema())
-
-	s.Raw.Schema.KillEaterScoreTypes = append(s.Raw.Schema.KillEaterScoreTypes, &KillEaterScoreType{
+	raw := minimalRawSchema()
+	raw.Schema.KillEaterScoreTypes = append(raw.Schema.KillEaterScoreTypes, &KillEaterScoreType{
 		Type: 10, TypeName: "Airborne Enemies Killed",
 	})
+	s := New(raw)
 
 	parts := s.StrangeParts()
 	assert.Equal(t, "sp10", parts["Airborne Enemies Killed"])

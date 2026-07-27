@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package sku provides the TF2 SKU module.
 package sku
 
 import (
@@ -19,12 +18,12 @@ var rxPriceKey = regexp.MustCompile(
 	`^(\d+);([0-9]|[1][0-5])(;((uncraftable)|(untrad(e)?able)|(australium)|(festive)|(strange)|((u|pk|td-|c|od-|oq-|p|sd)\d+)|(w[1-5])|(kt-[1-3])|(n((100)|[1-9]\d?))))*?$|^\d+$`,
 )
 
-// IsValid tests if a string matches the standard TF2 SKU format.
+var ErrEmptySKU = errors.New("invalid SKU: empty")
+
 func IsValid(sku string) bool {
 	return rxPriceKey.MatchString(sku)
 }
 
-// Item represents a TF2 item with all possible SKU attributes.
 type Item struct {
 	Defindex      int
 	Quality       int
@@ -36,7 +35,7 @@ type Item struct {
 	Festivized    bool
 	Paintkit      int
 	Wear          int
-	Quality2      int // 11 for strange
+	Quality2      int
 	Craftnumber   int
 	Crateseries   int
 	Target        int
@@ -49,7 +48,6 @@ type Item struct {
 	Seed          int
 }
 
-// Reset clears all properties of an Item struct to prepare it for pool recycling.
 func (it *Item) Reset() {
 	it.Defindex = 0
 	it.Quality = 0
@@ -69,12 +67,11 @@ func (it *Item) Reset() {
 	it.OutputQuality = 0
 	it.Paint = 0
 	it.Seed = 0
-	it.Spells = it.Spells[:0]
-	it.Parts = it.Parts[:0]
-	clear(it.PartValues)
+	it.Spells = nil
+	it.Parts = nil
+	it.PartValues = nil
 }
 
-// Spell represents a Halloween spell attached to an item.
 type Spell struct {
 	Attribute int
 	Value     int
@@ -84,6 +81,7 @@ var skuBufferPool = sync.Pool{
 	New: func() any {
 		b := new(bytes.Buffer)
 		b.Grow(64)
+
 		return b
 	},
 }
@@ -99,10 +97,9 @@ var itemPool = sync.Pool{
 	},
 }
 
-// ParseInto parses a SKU string directly into an existing Item struct, avoiding heap allocations.
 func ParseInto(skuStr string, item *Item) error {
 	if len(skuStr) == 0 {
-		return errors.New("invalid SKU: empty")
+		return ErrEmptySKU
 	}
 
 	item.Reset()
@@ -162,7 +159,6 @@ func ParseInto(skuStr string, item *Item) error {
 	return nil
 }
 
-// FromString parses a SKU string into an Item, reusing a pooled Item object.
 func FromString(skuStr string) (*Item, error) {
 	item := itemPool.Get().(*Item)
 	if err := ParseInto(skuStr, item); err != nil {
@@ -173,14 +169,12 @@ func FromString(skuStr string) (*Item, error) {
 	return item, nil
 }
 
-// ReleaseItem returns a parsed Item pointer back to the memory pool.
 func ReleaseItem(item *Item) {
 	if item != nil {
 		itemPool.Put(item)
 	}
 }
 
-// FromObject converts an Item into its SKU string representation.
 func FromObject(item *Item) string {
 	buf := skuBufferPool.Get().(*bytes.Buffer)
 
@@ -287,25 +281,6 @@ func FromObject(item *Item) string {
 	return buf.String()
 }
 
-// ToPricingSKU normalizes the specified SKU string by stripping transient flags
-// such as Festivized, Spells, Strange Parts, and Paint.
-func ToPricingSKU(skuStr string) string {
-	item := itemPool.Get().(*Item)
-	defer itemPool.Put(item)
-
-	if err := ParseInto(skuStr, item); err != nil {
-		return skuStr
-	}
-
-	item.Festivized = false
-	item.Spells = nil
-	item.Parts = nil
-	item.PartValues = nil
-	item.Paint = 0
-
-	return FromObject(item)
-}
-
 func parseSKUAttribute(item *Item, part string) {
 	if len(part) == 0 {
 		return
@@ -355,40 +330,10 @@ func parseSKUAttribute(item *Item, part string) {
 		}
 
 	case 'p':
-		if strings.HasPrefix(part, "pk") && len(part) > 2 {
-			if val, err := strconv.Atoi(part[2:]); err == nil {
-				item.Paintkit = val
-			}
-		} else if len(part) > 1 && part[1] >= '0' && part[1] <= '9' && !strings.Contains(part, "-") {
-			if val, err := strconv.Atoi(part[1:]); err == nil {
-				item.Paint = val
-			}
-		}
+		parsePaintOrPaintkit(item, part)
 
 	case 's':
-		switch {
-		case part == "strange":
-			item.Quality2 = 11
-		case strings.HasPrefix(part, "sd") && len(part) > 2:
-			if val, err := strconv.Atoi(part[2:]); err == nil {
-				item.Seed = val
-			}
-		case strings.HasPrefix(part, "sp") && len(part) > 2:
-			if val, err := strconv.Atoi(part[2:]); err == nil {
-				item.Parts = append(item.Parts, val)
-			}
-		case strings.HasPrefix(part, "s-") && len(part) > 2:
-			if idx := strings.IndexByte(part[2:], '-'); idx != -1 {
-				a, _ := strconv.Atoi(part[2 : 2+idx])
-				v, _ := strconv.Atoi(part[2+idx+1:])
-				item.Spells = append(item.Spells, Spell{Attribute: a, Value: v})
-			}
-
-		case len(part) > 1 && part[1] >= '0' && part[1] <= '9':
-			if val, err := strconv.Atoi(part[1:]); err == nil {
-				item.Spells = append(item.Spells, Spell{Attribute: val, Value: 1})
-			}
-		}
+		parseSpellOrStrangeAttr(item, part)
 
 	case 't':
 		if strings.HasPrefix(part, "td-") && len(part) > 3 {
@@ -398,22 +343,71 @@ func parseSKUAttribute(item *Item, part string) {
 		}
 
 	case 'u':
-		switch {
-		case part == "uncraftable":
-			item.Craftable = false
-		case part == "untradable" || part == "untradeable":
-			item.Tradable = false
-		case len(part) > 1 && part[1] >= '0' && part[1] <= '9':
-			if val, err := strconv.Atoi(part[1:]); err == nil {
-				item.Effect = val
-			}
-		}
+		parseUnusualOrRestrictions(item, part)
 
 	case 'w':
 		if len(part) > 1 && part[1] >= '0' && part[1] <= '9' {
 			if val, err := strconv.Atoi(part[1:]); err == nil {
 				item.Wear = val
 			}
+		}
+	}
+}
+
+func parsePaintOrPaintkit(item *Item, part string) {
+	if strings.HasPrefix(part, "pk") && len(part) > 2 {
+		if val, err := strconv.Atoi(part[2:]); err == nil {
+			item.Paintkit = val
+		}
+
+		return
+	}
+
+	if len(part) > 1 && part[1] >= '0' && part[1] <= '9' && !strings.Contains(part, "-") {
+		if val, err := strconv.Atoi(part[1:]); err == nil {
+			item.Paint = val
+		}
+	}
+}
+
+func parseSpellOrStrangeAttr(item *Item, part string) {
+	switch {
+	case part == "strange":
+		item.Quality2 = 11
+
+	case strings.HasPrefix(part, "sd") && len(part) > 2:
+		if val, err := strconv.Atoi(part[2:]); err == nil {
+			item.Seed = val
+		}
+
+	case strings.HasPrefix(part, "sp") && len(part) > 2:
+		if val, err := strconv.Atoi(part[2:]); err == nil {
+			item.Parts = append(item.Parts, val)
+		}
+
+	case strings.HasPrefix(part, "s-") && len(part) > 2:
+		if idx := strings.IndexByte(part[2:], '-'); idx != -1 {
+			a, _ := strconv.Atoi(part[2 : 2+idx])
+			v, _ := strconv.Atoi(part[2+idx+1:])
+			item.Spells = append(item.Spells, Spell{Attribute: a, Value: v})
+		}
+
+	case len(part) > 1 && part[1] >= '0' && part[1] <= '9':
+		if val, err := strconv.Atoi(part[1:]); err == nil {
+			item.Spells = append(item.Spells, Spell{Attribute: val, Value: 1})
+		}
+	}
+}
+
+func parseUnusualOrRestrictions(item *Item, part string) {
+	switch {
+	case part == "uncraftable":
+		item.Craftable = false
+	case part == "untradable" || part == "untradeable":
+		item.Tradable = false
+	case len(part) > 1 && part[1] >= '0' && part[1] <= '9':
+		if val, err := strconv.Atoi(part[1:]); err == nil {
+			item.Effect = val
 		}
 	}
 }

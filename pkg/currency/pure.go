@@ -10,42 +10,27 @@ import (
 )
 
 const (
-	// SKUKey is the canonical SKU string for a Mann Co. Supply Crate Key.
-	SKUKey = "5021;6"
-
-	// SKURefined is the canonical SKU string for Refined Metal.
-	SKURefined = "5002;6"
-
-	// SKUReclaimed is the canonical SKU string for Reclaimed Metal.
+	SKUKey       = "5021;6"
+	SKURefined   = "5002;6"
 	SKUReclaimed = "5001;6"
-
-	// SKUScrap is the canonical SKU string for Scrap Metal.
-	SKUScrap = "5000;6"
+	SKUScrap     = "5000;6"
 )
 
-// PureStock represents the current liquid inventory of keys and metal.
 type PureStock struct {
-	// Keys represents the count of keys in stock.
-	Keys int
-	// Refined represents the count of Refined Metal in stock.
-	Refined int
-	// Reclaimed represents the count of Reclaimed Metal in stock.
+	Keys      int
+	Refined   int
 	Reclaimed int
-	// Scrap represents the count of Scrap Metal in stock.
-	Scrap int
+	Scrap     int
 }
 
-// TotalScrap calculates the total value of metal in [Scrap] units, excluding keys.
 func (p PureStock) TotalScrap() Scrap {
 	return Scrap((p.Refined * 9) + (p.Reclaimed * 3) + p.Scrap)
 }
 
-// TotalRefined calculates the total value of metal in refined floating-point format, excluding keys.
 func (p PureStock) TotalRefined() float64 {
 	return ToRefined(p.TotalScrap())
 }
 
-// TotalValueScrap calculates the total value of pure stock in [Scrap] units, converting keys using the provided key price in refined.
 func (p PureStock) TotalValueScrap(keyPriceRef float64) Scrap {
 	if keyPriceRef <= 0 {
 		return p.TotalScrap()
@@ -57,8 +42,6 @@ func (p PureStock) TotalValueScrap(keyPriceRef float64) Scrap {
 	return keysValueScrap + p.TotalScrap()
 }
 
-// FormatStock returns a human-readable string slice representation of the stock.
-// Returns outputs like []string{"10 keys", "5.33 ref"}.
 func (p PureStock) FormatStock() []string {
 	var result []string
 
@@ -74,7 +57,6 @@ func (p PureStock) FormatStock() []string {
 	totalRef := p.TotalRefined()
 	if totalRef > 0 {
 		refTruncated := math.Trunc(totalRef*100) / 100
-
 		metalStr := fmt.Sprintf("%.2f ref", refTruncated)
 
 		result = append(result, metalStr)

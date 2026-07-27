@@ -29,25 +29,23 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 )
 
-// StockConfig defines the inventory limit thresholds for the trading system.
+var (
+	ErrUnpricedItemInTrade = errors.New("unpriced item in trade")
+	ErrPricesNotFound      = errors.New("prices not found in context")
+)
+
 type StockConfig struct {
-	// MaxTotal represents the absolute maximum capacity of the bot's inventory across all items.
-	MaxTotal int
-	// MaxPerSKU maps item SKUs to their specific maximum allowed stock counts.
-	MaxPerSKU map[string]int
-	// DefaultMax represents the fallback stock limit for items without an explicit entry in MaxPerSKU.
+	MaxTotal   int
+	MaxPerSKU  map[string]int
 	DefaultMax int
 }
 
-// BackpackProvider defines the interface for accessing the bot's backpack inventory.
 type BackpackProvider interface {
 	GetTotalCount() int
 	GetStock(sku string) int
 	GetItem(id uint64) (*tf2.Item, bool)
 }
 
-// StockLimitMiddleware checks if an incoming trade exceeds total capacity or specific SKU boundaries.
-// Pre-allocates map counts to eliminate heap resizes.
 func StockLimitMiddleware(bp BackpackProvider, cfg StockConfig, logger log.Logger) engine.Middleware {
 	return func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
@@ -55,18 +53,8 @@ func StockLimitMiddleware(bp BackpackProvider, cfg StockConfig, logger log.Logge
 				return next(ctx)
 			}
 
-			currentTotal := bp.GetTotalCount()
-			incomingCount := len(ctx.Offer.ItemsToReceive)
-			outgoingCount := len(ctx.Offer.ItemsToGive)
-
-			if currentTotal+incomingCount-outgoingCount > cfg.MaxTotal {
-				logger.Warn("Trade would exceed total inventory limit",
-					log.Int("current", currentTotal),
-					log.Int("incoming", incomingCount),
-					log.Int("max", cfg.MaxTotal),
-				)
+			if bp.GetTotalCount()+len(ctx.Offer.ItemsToReceive)-len(ctx.Offer.ItemsToGive) > cfg.MaxTotal {
 				ctx.Decline(reason.ReviewOverstocked)
-
 				return nil
 			}
 
@@ -75,26 +63,14 @@ func StockLimitMiddleware(bp BackpackProvider, cfg StockConfig, logger log.Logge
 				incomingPerSKU[it.SKU]++
 			}
 
-			for sku, count := range incomingPerSKU {
-				max, ok := cfg.MaxPerSKU[sku]
+			for skuStr, count := range incomingPerSKU {
+				maxStock, ok := cfg.MaxPerSKU[skuStr]
 				if !ok {
-					max = cfg.DefaultMax
+					maxStock = cfg.DefaultMax
 				}
 
-				if max <= 0 {
-					continue
-				}
-
-				currentStock := bp.GetStock(sku)
-				if currentStock+count > max {
-					logger.Warn("Trade would exceed SKU stock limit",
-						log.String("sku", sku),
-						log.Int("current", currentStock),
-						log.Int("incoming", count),
-						log.Int("max", max),
-					)
+				if maxStock > 0 && bp.GetStock(skuStr)+count > maxStock {
 					ctx.Decline(reason.DeclineOverstocked)
-
 					return nil
 				}
 			}
@@ -104,30 +80,20 @@ func StockLimitMiddleware(bp BackpackProvider, cfg StockConfig, logger log.Logge
 	}
 }
 
-// PriceProvider defines the interface for querying the PriceDB authority.
 type PriceProvider interface {
-	// GetPrice retrieves the cached price entry for the given SKU, returning false if not found.
 	GetPrice(sku string) (*pricedb.Price, bool)
-	// Watch registers the given SKU to be included in background price update polling.
 	Watch(sku string)
-	// Fetch retrieves the latest prices for a slice of SKUs, updating the local cache.
 	Fetch(ctx context.Context, skus []string) (map[string]*pricedb.Price, error)
 }
 
-// DupeChecker defines the interface for auditing item history to detect duplicated items.
 type DupeChecker interface {
-	// CheckHistory queries historical tracking databases for the specified asset ID.
 	CheckHistory(ctx context.Context, assetID uint64) (backpack.HistoryStatus, error)
 }
 
-// ReputationChecker defines the interface for verifying trade partner safety and ban list records.
 type ReputationChecker interface {
-	// CheckBans audits the specified Steam ID against community ban lists.
 	CheckBans(ctx context.Context, partnerID id.ID) (*rep.BanResult, error)
 }
 
-// PricerMiddleware enriches the trade context with current item pricing models retrieved from a [PriceProvider].
-// Pre-allocates SKU map and slice buffers to prevent dynamic map rehashes.
 func PricerMiddleware(mgr PriceProvider, schemaProvider func() *schema.Schema, logger log.Logger) engine.Middleware {
 	return func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
@@ -147,19 +113,18 @@ func PricerMiddleware(mgr PriceProvider, schemaProvider func() *schema.Schema, l
 			skuList := make([]string, 0, len(skus))
 			priceMap := make(map[string]*pricedb.Price, len(skus))
 
-			for sku := range skus {
-				if p, ok := mgr.GetPrice(sku); ok {
-					priceMap[sku] = p
+			for skuStr := range skus {
+				if p, ok := mgr.GetPrice(skuStr); ok {
+					priceMap[skuStr] = p
 				} else {
-					skuList = append(skuList, sku)
-					mgr.Watch(sku)
+					skuList = append(skuList, skuStr)
+					mgr.Watch(skuStr)
 				}
 			}
 
 			if len(skuList) > 0 {
 				fetched, err := mgr.Fetch(ctx, skuList)
 				if err != nil {
-					logger.Warn("Failed to fetch prices from PriceDB", log.Err(err))
 					ctx.Review(tf2reason.ReviewPricerDown)
 					return err
 				}
@@ -167,8 +132,6 @@ func PricerMiddleware(mgr PriceProvider, schemaProvider func() *schema.Schema, l
 				maps.Copy(priceMap, fetched)
 			}
 
-			// Fallback for painted items: if a painted item is not in priceMap,
-			// try to resolve the base SKU and map the base item's price to the painted SKU.
 			for _, item := range ctx.Offer.ItemsToGive {
 				enrichPaintedFallback(item.SKU, priceMap, mgr, logger)
 			}
@@ -201,8 +164,8 @@ func enrichPaintedFallback(itemSKU string, priceMap map[string]*pricedb.Price, m
 	if _, ok := priceMap[pricingSKU]; !ok {
 		if itObj, err := sku.FromString(pricingSKU); err == nil && itObj.Paint != 0 {
 			itObj.Paint = 0
-
 			baseSKU := sku.FromObject(itObj)
+
 			if basePrice, ok := mgr.GetPrice(baseSKU); ok {
 				priceMap[pricingSKU] = &pricedb.Price{
 					SKU:    pricingSKU,
@@ -212,10 +175,6 @@ func enrichPaintedFallback(itemSKU string, priceMap map[string]*pricedb.Price, m
 					Source: basePrice.Source,
 					Time:   basePrice.Time,
 				}
-				logger.Info("Using base item price as fallback for painted item",
-					log.String("painted_sku", pricingSKU),
-					log.String("base_sku", baseSKU),
-				)
 			}
 		}
 	}
@@ -234,30 +193,24 @@ func verifyItemPriced(
 			return nil
 		}
 
-		logger.Warn("Item in trade is not priced", log.String("sku", item.SKU))
 		ctx.Review(tf2reason.ReviewUnpricedItem)
 
-		return errors.New("unpriced item in trade")
+		return ErrUnpricedItemInTrade
 	}
 
 	return nil
 }
 
-// EscrowMiddleware checks whether either trade partner is subject to Steam trade hold restrictions.
-// It halts trade evaluation with [reason.DeclineEscrow] if active escrow holds are detected.
 func EscrowMiddleware(checker trading.EscrowChecker, logger log.Logger) engine.Middleware {
 	return func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
 			hasEscrow, err := checker.CheckEscrow(ctx, ctx.Offer)
 			if err != nil {
-				logger.Warn("Failed to check escrow", log.Err(err))
 				ctx.Review(reason.ReviewEscrowCheckFailed)
-
-				return nil
+				return nil //nolint:nilerr
 			}
 
 			if hasEscrow {
-				logger.Warn("Trade has escrow (trade hold)", log.Uint64("offerID", ctx.Offer.ID))
 				ctx.Decline(reason.DeclineEscrow)
 				return nil
 			}
@@ -267,31 +220,13 @@ func EscrowMiddleware(checker trading.EscrowChecker, logger log.Logger) engine.M
 	}
 }
 
-// DupeCheckMiddleware audits the historical records of incoming high-value Unusual items.
-// It sets the trade context to a review state with [tf2reason.ReviewDupedItems] if duplicates are found.
 func DupeCheckMiddleware(checker DupeChecker, logger log.Logger) engine.Middleware {
 	return func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
 			for _, item := range ctx.Offer.ItemsToReceive {
-				if item.SKU == "" {
-					continue
-				}
-
-				if isUnusual(item.SKU) {
-					logger.Info(
-						"Checking history for Unusual item",
-						log.String("sku", item.SKU),
-						log.Uint64("assetid", item.AssetID),
-					)
-
+				if item.SKU != "" && isUnusual(item.SKU) {
 					status, err := checker.CheckHistory(ctx, item.AssetID)
-					if err != nil {
-						logger.Warn("Failed to check item history", log.Err(err))
-						continue
-					}
-
-					if status.Recorded && status.IsDuped {
-						logger.Warn("Item is DUPED!", log.Uint64("assetid", item.AssetID))
+					if err == nil && status.Recorded && status.IsDuped {
 						ctx.Review(tf2reason.ReviewDupedItems)
 					}
 				}
@@ -302,23 +237,15 @@ func DupeCheckMiddleware(checker DupeChecker, logger log.Logger) engine.Middlewa
 	}
 }
 
-// BanCheckMiddleware audits the trade partner's reputation using [ReputationChecker].
-// It declines trades with [reason.DeclineBanned] or [tf2reason.DeclineBannedBptf] if active bans are found.
 func BanCheckMiddleware(bans ReputationChecker, logger log.Logger) engine.Middleware {
 	return func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
 			res, err := bans.CheckBans(ctx, ctx.Offer.OtherSteamID)
 			if err != nil {
-				logger.Warn("Failed to check partner bans", log.Err(err))
 				return next(ctx)
 			}
 
 			if res.IsBanned {
-				logger.Warn("Partner is banned!",
-					log.String("steamid", ctx.Offer.OtherSteamID.String()),
-					log.Any("details", res.Details),
-				)
-
 				if _, ok := res.Details["steamrep.com"]; ok {
 					ctx.Decline(reason.DeclineBanned)
 				} else {
@@ -333,189 +260,11 @@ func BanCheckMiddleware(bans ReputationChecker, logger log.Logger) engine.Middle
 	}
 }
 
-// SpellPredictor defines the subset of pricedb methods needed for Halloween spell price predictions.
-type SpellPredictor interface {
-	PredictSpellPrice(ctx context.Context, spells, item string) (*pricedb.SpellPredictionResponse, error)
-}
-
-// HalloweenSpellMiddleware computes spell price premiums on spelled weapons and injects them into the trade value.
-func HalloweenSpellMiddleware(
-	predictor SpellPredictor,
-	schemaProvider func() *schema.Schema,
-	configProvider func() Config,
-	logger log.Logger,
-) engine.Middleware {
-	return func(next engine.Handler) engine.Handler {
-		return func(ctx *engine.TradeContext) error {
-			pricesRaw, ok := ctx.Get("prices").Value()
-			if !ok {
-				return next(ctx)
-			}
-
-			priceMap, ok := pricesRaw.(map[string]*pricedb.Price)
-			if !ok {
-				return next(ctx)
-			}
-
-			ourSpellPremium, _ := computePremium(
-				ctx,
-				ctx.Offer.ItemsToGive,
-				priceMap,
-				schemaProvider,
-				configProvider,
-				logger,
-				predictor,
-			)
-			theirSpellPremium, _ := computePremium(
-				ctx,
-				ctx.Offer.ItemsToReceive,
-				priceMap,
-				schemaProvider,
-				configProvider,
-				logger,
-				predictor,
-			)
-
-			ctx.Set("our_spell_premium_scrap", ourSpellPremium)
-			ctx.Set("their_spell_premium_scrap", theirSpellPremium)
-
-			return next(ctx)
-		}
-	}
-}
-
-func computePremium(
-	ctx context.Context,
-	items []*trading.Item,
-	priceMap map[string]*pricedb.Price,
-	schemaProvider func() *schema.Schema,
-	configProvider func() Config,
-	logger log.Logger,
-	predictor SpellPredictor,
-) (currency.Scrap, error) {
-	var totalPremium currency.Scrap
-	for _, item := range items {
-		pricingSKU := GetPricingSKU(item.SKU)
-
-		p, hasPrice := priceMap[pricingSKU]
-		if !hasPrice {
-			continue
-		}
-
-		var spells []sku.Spell
-		for _, desc := range item.Descriptions {
-			if strings.EqualFold(desc.Color, "7ea9d1") {
-				if spell, ok := schema.IdentifySpell(desc.Value); ok {
-					spells = append(spells, spell)
-				}
-			}
-		}
-
-		if len(spells) == 0 {
-			continue
-		}
-
-		sh := schemaProvider()
-		if sh == nil {
-			logger.Warn("Schema is not ready, skipping spell premium calculation for item", log.String("sku", item.SKU))
-			continue
-		}
-
-		var spellNames []string
-		for _, s := range spells {
-			name := sh.SpellNameFromSKU(s)
-			if name != "" && !strings.Contains(name, "Unknown Spell") {
-				spellNames = append(spellNames, name)
-			}
-		}
-
-		if len(spellNames) == 0 {
-			continue
-		}
-
-		spellsQuery := strings.Join(spellNames, ",")
-		logger.Debug("Predicting spell premium for item", log.String("item", p.Name), log.String("spells", spellsQuery))
-
-		var (
-			premiumRef      float64
-			resolvedFromAPI bool
-		)
-
-		prediction, err := predictor.PredictSpellPrice(ctx, spellsQuery, p.Name)
-		if err == nil && prediction != nil {
-			if premium, ok := prediction.PremiumRanges["mid"]; ok {
-				premiumRef = premium.Ref
-				resolvedFromAPI = true
-			}
-		}
-
-		if !resolvedFromAPI {
-			logger.Warn("pricedb prediction failed or empty, falling back to static spell premiums",
-				log.String("item", p.Name),
-				log.String("spells", spellsQuery),
-				log.Err(err),
-			)
-
-			cfg := configProvider()
-
-			var staticTotal float64
-			for _, sName := range spellNames {
-				var (
-					matchedVal float64
-					found      bool
-				)
-
-				for k, v := range cfg.FallbackSpellPremiums {
-					if strings.EqualFold(k, sName) || strings.EqualFold(strings.TrimPrefix(k, "Halloween: "), sName) {
-						matchedVal = v
-						found = true
-						break
-					}
-				}
-
-				if !found {
-					matchedVal = 2.0 // 2 ref default fallback
-
-					logger.Warn(
-						"No custom fallback price configured for spell, using default 2.0 ref",
-						log.String("spell", sName),
-					)
-				}
-
-				staticTotal += matchedVal
-			}
-
-			premiumRef = staticTotal
-		}
-
-		premiumScrap := currency.ToScrap(premiumRef)
-		totalPremium += premiumScrap
-
-		if resolvedFromAPI {
-			logger.Info("Applied spell premium for item (API)",
-				log.String("item", p.Name),
-				log.String("spells", spellsQuery),
-				log.Float64("premium_ref", premiumRef),
-			)
-		} else {
-			logger.Info("Applied spell premium for item (Fallback)",
-				log.String("item", p.Name),
-				log.String("spells", spellsQuery),
-				log.Float64("premium_ref", premiumRef),
-			)
-		}
-	}
-
-	return totalPremium, nil
-}
-
-// MetalChangeManager defines the interface for managing metal change in the trading system.
 type MetalChangeManager interface {
 	SelectChange(amount currency.Scrap) ([]uint64, error)
 	TryToSmeltForChange(ctx context.Context, needed currency.Scrap) error
 }
 
-// SmartCounterMiddleware calculates transaction value balances and automatically adjusts mismatches.
 func SmartCounterMiddleware(
 	cfgManager *ConfigManager,
 	metalMgr MetalChangeManager,
@@ -542,7 +291,6 @@ func SmartCounterMiddleware(
 
 			diff, err := calculateValueDiff(ctx, useSeparateKeyRates)
 			if err != nil {
-				logger.Error("Failed to calculate value difference", log.Err(err))
 				ctx.Review(tf2reason.ReviewInvalidValue)
 				return err
 			}
@@ -553,71 +301,78 @@ func SmartCounterMiddleware(
 			}
 
 			if diff > 0 {
-				changeIDs, err := metalMgr.SelectChange(diff)
-				if err != nil {
-					if errors.Is(err, crafting.ErrNotEnoughChange) {
-						logger.Warn("Not enough metal for change, triggering auto-crafting...")
-
-						if smeltErr := metalMgr.TryToSmeltForChange(ctx, diff); smeltErr == nil {
-							ctx.Decline(tf2reason.DeclineNoChange)
-							return nil
-						}
-					}
-
-					ctx.Decline(tf2reason.DeclineNoChange)
-
-					return nil
-				}
-
-				ctx.Counter(reason.AcceptCorrectValue, &trading.CounterParams{
-					ItemsToGive:    append(ctx.Offer.ItemsToGive, mapIDsToItems(bp, changeIDs)...),
-					ItemsToReceive: ctx.Offer.ItemsToReceive,
-					Message:        "I've added the necessary change for you!",
-				})
-			} else if diff < 0 {
-				partnerInv, err := invProvider.GetPartnerInventory(ctx, ctx.Offer.OtherSteamID)
-				if err != nil {
-					logger.Warn("Failed to fetch partner inventory for smart countering", log.Err(err))
-					ctx.Review(reason.ReviewPartnerInventoryFetchFailed)
-					return nil
-				}
-
-				keyPriceVar, _ := ctx.Get("key_price_scrap").Value()
-				keyPrice, _ := keyPriceVar.(currency.Scrap)
-
-				needed := -diff
-
-				var sch *schema.Schema
-				if val, ok := ctx.Get("schema").Value(); ok {
-					if s, ok := val.(*schema.Schema); ok {
-						sch = s
-					}
-				}
-
-				toAdd, ok := FindPartnerCurrency(partnerInv, needed, keyPrice, sch)
-				if ok {
-					logger.Info("Smart countering: found missing currency in partner inventory",
-						log.Int("needed_scrap", int(needed)),
-						log.Int("found_items", len(toAdd)),
-					)
-
-					ctx.Counter(reason.AcceptCorrectValue, &trading.CounterParams{
-						ItemsToGive:    ctx.Offer.ItemsToGive,
-						ItemsToReceive: append(ctx.Offer.ItemsToReceive, toAdd...),
-						Message:        "You were missing some change, I've added it for you!",
-					})
-				} else {
-					ctx.Decline(tf2reason.DeclineUnderpaid)
-				}
+				return handlePositiveDiffCounter(ctx, metalMgr, bp, diff)
 			}
 
-			return nil
+			return handleNegativeDiffCounter(ctx, invProvider, diff)
 		}
 	}
 }
 
-// FindPartnerCurrency searches partner items to assemble a combination of currencies covering the specified scrap debt.
-// Pre-allocates candidate slices with capacity hints matching items count to eliminate heap slice growths.
+func handlePositiveDiffCounter(
+	ctx *engine.TradeContext,
+	metalMgr MetalChangeManager,
+	bp BackpackProvider,
+	diff currency.Scrap,
+) error {
+	changeIDs, err := metalMgr.SelectChange(diff)
+	if err != nil {
+		if errors.Is(err, crafting.ErrNotEnoughChange) {
+			if smeltErr := metalMgr.TryToSmeltForChange(ctx, diff); smeltErr == nil {
+				ctx.Decline(tf2reason.DeclineNoChange)
+				return nil
+			}
+		}
+
+		ctx.Decline(tf2reason.DeclineNoChange)
+
+		return nil
+	}
+
+	ctx.Counter(reason.AcceptCorrectValue, &trading.CounterParams{
+		ItemsToGive:    append(ctx.Offer.ItemsToGive, mapIDsToItems(bp, changeIDs)...),
+		ItemsToReceive: ctx.Offer.ItemsToReceive,
+		Message:        "I've added the necessary change for you!",
+	})
+
+	return nil
+}
+
+func handleNegativeDiffCounter(
+	ctx *engine.TradeContext,
+	invProvider trading.PartnerInventoryProvider,
+	diff currency.Scrap,
+) error {
+	partnerInv, err := invProvider.GetPartnerInventory(ctx, ctx.Offer.OtherSteamID)
+	if err != nil {
+		ctx.Review(reason.ReviewPartnerInventoryFetchFailed)
+		return nil //nolint:nilerr
+	}
+
+	keyPriceVar, _ := ctx.Get("key_price_scrap").Value()
+	keyPrice, _ := keyPriceVar.(currency.Scrap)
+
+	var sch *schema.Schema
+	if val, ok := ctx.Get("schema").Value(); ok {
+		if s, ok := val.(*schema.Schema); ok {
+			sch = s
+		}
+	}
+
+	toAdd, ok := FindPartnerCurrency(partnerInv, -diff, keyPrice, sch)
+	if ok {
+		ctx.Counter(reason.AcceptCorrectValue, &trading.CounterParams{
+			ItemsToGive:    ctx.Offer.ItemsToGive,
+			ItemsToReceive: append(ctx.Offer.ItemsToReceive, toAdd...),
+			Message:        "You were missing some change, I've added it for you!",
+		})
+	} else {
+		ctx.Decline(tf2reason.DeclineUnderpaid)
+	}
+
+	return nil
+}
+
 func FindPartnerCurrency(
 	items []*trading.Item,
 	needed, keyPrice currency.Scrap,
@@ -688,6 +443,7 @@ func FindPartnerCurrency(
 
 func mapIDsToItems(bp BackpackProvider, ids []uint64) []*trading.Item {
 	items := make([]*trading.Item, 0, len(ids))
+
 	for _, id := range ids {
 		if it, ok := bp.GetItem(id); ok {
 			items = append(items, it.ToEconItem())
@@ -706,7 +462,6 @@ func isUnusual(target string) bool {
 	return it.Quality == 5
 }
 
-// GetPricingSKU normalizes the specified SKU string by stripping transient flags such as Festivized, Spells, and Strange Parts.
 func GetPricingSKU(skuStr string) string {
 	it, err := sku.FromString(skuStr)
 	if err != nil {
@@ -724,7 +479,7 @@ func GetPricingSKU(skuStr string) string {
 func calculateValueDiff(ctx *engine.TradeContext, useSeparateKeyRates bool) (currency.Scrap, error) {
 	pricesRaw, ok := ctx.Get("prices").Value()
 	if !ok {
-		return 0, errors.New("prices not found in context")
+		return 0, ErrPricesNotFound
 	}
 
 	priceMap := pricesRaw.(map[string]*pricedb.Price)
@@ -754,22 +509,10 @@ func calculateValueDiff(ctx *engine.TradeContext, useSeparateKeyRates bool) (cur
 
 	var ourTotalScrapVal, theirTotalScrapVal float64
 
-	var ourSpellPremium, theirSpellPremium currency.Scrap
-	if val, ok := ctx.Get("our_spell_premium_scrap").Value(); ok {
-		ourSpellPremium = val.(currency.Scrap)
-	}
-
-	if val, ok := ctx.Get("their_spell_premium_scrap").Value(); ok {
-		theirSpellPremium = val.(currency.Scrap)
-	}
-
-	ourTotalScrapVal += float64(ourSpellPremium)
-	theirTotalScrapVal += float64(theirSpellPremium)
-
 	for _, item := range ctx.Offer.ItemsToGive {
 		pricingSKU := GetPricingSKU(item.SKU)
-
 		p, ok := priceMap[pricingSKU]
+
 		if !ok {
 			if isUniqueWeapon(item.SKU, sch) {
 				ourTotalScrapVal += 0.5
@@ -792,8 +535,8 @@ func calculateValueDiff(ctx *engine.TradeContext, useSeparateKeyRates bool) (cur
 
 	for _, item := range ctx.Offer.ItemsToReceive {
 		pricingSKU := GetPricingSKU(item.SKU)
-
 		p, ok := priceMap[pricingSKU]
+
 		if !ok {
 			if isUniqueWeapon(item.SKU, sch) {
 				theirTotalScrapVal += 0.5
@@ -810,7 +553,6 @@ func calculateValueDiff(ctx *engine.TradeContext, useSeparateKeyRates bool) (cur
 		theirTotalScrapVal += float64(val)
 	}
 
-	// Overpaying is accepted, underpaying by even 0.5 scrap is rejected
 	diffVal := theirTotalScrapVal - ourTotalScrapVal
 	diffScrap := currency.Scrap(math.Floor(diffVal))
 
@@ -830,23 +572,12 @@ func isUniqueWeapon(skuStr string, s *schema.Schema) bool {
 		return false
 	}
 
-	if item.Quality != schema.QualityUnique {
+	if item.Quality != schema.QualityUnique || !item.Craftable || !item.Tradable {
 		return false
 	}
 
-	if !item.Craftable || !item.Tradable {
-		return false
-	}
-
-	if item.Effect != 0 ||
-		item.Killstreak != 0 ||
-		item.Festivized ||
-		item.Australium ||
-		item.Paintkit != 0 ||
-		item.Wear != 0 ||
-		item.Quality2 != 0 ||
-		item.Crateseries != 0 ||
-		item.Craftnumber != 0 {
+	if item.Effect != 0 || item.Killstreak != 0 || item.Festivized || item.Australium ||
+		item.Paintkit != 0 || item.Wear != 0 || item.Quality2 != 0 || item.Crateseries != 0 || item.Craftnumber != 0 {
 		return false
 	}
 
@@ -856,7 +587,6 @@ func isUniqueWeapon(skuStr string, s *schema.Schema) bool {
 		(sch.CraftClass == "weapon" || sch.ItemClass == "weapon" || strings.HasPrefix(sch.ItemClass, "tf_weapon_"))
 }
 
-// IsJunk returns true if the given [trading.Item] is a low-value commodity (such as standard supply crates).
 func IsJunk(it *trading.Item) bool {
 	if it == nil || it.SKU == "" {
 		return true
@@ -875,7 +605,6 @@ func IsJunk(it *trading.Item) bool {
 	return false
 }
 
-// HasSpells checks whether the [trading.Item] contains any active Halloween spells in its description or attributes.
 func HasSpells(it *trading.Item) bool {
 	if it == nil {
 		return false

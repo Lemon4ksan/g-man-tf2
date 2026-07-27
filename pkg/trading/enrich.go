@@ -16,8 +16,6 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 )
 
-// EnrichItem populates the SKU and Attributes fields of a generic trading.Item
-// using the TF2 schema mapping.
 func EnrichItem(item *trading.Item, s *schema.Schema) {
 	if item == nil || s == nil {
 		return
@@ -28,12 +26,9 @@ func EnrichItem(item *trading.Item, s *schema.Schema) {
 		return
 	}
 
-	// 1. Generate and set standard SKU string
 	item.SKU = s.SKUFromItem(skuItem)
 
-	// 2. Populate attributes based on skuItem properties
 	attrs := make([]trading.Attribute, 0)
-
 	addAttr := func(defindex int, val float64) {
 		attrs = append(attrs, trading.Attribute{
 			Defindex:   defindex,
@@ -89,8 +84,6 @@ func EnrichItem(item *trading.Item, s *schema.Schema) {
 	item.Attributes = attrs
 }
 
-// ItemEnrichmentMiddleware enriches all items in the trade offer (both give and receive)
-// with TF2 SKU and Attributes parsed using the schema.
 func ItemEnrichmentMiddleware(schemaProvider func() *schema.Schema, logger log.Logger) engine.Middleware {
 	return func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
@@ -113,14 +106,11 @@ func ItemEnrichmentMiddleware(schemaProvider func() *schema.Schema, logger log.L
 	}
 }
 
-// TF2PartnerInventoryProvider wraps a trading.PartnerInventoryProvider and enriches
-// the fetched items with TF2 SKU and Attributes.
 type TF2PartnerInventoryProvider struct {
 	provider       trading.PartnerInventoryProvider
 	schemaProvider func() *schema.Schema
 }
 
-// NewPartnerInventoryProvider creates a new TF2PartnerInventoryProvider wrapper.
 func NewPartnerInventoryProvider(
 	provider trading.PartnerInventoryProvider,
 	schemaProvider func() *schema.Schema,
@@ -131,7 +121,6 @@ func NewPartnerInventoryProvider(
 	}
 }
 
-// GetPartnerInventory fetches partner inventory and enriches its items.
 func (p *TF2PartnerInventoryProvider) GetPartnerInventory(
 	ctx context.Context,
 	partnerID id.ID,
@@ -141,8 +130,7 @@ func (p *TF2PartnerInventoryProvider) GetPartnerInventory(
 		return nil, err
 	}
 
-	s := p.schemaProvider()
-	if s != nil {
+	if s := p.schemaProvider(); s != nil {
 		for _, it := range items {
 			EnrichItem(it, s)
 		}

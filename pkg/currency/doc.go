@@ -2,15 +2,19 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package currency performs Team Fortress 2 currency parsing, comparison, and math.
+// Package currency handles Team Fortress 2 monetary calculations, parsing, and formatting.
 //
-// The package supports zero-allocation conversions between refined metal and atomic [Scrap] units
-// (1 Scrap = 1/9 Refined) using the [Currency] representation.
+// # Atomic Scrap Math
 //
-// # Quick Start
+// Floating-point math (`float64`) inherently suffers from IEEE 754 precision loss during
+// repetitive division and addition (e.g., `0.1 + 0.2 != 0.3`). In TF2 trading, key and metal
+// calculations must be exact down to the individual Scrap Metal unit to prevent double-spending
+// or loss of value during counter-offers.
 //
-// Parse a price string and convert it to its total value in scrap:
+// All currency operations within this package strictly use the [Scrap] type, an integer-backed
+// atomic unit:
 //
-//	price, _ := currency.Parse("2 keys, 15.33 ref")
-//	totalScrap, _ := price.ToValue(50.33) // Evaluates using key rate in refined
+//	1 Refined Metal (Ref)   = 9 Scrap
+//	1 Reclaimed Metal (Rec) = 3 Scrap
+//	1 Scrap Metal (Scrap)   = 1 Scrap
 package currency

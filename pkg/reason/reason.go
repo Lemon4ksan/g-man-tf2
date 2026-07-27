@@ -2,12 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package reason contains TF2-specific trade reasons.
+// Package reason contains TF2-specific trade decision reason codes.
 package reason
 
 import "github.com/lemon4ksan/g-man/pkg/trading/reason"
 
-// TF2-specific trade reasons.
 const (
 	ReviewDupedItems   reason.TradeReason = "🟫_DUPED_ITEMS"
 	ReviewInvalidValue reason.TradeReason = "🟥_INVALID_VALUE"

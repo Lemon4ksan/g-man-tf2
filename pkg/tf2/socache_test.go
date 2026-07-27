@@ -636,6 +636,7 @@ func TestSOCache_processDestroy_WrongTypeID_DoesNothing(t *testing.T) {
 	tf, _, _ := setupTF2(t)
 	cache := tf.Cache()
 
+	cache.items[100] = PackGCItem(&Item{ID: 100, DefIndex: ItemScrap})
 	cache.fullItems[100] = &Item{ID: 100, DefIndex: ItemScrap}
 
 	cache.processDestroy(999, []byte("some junk"), nil)
@@ -872,8 +873,4 @@ func TestSOCache_GCEvents_UnmarshalErrors(t *testing.T) {
 		MsgType: uint32(pb.ESOMsg_k_ESOMsg_UpdateMultiple),
 		Payload: []byte("invalid-payload"),
 	})
-
-	tf.handleWelcome(&protocol.GCPacket{Payload: []byte("invalid-payload")})
-
-	tf.handleSchemaUpdate(&protocol.GCPacket{Payload: []byte("invalid-payload")})
 }

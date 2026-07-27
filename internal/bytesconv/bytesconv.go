@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package bytesconv provides zero-allocation byte slice and string manipulation utilities,
-// optimized with mechanical sympathy for Go compiler SSA passes, BCE, and SWAR execution.
+// optimized for Go compiler SSA passes, bounds check elimination (BCE), and SWAR execution.
 package bytesconv
 
 import (
@@ -31,10 +31,10 @@ var toLowerTable = [256]byte{
 	0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9, 0xfa, 0xfb, 0xfc, 0xfd, 0xfe, 0xff,
 }
 
-// B2S converts a byte slice to a string without heap allocations using [unsafe.StringData].
+// B2S constructs a string view over the backing array of b without heap allocation.
 //
 // Preconditions:
-//   - The backing array of b MUST NOT be mutated while the returned string is referenced.
+//   - The underlying array of b MUST NOT be mutated for the lifetime of the returned string.
 func B2S(b []byte) string {
 	if len(b) == 0 {
 		return ""
@@ -43,7 +43,7 @@ func B2S(b []byte) string {
 	return unsafe.String(unsafe.SliceData(b), len(b))
 }
 
-// S2B converts a string to a byte slice without heap allocations using [unsafe.StringData].
+// S2B constructs a byte slice view over the memory backing string s without heap allocation.
 //
 // Preconditions:
 //   - The returned byte slice MUST NOT be written to or mutated.
@@ -55,12 +55,12 @@ func S2B(s string) []byte {
 	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
 
-// LowercaseByte converts an ASCII byte character b to lowercase in O(1) time without branching.
+// LowercaseByte returns the lowercased ASCII byte character in O(1) time via lookup table.
 func LowercaseByte(b byte) byte {
 	return toLowerTable[b]
 }
 
-// EqualFoldASCII performs case-insensitive comparison of ASCII strings with zero allocations and BCE hints.
+// EqualFoldASCII evaluates equality of strings a and b case-insensitively for ASCII characters.
 func EqualFoldASCII(a, b string) bool {
 	n := len(a)
 	if n != len(b) {
@@ -71,12 +71,11 @@ func EqualFoldASCII(a, b string) bool {
 		return true
 	}
 
-	// BCE hints: prove slice boundaries to SSA compiler to eliminate bounds checks in loop
 	_ = a[n-1]
 	_ = b[n-1]
 	_ = toLowerTable[255]
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if toLowerTable[a[i]] != toLowerTable[b[i]] {
 			return false
 		}
@@ -85,7 +84,7 @@ func EqualFoldASCII(a, b string) bool {
 	return true
 }
 
-// AppendToLower appends the ASCII lowercased version of src to dst with zero heap allocations when capacity allows.
+// AppendToLower appends the ASCII lowercased transformation of src into dst.
 func AppendToLower(dst, src []byte) []byte {
 	n := len(src)
 	if n == 0 {
@@ -94,15 +93,13 @@ func AppendToLower(dst, src []byte) []byte {
 
 	start := len(dst)
 	dst = slices.Grow(dst, n)[:start+n]
-
 	out := dst[start : start+n]
 
-	// BCE hints: prove boundaries to SSA compiler to enable auto-vectorization
 	_ = src[n-1]
 	_ = out[n-1]
 	_ = toLowerTable[255]
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		out[i] = toLowerTable[src[i]]
 	}
 
@@ -116,10 +113,9 @@ func isUnreserved(c byte) bool {
 		c == '-' || c == '.' || c == '_' || c == '~'
 }
 
-// AppendQueryEscaped appends the URL-encoded version of s to buf with zero heap allocations.
+// AppendQueryEscaped writes the URL query-encoded representation of s into buf without heap allocations.
 func AppendQueryEscaped(buf *bytes.Buffer, s []byte) {
-	for i := range s {
-		c := s[i]
+	for _, c := range s {
 		switch {
 		case isUnreserved(c):
 			buf.WriteByte(c)
@@ -133,7 +129,7 @@ func AppendQueryEscaped(buf *bytes.Buffer, s []byte) {
 	}
 }
 
-// TrimQuotes strips leading and trailing JSON double-quote characters from b with zero allocations and BCE hints.
+// TrimQuotes removes outer double-quote characters ('"') if enclosed at both ends.
 func TrimQuotes(b []byte) []byte {
 	n := len(b)
 	if n >= 2 {
@@ -146,18 +142,17 @@ func TrimQuotes(b []byte) []byte {
 	return b
 }
 
-// ParseUint64 parses an ASCII decimal representation in b into a uint64 with zero allocations and BCE hints.
+// ParseUint64 parses an ASCII decimal byte representation into an unsigned 64-bit integer.
 func ParseUint64(b []byte) (uint64, bool) {
 	n := len(b)
 	if n == 0 {
 		return 0, false
 	}
 
-	// BCE hint to prove slice boundaries to SSA compiler
 	_ = b[n-1]
 
 	var v uint64
-	for i := 0; i < n; i++ {
+	for i := range n {
 		c := b[i]
 		if c < '0' || c > '9' {
 			return 0, false
@@ -169,7 +164,7 @@ func ParseUint64(b []byte) (uint64, bool) {
 	return v, true
 }
 
-// ParseInt64 parses an optional signed ASCII decimal representation in b into an int64 with zero allocations.
+// ParseInt64 parses an ASCII decimal byte representation into a signed 64-bit integer.
 func ParseInt64(b []byte) (int64, bool) {
 	n := len(b)
 	if n == 0 {
@@ -196,7 +191,6 @@ func ParseInt64(b []byte) (int64, bool) {
 		}
 	}
 
-	// BCE hint
 	_ = b[n-1]
 
 	var v int64

@@ -20,60 +20,37 @@ import (
 )
 
 var (
-	// ErrItemNotFound is returned when an item cannot be found in the player inventory.
-	ErrItemNotFound = errors.New("backpack: could not find item in inventory")
-	// ErrSteamAPI is returned when the Steam WebAPI returns an unexpected status code.
-	ErrSteamAPI = errors.New("backpack: steam api returned error status")
+	ErrItemNotFound = errors.New("backpack: item not found in inventory")
+	ErrSteamAPI     = errors.New("backpack: steam webapi returned error status")
 )
 
-// HistoryStatus defines the tracking state and duplicate check results for an item.
 type HistoryStatus struct {
-	// Recorded indicates whether the duplicate checking service has seen this item.
 	Recorded bool
-	// IsDuped indicates whether the item has been flagged as a duplicate copy.
-	IsDuped bool
+	IsDuped  bool
 }
 
-// DupeChecker defines the interface for verifying item origin and duplication histories.
 type DupeChecker interface {
 	CheckHistory(ctx context.Context, assetID uint64) (HistoryStatus, error)
 }
 
-// TF2Item represents a single item structure in the remote Team Fortress 2 inventory.
 type TF2Item struct {
-	// ID represents the unique asset identifier.
-	ID uint64 `json:"id"`
-	// OriginalID represents the permanent origin identifier.
-	OriginalID uint64 `json:"original_id"`
-	// Defindex represents the item definition index.
-	Defindex int `json:"defindex"`
-	// Level represents the cosmetic item level.
-	Level int `json:"level"`
-	// Quality represents the item quality ID.
-	Quality int `json:"quality"`
-	// Inventory represents the raw inventory positioning bits.
-	Inventory uint32 `json:"inventory"`
-	// Quantity represents the stack size of the item.
-	Quantity int `json:"quantity"`
-	// Origin represents the item drop or purchase source ID.
-	Origin int `json:"origin"`
-	// Style represents the cosmetic style index.
-	Style int `json:"style,omitempty"`
-	// FlagCannotTrade indicates whether the item is trade-restricted.
-	FlagCannotTrade bool `json:"flag_cannot_trade,omitempty"`
-	// FlagCannotCraft indicates whether the item is crafting-restricted.
-	FlagCannotCraft bool `json:"flag_cannot_craft,omitempty"`
-	// CustomName represents the custom text applied by a name tag.
-	CustomName string `json:"custom_name,omitempty"`
-	// CustomDesc represents the custom text applied by a description tag.
-	CustomDesc string `json:"custom_desc,omitempty"`
-	// Attributes contains the list of dynamic item modifiers.
-	Attributes []TF2Attribute `json:"attributes,omitempty"`
-	// SKU is a pre-cached SKU string.
-	SKU string `json:"sku,omitempty"`
+	ID              uint64         `json:"id"`
+	OriginalID      uint64         `json:"original_id"`
+	Defindex        int            `json:"defindex"`
+	Level           int            `json:"level"`
+	Quality         int            `json:"quality"`
+	Inventory       uint32         `json:"inventory"`
+	Quantity        int            `json:"quantity"`
+	Origin          int            `json:"origin"`
+	Style           int            `json:"style,omitempty"`
+	FlagCannotTrade bool           `json:"flag_cannot_trade,omitempty"`
+	FlagCannotCraft bool           `json:"flag_cannot_craft,omitempty"`
+	CustomName      string         `json:"custom_name,omitempty"`
+	CustomDesc      string         `json:"custom_desc,omitempty"`
+	Attributes      []TF2Attribute `json:"attributes,omitempty"`
+	SKU             string         `json:"sku,omitempty"`
 }
 
-// PackTF2Item converts a community inventory TF2Item struct into a compact 32-byte PackedItem.
 func PackTF2Item(it *TF2Item) tf2.PackedItem {
 	if it == nil {
 		return tf2.PackedItem{}
@@ -89,15 +66,8 @@ func PackTF2Item(it *TF2Item) tf2.PackedItem {
 	}
 
 	var (
-		effect       int
-		wear         int
-		isAustralium bool
-		paintkit     int
-		killstreak   int
-		isFestivized bool
-		paint        int
-		quality2     int
-		crateseries  int
+		effect, wear, paintkit, killstreak, paint, quality2, crateseries int
+		isAustralium, isFestivized                                       bool
 	)
 
 	for _, attr := range it.Attributes {
@@ -163,239 +133,62 @@ func PackTF2Item(it *TF2Item) tf2.PackedItem {
 	}
 }
 
-// MapCEconToTF2 converts a community inventory CEconItem struct into a TF2Item.
 func MapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 	asset := econ.Asset
 	desc := econ.Description
 
 	item := TF2Item{
-		ID:       mustParseUint64(asset.AssetID),
-		Quantity: 1,
+		ID:              mustParseUint64(asset.AssetID),
+		Quantity:        1,
+		FlagCannotTrade: desc.Tradable == 0,
 	}
 
 	if amount, err := strconv.Atoi(asset.Amount); err == nil {
 		item.Quantity = amount
 	}
 
-	if desc.AppData == nil && len(desc.Tags) == 0 && len(desc.Descriptions) == 0 && desc.Name == "" {
-		return item
-	}
-
 	if desc.AppData != nil {
 		item.Defindex = desc.AppData.DefIndex
 		item.Quality = desc.AppData.Quality
 		item.OriginalID = desc.AppData.OriginalID
 	}
 
-	if item.Defindex == 0 && s != nil &&
-		(desc.AppData != nil || len(desc.Tags) > 0 || len(desc.Descriptions) > 0 || desc.Name != "") {
-		nameToParse := desc.MarketHashName
-		if nameToParse == "" {
-			nameToParse = desc.Name
+	if item.Defindex == 0 {
+		if s != nil {
+			resolveDefindexFromName(&item, &econ, s)
 		}
 
-		if nameToParse != "" {
-			parsed := s.ItemFromName(nameToParse)
-			if parsed != nil && parsed.Defindex > 0 {
-				item.Defindex = parsed.Defindex
-				if item.Quality == 0 {
-					item.Quality = parsed.Quality
-				}
+		if item.Defindex == 0 {
+			switch {
+			case strings.Contains(desc.MarketHashName, "Refined Metal") || strings.Contains(desc.Name, "Refined Metal"):
+				item.Defindex = 5002
+			case strings.Contains(desc.MarketHashName, "Reclaimed Metal") || strings.Contains(desc.Name, "Reclaimed Metal"):
+				item.Defindex = 5001
+			case strings.Contains(desc.MarketHashName, "Scrap Metal") || strings.Contains(desc.Name, "Scrap Metal"):
+				item.Defindex = 5000
+			case strings.Contains(desc.MarketHashName, "Key") || strings.Contains(desc.Name, "Key"):
+				item.Defindex = 5021
 			}
 		}
+	}
+
+	if item.Quality == 0 {
+		item.Quality = 6 // QualityUnique
 	}
 
 	if item.Defindex == 0 || item.Quality == 0 {
-		for _, tag := range desc.Tags {
-			switch tag.Category {
-			case "Quality":
-				if item.Quality == 0 {
-					item.Quality = s.QualityIDByName(tag.LocalizedTagName)
-				}
-			case "Type":
-			}
-		}
+		resolveQualityFromTags(&item, &econ, s)
 	}
 
-	item.FlagCannotTrade = desc.Tradable == 0
-	item.FlagCannotCraft = false
-
-	for _, d := range desc.Descriptions {
-		val := d.Value
-
-		if strings.Contains(val, "( Not Usable in Crafting )") {
-			item.FlagCannotCraft = true
-			continue
-		}
-
-		if wearName, ok := strings.CutPrefix(val, "Exterior: "); ok {
-			if wearID := s.WearByName(wearName); wearID != 0 {
-				item.Attributes = append(item.Attributes, TF2Attribute{
-					Defindex: schema.AttrWear,
-					Value:    float64(wearID),
-				})
-			}
-
-			continue
-		}
-
-		if effectName, ok := strings.CutPrefix(val, "★ Unusual Effect: "); ok {
-			if effectID := s.EffectIDByName(effectName); effectID != 0 {
-				item.Attributes = append(item.Attributes, TF2Attribute{
-					Defindex: schema.AttrUnusualEffect,
-					Value:    float64(effectID),
-				})
-			}
-
-			continue
-		}
-
-		if strings.Contains(val, "Killstreak Active") || strings.Contains(val, "Killstreaks Active") ||
-			strings.HasPrefix(val, "Killstreaker:") ||
-			strings.HasPrefix(val, "Sheen:") {
-			ksLevel := 0
-			switch {
-			case strings.Contains(val, "Professional") || strings.HasPrefix(val, "Killstreaker:") || strings.Contains(desc.MarketHashName, "Professional Killstreak"):
-				ksLevel = 3
-			case strings.Contains(val, "Specialized") || strings.HasPrefix(val, "Sheen:") || strings.Contains(desc.MarketHashName, "Specialized Killstreak"):
-				ksLevel = 2
-			case strings.Contains(val, "Killstreak") || strings.Contains(desc.MarketHashName, "Killstreak"):
-				ksLevel = 1
-			}
-
-			if ksLevel > 0 {
-				hasKS := false
-				for i := range item.Attributes {
-					if item.Attributes[i].Defindex == schema.AttrKillstreak {
-						hasKS = true
-
-						currLevel := 0
-						if fVal, ok := item.Attributes[i].Value.(float64); ok {
-							currLevel = int(fVal)
-						} else if iVal, ok := item.Attributes[i].Value.(int); ok {
-							currLevel = iVal
-						}
-
-						if currLevel < ksLevel {
-							item.Attributes[i].Value = float64(ksLevel)
-						}
-
-						break
-					}
-				}
-
-				if !hasKS {
-					item.Attributes = append(item.Attributes, TF2Attribute{
-						Defindex: schema.AttrKillstreak,
-						Value:    float64(ksLevel),
-					})
-				}
-			}
-		}
-
-		if paintName, ok := strings.CutPrefix(val, "Paint Color: "); ok {
-			if paintID := s.PaintDecimalByName(paintName); paintID != 0 {
-				item.Attributes = append(item.Attributes, TF2Attribute{
-					Defindex: schema.AttrPaintColor,
-					Value:    float64(paintID),
-				})
-			}
-		}
-
-		if strings.Contains(val, "Crate Series #") {
-			parts := strings.Split(val, "#")
-			if len(parts) == 2 {
-				if series, err := strconv.Atoi(parts[1]); err == nil {
-					item.Attributes = append(item.Attributes, TF2Attribute{
-						Defindex: schema.AttrCrateSeries,
-						Value:    float64(series),
-					})
-				}
-			}
-		}
-
-		if item.Quality != schema.QualityStrange &&
-			(strings.Contains(val, "Strange Stat") || strings.Contains(val, "Strange Part")) {
-			item.Attributes = append(item.Attributes, TF2Attribute{
-				Defindex: schema.AttrStrangeScore,
-				Value:    float64(1),
-			})
-		}
-
-		if d.Color == "756b5e" {
-			clean := strings.Trim(val, "()")
-			if before, _, ok := strings.Cut(clean, ":"); ok {
-				partName := strings.TrimSpace(before)
-				for name, suffix := range s.StrangeParts() {
-					if strings.Contains(partName, name) {
-						if partID, err := strconv.Atoi(strings.TrimPrefix(suffix, "sp")); err == nil {
-							item.Attributes = append(item.Attributes, TF2Attribute{
-								Defindex: schema.DefPartsProxy + len(item.Attributes),
-								Value:    float64(partID),
-							})
-						}
-
-						break
-					}
-				}
-			}
-		}
-
-		if d.Color == "7ea9d1" {
-			spellName := strings.TrimSpace(val)
-			if spell, ok := s.SpellIDByName(spellName); ok {
-				item.Attributes = append(item.Attributes, TF2Attribute{
-					Defindex: schema.DefSpellProxy + len(item.Attributes),
-					Value:    spell,
-				})
-			}
-		}
-	}
+	parseCEconDescriptions(&item, &econ, s)
 
 	if item.Quality == 15 {
-		name := strings.ToLower(desc.MarketHashName)
-		for pkName, pkID := range s.PaintKitsByName() {
-			if strings.Contains(name, pkName) {
-				item.Attributes = append(item.Attributes, TF2Attribute{
-					Defindex: schema.AttrPaintkit,
-					Value:    float64(pkID),
-				})
-
-				break
-			}
-		}
+		resolvePaintkitFromName(&item, desc.MarketHashName, s)
 	}
 
-	hasAustraliumAttr := false
-
-	if desc.AppData != nil {
-		item.Defindex = desc.AppData.DefIndex
-		item.Quality = desc.AppData.Quality
-		item.OriginalID = desc.AppData.OriginalID
-		hasAustraliumAttr = desc.AppData.IsAustralium
-	}
-
-	if item.Defindex == 0 && s != nil &&
-		(desc.AppData != nil || len(desc.Tags) > 0 || len(desc.Descriptions) > 0 || desc.Name != "") {
-		nameToParse := desc.MarketHashName
-		if nameToParse == "" {
-			nameToParse = desc.Name
-		}
-
-		if nameToParse != "" {
-			parsed := s.ItemFromName(nameToParse)
-			if parsed != nil && parsed.Defindex > 0 {
-				item.Defindex = parsed.Defindex
-				if item.Quality == 0 {
-					item.Quality = parsed.Quality
-				}
-			}
-		}
-	}
-
+	hasAustraliumAttr := desc.AppData != nil && desc.AppData.IsAustralium
 	if !hasAustraliumAttr && item.Quality == schema.QualityStrange &&
-		s.IsAustraliumDefindex(item.Defindex) &&
-		strings.Contains(desc.MarketHashName, "Australium") {
+		s != nil && s.IsAustraliumDefindex(item.Defindex) && strings.Contains(desc.MarketHashName, "Australium") {
 		hasAustraliumAttr = true
 	}
 
@@ -406,43 +199,218 @@ func MapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 		})
 	}
 
-	isFestive := strings.Contains(desc.Name, "Festivized") || s.IsNativeFestive(item.Defindex)
-	if isFestive {
+	if strings.Contains(desc.Name, "Festivized") || (s != nil && s.IsNativeFestive(item.Defindex)) {
 		item.Attributes = append(item.Attributes, TF2Attribute{
 			Defindex: schema.AttrFestivized,
 			Value:    float64(1),
 		})
 	}
 
-	item.Defindex = s.NormalizeDefindex(item.Defindex)
+	if s != nil {
+		item.Defindex = s.NormalizeDefindex(item.Defindex)
+	}
+
 	item.SKU = item.ToSKU()
 
 	return item
 }
 
-// ToSKU generates and returns a standard SKU string matching the [TF2Item] state.
+func resolveDefindexFromName(item *TF2Item, econ *inventory.CEconItem, s *schema.Schema) {
+	desc := econ.Description
+	nameToParse := desc.MarketHashName
+
+	if nameToParse == "" {
+		nameToParse = desc.Name
+	}
+
+	if nameToParse != "" {
+		if parsed := s.ItemFromName(nameToParse); parsed != nil && parsed.Defindex > 0 {
+			item.Defindex = parsed.Defindex
+			if item.Quality == 0 {
+				item.Quality = parsed.Quality
+			}
+		}
+	}
+}
+
+func resolveQualityFromTags(item *TF2Item, econ *inventory.CEconItem, s *schema.Schema) {
+	if s == nil {
+		return
+	}
+
+	for _, tag := range econ.Description.Tags {
+		if tag.Category == "Quality" && item.Quality == 0 {
+			item.Quality = s.QualityIDByName(tag.LocalizedTagName)
+		}
+	}
+}
+
+func parseCEconDescriptions(item *TF2Item, econ *inventory.CEconItem, s *schema.Schema) {
+	for _, d := range econ.Description.Descriptions {
+		val := d.Value
+
+		if strings.Contains(val, "( Not Usable in Crafting )") {
+			item.FlagCannotCraft = true
+			continue
+		}
+
+		if wearName, ok := strings.CutPrefix(val, "Exterior: "); ok && s != nil {
+			if wearID := s.WearByName(wearName); wearID != 0 {
+				item.Attributes = append(
+					item.Attributes,
+					TF2Attribute{Defindex: schema.AttrWear, Value: float64(wearID)},
+				)
+			}
+
+			continue
+		}
+
+		if effectName, ok := strings.CutPrefix(val, "★ Unusual Effect: "); ok && s != nil {
+			if effectID := s.EffectIDByName(effectName); effectID != 0 {
+				item.Attributes = append(
+					item.Attributes,
+					TF2Attribute{Defindex: schema.AttrUnusualEffect, Value: float64(effectID)},
+				)
+			}
+
+			continue
+		}
+
+		if strings.Contains(val, "Killstreak Active") || strings.Contains(val, "Killstreaks Active") ||
+			strings.HasPrefix(val, "Killstreaker:") || strings.HasPrefix(val, "Sheen:") {
+			parseKillstreakAttr(item, val, econ.Description.MarketHashName)
+		}
+
+		if paintName, ok := strings.CutPrefix(val, "Paint Color: "); ok && s != nil {
+			if paintID := s.PaintDecimalByName(paintName); paintID != 0 {
+				item.Attributes = append(
+					item.Attributes,
+					TF2Attribute{Defindex: schema.AttrPaintColor, Value: float64(paintID)},
+				)
+			}
+		}
+
+		if strings.Contains(val, "Crate Series #") {
+			parts := strings.Split(val, "#")
+			if len(parts) == 2 {
+				if series, err := strconv.Atoi(parts[1]); err == nil {
+					item.Attributes = append(
+						item.Attributes,
+						TF2Attribute{Defindex: schema.AttrCrateSeries, Value: float64(series)},
+					)
+				}
+			}
+		}
+
+		if item.Quality != schema.QualityStrange &&
+			(strings.Contains(val, "Strange Stat") || strings.Contains(val, "Strange Part")) {
+			item.Attributes = append(
+				item.Attributes,
+				TF2Attribute{Defindex: schema.AttrStrangeScore, Value: float64(1)},
+			)
+		}
+
+		if strings.EqualFold(d.Color, "756b5e") {
+			parseStrangePartColorAttr(item, val, s)
+		}
+
+		if strings.EqualFold(d.Color, "7ea9d1") && s != nil {
+			if spell, ok := s.SpellIDByName(strings.TrimSpace(val)); ok {
+				item.Attributes = append(
+					item.Attributes,
+					TF2Attribute{Defindex: schema.DefSpellProxy + len(item.Attributes), Value: spell},
+				)
+			}
+		}
+	}
+}
+
+func parseKillstreakAttr(item *TF2Item, val, marketHashName string) {
+	ksLevel := 0
+
+	switch {
+	case strings.Contains(val, "Professional") || strings.HasPrefix(val, "Killstreaker:") || strings.Contains(marketHashName, "Professional Killstreak"):
+		ksLevel = 3
+	case strings.Contains(val, "Specialized") || strings.HasPrefix(val, "Sheen:") || strings.Contains(marketHashName, "Specialized Killstreak"):
+		ksLevel = 2
+	case strings.Contains(val, "Killstreak") || strings.Contains(marketHashName, "Killstreak"):
+		ksLevel = 1
+	}
+
+	if ksLevel == 0 {
+		return
+	}
+
+	for i := range item.Attributes {
+		if item.Attributes[i].Defindex == schema.AttrKillstreak {
+			if curr, ok := item.Attributes[i].Value.(float64); !ok || int(curr) < ksLevel {
+				item.Attributes[i].Value = float64(ksLevel)
+			}
+
+			return
+		}
+	}
+
+	item.Attributes = append(item.Attributes, TF2Attribute{Defindex: schema.AttrKillstreak, Value: float64(ksLevel)})
+}
+
+func parseStrangePartColorAttr(item *TF2Item, val string, s *schema.Schema) {
+	clean := strings.Trim(val, "()")
+	before, _, ok := strings.Cut(clean, ":")
+
+	if !ok {
+		return
+	}
+
+	partName := strings.TrimSpace(before)
+
+	if s != nil {
+		for name, suffix := range s.StrangeParts() {
+			if strings.Contains(partName, name) || strings.EqualFold(partName, name) {
+				if partID, err := strconv.Atoi(strings.TrimPrefix(suffix, "sp")); err == nil {
+					item.Attributes = append(item.Attributes, TF2Attribute{
+						Defindex: schema.DefPartsProxy + len(item.Attributes),
+						Value:    float64(partID),
+					})
+				}
+
+				return
+			}
+		}
+	}
+
+	item.Attributes = append(item.Attributes, TF2Attribute{
+		Defindex: schema.DefPartsProxy + len(item.Attributes),
+		Value:    float64(0),
+	})
+}
+
+func resolvePaintkitFromName(item *TF2Item, name string, s *schema.Schema) {
+	if s == nil {
+		return
+	}
+
+	lowerName := strings.ToLower(name)
+
+	for pkName, pkID := range s.PaintKitsByName() {
+		if strings.Contains(lowerName, pkName) {
+			item.Attributes = append(item.Attributes, TF2Attribute{Defindex: schema.AttrPaintkit, Value: float64(pkID)})
+
+			break
+		}
+	}
+}
+
 func (it *TF2Item) ToSKU() string {
 	if it.SKU != "" {
 		return it.SKU
 	}
 
-	quality := it.Quality
-	defindex := it.Defindex
-	isCraftable := !it.FlagCannotCraft
-
-	effect := 0
-	wear := 0
-	isAustralium := false
-	paintkit := 0
-	killstreak := 0
-	isFestivized := false
-	paint := 0
-	quality2 := 0
-	crateseries := 0
-
 	var (
-		spells []sku.Spell
-		parts  []int
+		effect, wear, paintkit, killstreak, paint, quality2, crateseries int
+		isAustralium, isFestivized                                       bool
+		spells                                                           []sku.Spell
+		parts                                                            []int
 	)
 
 	for _, attr := range it.Attributes {
@@ -493,9 +461,9 @@ func (it *TF2Item) ToSKU() string {
 	}
 
 	return sku.FromObject(&sku.Item{
-		Defindex:    defindex,
-		Quality:     quality,
-		Craftable:   isCraftable,
+		Defindex:    it.Defindex,
+		Quality:     it.Quality,
+		Craftable:   !it.FlagCannotCraft,
 		Tradable:    !it.FlagCannotTrade,
 		Australium:  isAustralium,
 		Effect:      effect,
@@ -511,7 +479,6 @@ func (it *TF2Item) ToSKU() string {
 	})
 }
 
-// ToEconItem maps the [TF2Item] fields into a universal exchange [trading.Item] format.
 func (it *TF2Item) ToEconItem() *trading.Item {
 	item := &trading.Item{
 		AppID:     440,
@@ -526,6 +493,7 @@ func (it *TF2Item) ToEconItem() *trading.Item {
 
 	if len(it.Attributes) > 0 {
 		item.Attributes = make([]trading.Attribute, 0, len(it.Attributes))
+
 		for _, attr := range it.Attributes {
 			valStr := ""
 
@@ -556,25 +524,20 @@ func (it *TF2Item) ToEconItem() *trading.Item {
 	}
 
 	if it.CustomDesc != "" {
-		item.Descriptions = append(item.Descriptions, trading.Description{
-			Value: it.CustomDesc,
-		})
+		item.Descriptions = append(item.Descriptions, trading.Description{Value: it.CustomDesc})
 	}
 
 	return item
 }
 
-// TF2Attribute represents a dynamic item modifier or state tag.
 type TF2Attribute struct {
-	// Defindex represents the attribute definition index.
-	Defindex int `json:"defindex"`
-	// Value represents the dynamic typed value of the attribute.
-	Value any `json:"value"`
-	// FloatValue represents the floating-point interpretation of the value.
+	Defindex   int     `json:"defindex"`
+	Value      any     `json:"value"`
 	FloatValue float64 `json:"float_value,omitempty"`
 }
 
 func mustParseUint64(s string) uint64 {
 	v, _ := strconv.ParseUint(s, 10, 64)
+
 	return v
 }

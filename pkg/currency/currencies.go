@@ -12,33 +12,27 @@ import (
 	"strings"
 )
 
-// Scrap represents the absolute atomic unit of currency in Team Fortress 2.
-// Calculations in Scrap prevent floating-point rounding errors during trades.
+// Scrap represents the absolute atomic integer unit of currency in Team Fortress 2.
+// Using Scrap eliminates floating-point rounding errors during financial trade valuations.
 type Scrap int
 
 const (
-	// ScrapInRec defines the number of individual scrap units contained in one reclaimed metal.
 	ScrapInRec = 3
-	// ScrapInRef defines the number of individual scrap units contained in one refined metal.
 	ScrapInRef = 9
 )
 
-// Currency represents a combined balance of keys and refined metal.
-// It models item pricing, listing values, and trade session totals.
+// ErrMissingConversionRate indicates key conversion rate in Refined is missing or zero.
+var ErrMissingConversionRate = errors.New("currency: missing conversion rate")
+
 type Currency struct {
-	// Keys represents the count of keys in the balance.
-	Keys float64 `json:"keys"`
-	// Metal represents the amount of refined metal in the balance.
+	Keys  float64 `json:"keys"`
 	Metal float64 `json:"metal"`
 }
 
-// New creates and returns a pointer to a new [Currency] instance.
 func New(keys, metal float64) *Currency {
 	return &Currency{Keys: keys, Metal: metal}
 }
 
-// String formats the [Currency] instance into a human-readable string.
-// Returns formats such as "1 key, 20.11 ref" or "0 keys, 0 ref".
 func (c *Currency) String() string {
 	if c.Keys == 0 && c.Metal == 0 {
 		return "0 keys, 0 ref"
@@ -66,12 +60,10 @@ func (c *Currency) String() string {
 	return strings.Join(parts, ", ")
 }
 
-// ToValue calculates the total value of the [Currency] in [Scrap] units.
-// It uses the provided key exchange rate in refined units to convert keys.
-// Returns an error if keys are present but the key exchange rate is zero or negative.
+// ToValue converts keys and metal balance into atomic integer Scrap units.
 func (c *Currency) ToValue(keyPriceRef float64) (Scrap, error) {
 	if keyPriceRef == 0 && c.Keys != 0 {
-		return 0, errors.New("missing conversion rate")
+		return 0, ErrMissingConversionRate
 	}
 
 	metalValue := ToScrap(c.Metal)
@@ -85,8 +77,7 @@ func (c *Currency) ToValue(keyPriceRef float64) (Scrap, error) {
 	return metalValue, nil
 }
 
-// AddRefined sums multiple refined metal values in floating-point format.
-// It converts internally to [Scrap] to eliminate standard floating-point precision errors.
+// AddRefined sums floating-point refined metal amounts safely via atomic Scrap space.
 func AddRefined(args ...float64) float64 {
 	var total Scrap
 	for _, ref := range args {
@@ -96,9 +87,7 @@ func AddRefined(args ...float64) float64 {
 	return ToRefined(total)
 }
 
-// ScrapToCurrencies converts total [Scrap] units into a [Currency] structure.
-// It splits the scrap into keys and remaining metal based on the provided key price in refined.
-// If the key price is zero or negative, the result contains only metal.
+// ScrapToCurrencies breaks down atomic Scrap units into integer keys and remaining refined metal.
 func ScrapToCurrencies(total Scrap, keyPriceRef float64) *Currency {
 	if keyPriceRef <= 0 {
 		return New(0, ToRefined(total))
@@ -111,18 +100,17 @@ func ScrapToCurrencies(total Scrap, keyPriceRef float64) *Currency {
 	return New(float64(keys), ToRefined(leftover))
 }
 
-// ToScrap converts refined metal in floating-point format into [Scrap] units.
+// ToScrap converts floating-point refined metal into atomic integer Scrap units.
 func ToScrap(refined float64) Scrap {
 	return Scrap(math.Round(refined * float64(ScrapInRef)))
 }
 
-// ToRefined converts [Scrap] units into a refined metal floating-point value.
+// ToRefined converts atomic Scrap units into floating-point refined metal.
 func ToRefined(s Scrap) float64 {
 	return float64(s) / float64(ScrapInRef)
 }
 
-// FormatRefined formats [Scrap] units into a refined metal string with two decimal places.
-// It rounds the last digit up if the trailing remainder is half or greater.
+// FormatRefined formats atomic Scrap units into a string formatted to two decimal places.
 func FormatRefined(s Scrap) string {
 	return fmt.Sprintf("%.2f ref", float64(s)/9.0)
 }

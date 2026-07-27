@@ -2,8 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package stringpool provides concurrent string interning to eliminate redundant
-// string allocations across large inventories and schema structures.
+// Package stringpool implements thread-safe string interning across 64 shards to eliminate duplicate string allocations.
 package stringpool
 
 import (
@@ -17,14 +16,14 @@ type shard struct {
 	pool map[string]string
 }
 
-// Pool is a sharded thread-safe string interner.
+// Pool maintains 64 sharded maps to minimize mutex contention during concurrent schema string lookups.
 type Pool struct {
 	shards [shardCount]shard
 }
 
 var globalPool = NewPool()
 
-// NewPool creates a new sharded string pool.
+// NewPool constructs a sharded string interner.
 func NewPool() *Pool {
 	p := &Pool{}
 	for i := range shardCount {
@@ -35,9 +34,8 @@ func NewPool() *Pool {
 }
 
 func (p *Pool) getShard(s string) *shard {
-	// Fast fnv-1a hash for sharding
 	var h uint32 = 2166136261
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		h ^= uint32(s[i])
 		h *= 16777619
 	}
@@ -45,8 +43,10 @@ func (p *Pool) getShard(s string) *shard {
 	return &p.shards[h%shardCount]
 }
 
-// Intern returns a canonical copy of the string s.
-// If s is already in the pool, the existing instance is returned.
+// Intern returns a canonical shared reference to string s.
+//
+// Thread Safety:
+//   - Safe for concurrent use across multiple goroutines using double-checked RWMutex locking.
 func (p *Pool) Intern(s string) string {
 	if len(s) == 0 {
 		return ""
@@ -64,18 +64,18 @@ func (p *Pool) Intern(s string) string {
 	sh.mu.RUnlock()
 
 	sh.mu.Lock()
+	defer sh.mu.Unlock()
+
 	if interned, ok := sh.pool[s]; ok {
-		sh.mu.Unlock()
 		return interned
 	}
 
 	sh.pool[s] = s
-	sh.mu.Unlock()
 
 	return s
 }
 
-// Intern returns a canonical copy of s using the global string pool.
+// Intern returns a canonical shared reference to s using the package-level global string pool.
 func Intern(s string) string {
 	return globalPool.Intern(s)
 }

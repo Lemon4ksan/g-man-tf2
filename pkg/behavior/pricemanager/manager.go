@@ -24,23 +24,19 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 )
 
-// BehaviorName is the name of the price manager behavior.
 const BehaviorName = "bptf_prices"
 
-// WithPriceManager registers the price manager behavior with the orchestrator.
+var ErrCachePathNotConfigured = errors.New("pricemanager: cache path not configured")
+
 func WithPriceManager(orch *behavior.Orchestrator, client *bptf.Client, cfg Config) {
 	orch.Register(NewPriceManager(client, orch.Logger(), cfg))
 }
 
-// Config holds the configuration for the price manager.
 type Config struct {
-	// CachePath is the path to the local price cache file.
-	CachePath string
-	// SyncInterval is the interval between price updates.
+	CachePath    string
 	SyncInterval time.Duration
 }
 
-// DefaultConfig returns a Config with production-ready defaults.
 func DefaultConfig() Config {
 	return Config{
 		CachePath:    "cache/tf2/prices.json",
@@ -48,7 +44,10 @@ func DefaultConfig() Config {
 	}
 }
 
-// PriceManager manages backpack.tf prices.
+// PriceManager manages price fetching, disk caching, and indexing from backpack.tf.
+//
+// Thread Safety:
+//   - Fully thread-safe. Reads are guarded by RWMutex, mutations acquire exclusive Lock.
 type PriceManager struct {
 	config Config
 	bptf   *bptf.Client
@@ -58,7 +57,6 @@ type PriceManager struct {
 	index map[string]bptf.PriceEntry
 }
 
-// NewPriceManager creates a new price manager.
 func NewPriceManager(c *bptf.Client, l log.Logger, cfg Config) *PriceManager {
 	return &PriceManager{
 		config: cfg,
@@ -68,24 +66,15 @@ func NewPriceManager(c *bptf.Client, l log.Logger, cfg Config) *PriceManager {
 	}
 }
 
-// Name returns the unique name of the behavior.
-func (m *PriceManager) Name() string {
-	return BehaviorName
-}
+func (m *PriceManager) Name() string { return BehaviorName }
 
-// Run starts the automated price synchronization loop.
 func (m *PriceManager) Run(ctx context.Context) error {
 	m.logger.Info("BPTF Price Sync behavior started", log.Duration("interval", m.config.SyncInterval))
 
 	ticker := time.NewTicker(m.config.SyncInterval)
 	defer ticker.Stop()
 
-	// Initial update if index is empty
-	m.mu.RLock()
-	empty := len(m.index) == 0
-	m.mu.RUnlock()
-
-	if empty {
+	if m.isIndexEmpty() {
 		if err := m.Update(ctx); err != nil {
 			m.logger.Error("Initial price update failed", log.Err(err))
 		}
@@ -103,7 +92,13 @@ func (m *PriceManager) Run(ctx context.Context) error {
 	}
 }
 
-// Update downloads the price list and rebuilds the index.
+func (m *PriceManager) isIndexEmpty() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return len(m.index) == 0
+}
+
 func (m *PriceManager) Update(ctx context.Context) error {
 	m.logger.Debug("Fetching full pricelist from backpack.tf...")
 
@@ -112,49 +107,15 @@ func (m *PriceManager) Update(ctx context.Context) error {
 		return fmt.Errorf("bptf update failed: %w", err)
 	}
 
-	newIndex := make(map[string]bptf.PriceEntry)
+	newIndex := make(map[string]bptf.PriceEntry, len(resp.Items)*2)
 
-	// Quality -> Tradability -> Craftability -> PriceIndex -> PriceEntry.
 	for _, itemData := range resp.Items {
-		// An item can have multiple defindexes (Valve shenanigans)
-		// We'll take the first one, as they usually overlap for different styles.
 		if len(itemData.Defindexes) == 0 {
 			continue
 		}
 
 		defindex, _ := strconv.Atoi(itemData.Defindexes[0])
-
-		for quality, tradableMap := range itemData.Prices {
-			qInt, _ := strconv.Atoi(quality)
-
-			for tradable, craftableMap := range tradableMap {
-				isTradable := tradable == "Tradable"
-
-				for craftable, priceIndexMap := range craftableMap {
-					isCraftable := craftable == "Craftable"
-
-					for pIndex, entry := range priceIndexMap {
-						sItem := &sku.Item{
-							Defindex:  schema.NormalizeDefindex(defindex),
-							Quality:   qInt,
-							Tradable:  isTradable,
-							Craftable: isCraftable,
-						}
-
-						if pInt, err := strconv.Atoi(pIndex); err == nil && pInt != 0 {
-							if qInt == schema.QualityUnusual {
-								sItem.Effect = pInt
-							} else {
-								sItem.Crateseries = pInt
-							}
-						}
-
-						skuStr := sku.FromObject(sItem)
-						newIndex[skuStr] = entry
-					}
-				}
-			}
-		}
+		m.indexItemPrices(defindex, itemData.Prices, newIndex)
 	}
 
 	m.mu.Lock()
@@ -170,7 +131,52 @@ func (m *PriceManager) Update(ctx context.Context) error {
 	return nil
 }
 
-// GetPrice returns the price for the SKU from memory.
+func (m *PriceManager) indexItemPrices(
+	defindex int,
+	prices map[string]map[string]map[string]map[string]bptf.PriceEntry,
+	outIndex map[string]bptf.PriceEntry,
+) {
+	normDef := schema.NormalizeDefindex(defindex)
+
+	for quality, tradableMap := range prices {
+		qInt, _ := strconv.Atoi(quality)
+		indexQualityPrices(normDef, qInt, tradableMap, outIndex)
+	}
+}
+
+func indexQualityPrices(
+	defindex, qInt int,
+	tradableMap map[string]map[string]map[string]bptf.PriceEntry,
+	outIndex map[string]bptf.PriceEntry,
+) {
+	for tradable, craftableMap := range tradableMap {
+		isTradable := tradable == "Tradable"
+
+		for craftable, priceIndexMap := range craftableMap {
+			isCraftable := craftable == "Craftable"
+
+			for pIndex, entry := range priceIndexMap {
+				sItem := &sku.Item{
+					Defindex:  defindex,
+					Quality:   qInt,
+					Tradable:  isTradable,
+					Craftable: isCraftable,
+				}
+
+				if pInt, err := strconv.Atoi(pIndex); err == nil && pInt != 0 {
+					if qInt == schema.QualityUnusual {
+						sItem.Effect = pInt
+					} else {
+						sItem.Crateseries = pInt
+					}
+				}
+
+				outIndex[sku.FromObject(sItem)] = entry
+			}
+		}
+	}
+}
+
 func (m *PriceManager) GetPrice(sku string) (bptf.PriceEntry, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -180,7 +186,6 @@ func (m *PriceManager) GetPrice(sku string) (bptf.PriceEntry, bool) {
 	return entry, ok
 }
 
-// Load loads the price list from cache. Returns error if cache is missing or invalid.
 func (m *PriceManager) Load() error {
 	return m.loadFromCache()
 }
@@ -209,7 +214,7 @@ func (m *PriceManager) saveToCache() error {
 
 func (m *PriceManager) loadFromCache() error {
 	if m.config.CachePath == "" {
-		return errors.New("cache path not configured")
+		return ErrCachePathNotConfigured
 	}
 
 	data, err := os.ReadFile(m.config.CachePath)

@@ -22,6 +22,10 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 )
 
+// ============================================================
+// SECTION 0: GLOBAL VARIABLES & DEBUG LOGGING
+// ============================================================
+
 var enableDebugSchema = os.Getenv("DEBUG_SCHEMA") == "true"
 
 func debugLog(v ...any) {
@@ -54,145 +58,58 @@ var (
 	}
 )
 
-// Raw represents the raw schema and VDF configuration payload returned by APIs.
+var nameBufferPool = sync.Pool{
+	New: func() any {
+		b := new(bytes.Buffer)
+		b.Grow(128)
+
+		return b
+	},
+}
+
+// ============================================================
+// SECTION 1: TYPES & STRUCT DEFINITIONS
+// ============================================================
+
 type Raw struct {
-	// Schema contains the parsed details from the schema overview.
 	Schema struct {
-		// Items contains the list of individual item definitions.
-		Items []*Item `json:"items"`
-		// Attributes contains the list of attribute schemas.
-		Attributes []*AttributeSchema `json:"attributes"`
-		// Qualities maps quality names to their numeric IDs.
-		Qualities map[string]int `json:"qualities"`
-		// QualityNames maps internal quality keys to display names.
-		QualityNames map[string]string `json:"qualityNames"`
-		// OriginNames contains translation strings for item origins.
-		OriginNames []*OriginName `json:"originNames"`
-		// ItemSets contains the lists of defined item sets.
-		ItemSets []*ItemSet `json:"item_sets"`
-		// AttributeControlledAttachedParticles contains unusual particle details.
-		AttributeControlledAttachedParticles []*ParticleEffect `json:"attribute_controlled_attached_particles"`
-		// ItemLevels contains rank thresholds for items.
-		ItemLevels []*ItemLevel `json:"item_levels"`
-		// KillEaterScoreTypes contains tracked statistic counters.
-		KillEaterScoreTypes []*KillEaterScoreType `json:"kill_eater_score_types"`
-		// StringLookups contains lookup tables for strings.
-		StringLookups []*StringLookup `json:"string_lookups"`
-		// PaintKits maps paintkit IDs to their localized names.
-		PaintKits map[string]string `json:"paintkits"`
+		Items                                []*Item               `json:"items"`
+		Attributes                           []*AttributeSchema    `json:"attributes"`
+		Qualities                            map[string]int        `json:"qualities"`
+		QualityNames                         map[string]string     `json:"qualityNames"`
+		OriginNames                          []*OriginName         `json:"originNames"`
+		ItemSets                             []*ItemSet            `json:"item_sets"`
+		AttributeControlledAttachedParticles []*ParticleEffect     `json:"attribute_controlled_attached_particles"`
+		ItemLevels                           []*ItemLevel          `json:"item_levels"`
+		KillEaterScoreTypes                  []*KillEaterScoreType `json:"kill_eater_score_types"`
+		StringLookups                        []*StringLookup       `json:"string_lookups"`
+		PaintKits                            map[string]string     `json:"paintkits"`
 	} `json:"schema"`
 
-	// ItemsGame contains raw parsed fields from the items_game.txt file.
 	ItemsGame map[string]any `json:"items_game"`
 }
 
-// Item represents a single TF2 item definition in the schema.
-// Memory-optimized: unused fields (e.g. model_player, image_inventory, item_description)
-// are intentionally omitted to save megabytes of heap allocations.
 type Item struct {
-	// Capabilities defines the customization actions permitted on this item.
-	Capabilities *Capabilities `json:"capabilities,omitempty"`
-	// UsedByClasses lists character classes that can equip this item.
-	UsedByClasses []string `json:"used_by_classes,omitempty"`
-	// Attributes contains static attributes defined on this item.
-	Attributes []ItemAttribute `json:"attributes,omitempty"`
-	// Name represents the unique internal string identifier.
-	Name string `json:"name"`
-	// ItemName represents the localized display name.
-	ItemName string `json:"item_name"`
-	// ItemClass represents the internal item class name.
-	ItemClass string `json:"item_class"`
-	// CraftClass represents the craft class name (e.g. "weapon", "hat").
-	CraftClass string `json:"craft_class,omitempty"`
-	// ImageURL represents the URL of the small (128x128) backpack icon.
-	ImageURL string `json:"image_url,omitempty"`
-	// ImageURLLarge represents the URL of the large (512x512) backpack image.
-	ImageURLLarge string `json:"image_url_large,omitempty"`
-	// ItemSlot specifies the item slot for equipping.
-	ItemSlot string `json:"item_slot,omitempty"`
-	// Defindex represents the unique item definition index.
-	Defindex int `json:"defindex"`
-	// ItemQuality represents the default quality ID of the item.
-	ItemQuality int `json:"item_quality"`
-	// MinIlevel represents the minimum item level.
-	MinIlevel int `json:"min_ilevel,omitempty"`
-	// MaxIlevel represents the maximum item level.
-	MaxIlevel int `json:"max_ilevel,omitempty"`
-	// Flags represents item flags bitmask (trade/craft restrictions).
-	Flags int `json:"flags,omitempty"`
-	// Origin represents the item origin/provenance ID.
-	Origin int `json:"origin,omitempty"`
-	// LoadoutSlot represents the default loadout slot position.
-	LoadoutSlot int `json:"loadoutslot,omitempty"`
-	// ProperName indicates whether "The" should prepend the item name.
-	ProperName bool `json:"proper_name"`
+	Capabilities  *Capabilities   `json:"capabilities,omitempty"`
+	UsedByClasses []string        `json:"used_by_classes,omitempty"`
+	Attributes    []ItemAttribute `json:"attributes,omitempty"`
+	Name          string          `json:"name"`
+	ItemName      string          `json:"item_name"`
+	ItemClass     string          `json:"item_class"`
+	CraftClass    string          `json:"craft_class,omitempty"`
+	ImageURL      string          `json:"image_url,omitempty"`
+	ImageURLLarge string          `json:"image_url_large,omitempty"`
+	ItemSlot      string          `json:"item_slot,omitempty"`
+	Defindex      int             `json:"defindex"`
+	ItemQuality   int             `json:"item_quality"`
+	MinIlevel     int             `json:"min_ilevel,omitempty"`
+	MaxIlevel     int             `json:"max_ilevel,omitempty"`
+	Flags         int             `json:"flags,omitempty"`
+	Origin        int             `json:"origin,omitempty"`
+	LoadoutSlot   int             `json:"loadoutslot,omitempty"`
+	ProperName    bool            `json:"proper_name"`
 }
 
-// InternStrings applies string interning to all string fields in the item
-// to deduplicate string headers across thousands of schema entries.
-func (it *Item) InternStrings() {
-	if it == nil {
-		return
-	}
-
-	it.Name = stringpool.Intern(it.Name)
-	it.ItemName = stringpool.Intern(it.ItemName)
-	it.ItemClass = stringpool.Intern(it.ItemClass)
-	it.CraftClass = stringpool.Intern(it.CraftClass)
-	it.ImageURL = stringpool.Intern(it.ImageURL)
-	it.ImageURLLarge = stringpool.Intern(it.ImageURLLarge)
-	it.ItemSlot = stringpool.Intern(it.ItemSlot)
-
-	for i, cls := range it.UsedByClasses {
-		it.UsedByClasses[i] = stringpool.Intern(cls)
-	}
-}
-
-// IsTradableByFlags checks if the item is tradable based on its flags bitmask.
-func (it *Item) IsTradableByFlags() bool {
-	return it.Flags&FlagCannotTrade == 0
-}
-
-// IsCraftableByFlags checks if the item is craftable based on its flags bitmask.
-func (it *Item) IsCraftableByFlags() bool {
-	return it.Flags&FlagCannotBeUsedInCrafting == 0
-}
-
-// HasFlag checks if a specific flag bit is set in the item's flags.
-func (it *Item) HasFlag(flag int) bool {
-	return it.Flags&flag != 0
-}
-
-// GetLoadoutSlot returns the loadout slot position for this item.
-func (it *Item) GetLoadoutSlot() int {
-	if it.LoadoutSlot != 0 {
-		return it.LoadoutSlot
-	}
-
-	return LoadoutInvalid
-}
-
-// IsWeapon checks if the item is a weapon based on its craft class.
-func (it *Item) IsWeapon() bool {
-	return it.CraftClass == "weapon"
-}
-
-// IsCosmetic checks if the item is a cosmetic based on its loadout slot.
-func (it *Item) IsCosmetic() bool {
-	return it.LoadoutSlot == LoadoutHead || it.LoadoutSlot == LoadoutMisc || it.LoadoutSlot == LoadoutMisc2
-}
-
-// IsTaunt checks if the item is a taunt based on its loadout slot.
-func (it *Item) IsTaunt() bool {
-	return it.LoadoutSlot >= LoadoutTaunt && it.LoadoutSlot <= LoadoutTaunt8
-}
-
-// IsTool checks if the item is a tool/consumable.
-func (it *Item) IsTool() bool {
-	return it.ItemClass == "tool"
-}
-
-// Capabilities defines customization options and trade/craft permissions for an item.
 type Capabilities struct {
 	Nameable            bool `json:"nameable"`
 	Paintable           bool `json:"paintable"`
@@ -215,7 +132,250 @@ type Capabilities struct {
 	PaintableTeamColors bool `json:"paintable_team_colors"`
 }
 
-// HasCapability checks if the item has a specific capability flag.
+type ItemAttribute struct {
+	Name        string  `json:"name"`
+	Class       string  `json:"class"`
+	Value       float64 `json:"value"`
+	ValueString string  `json:"value_string,omitempty"`
+}
+
+type AttributeSchema struct {
+	Defindex        int    `json:"defindex"`
+	Name            string `json:"name"`
+	AttributeClass  string `json:"attribute_class"`
+	Description     string `json:"description_string"`
+	DescriptionFmt  string `json:"description_format"`
+	EffectType      string `json:"effect_type"`
+	Hidden          bool   `json:"hidden"`
+	StoredAsInteger bool   `json:"stored_as_integer"`
+}
+
+type ParticleEffect struct {
+	ID               int    `json:"id"`
+	System           string `json:"system"`
+	AttachToRootbone bool   `json:"attach_to_rootbone"`
+	Name             string `json:"name"`
+}
+
+type KillEaterScoreType struct {
+	Type      int    `json:"type"`
+	TypeName  string `json:"type_name"`
+	LevelData string `json:"level_data"`
+}
+
+type ItemSet struct {
+	ItemSet    string          `json:"item_set"`
+	Name       string          `json:"name"`
+	Items      []string        `json:"items"`
+	Attributes []ItemAttribute `json:"attributes"`
+}
+
+type RecipeCategory int
+
+const (
+	RecipeCategoryCraftingItems RecipeCategory = 0
+	RecipeCategoryCommonItems   RecipeCategory = 1
+	RecipeCategoryRareItems     RecipeCategory = 2
+	RecipeCategorySpecial       RecipeCategory = 3
+)
+
+type RecipeDefinition struct {
+	DefIndex             int                `json:"defindex"`
+	Name                 string             `json:"name"`
+	Disabled             bool               `json:"disabled"`
+	RequiresAllSameClass bool               `json:"require_all_same_class"`
+	RequiresAllSameSlot  bool               `json:"require_all_same_slot"`
+	PremiumAccountOnly   bool               `json:"premium_account_only"`
+	Category             RecipeCategory     `json:"category"`
+	InputItems           []RecipeInputItem  `json:"input_items"`
+	OutputItems          []RecipeOutputItem `json:"output_items"`
+}
+
+type RecipeInputItem struct {
+	DefIndex     int    `json:"defindex"`
+	Name         string `json:"name,omitempty"`
+	Count        int    `json:"count"`
+	Slot         int    `json:"slot"`
+	Class        string `json:"class"`
+	LootlistName string `json:"lootlist_name,omitempty"`
+	Quality      string `json:"quality,omitempty"`
+}
+
+type RecipeOutputItem struct {
+	DefIndex     int    `json:"defindex"`
+	Name         string `json:"name,omitempty"`
+	Count        int    `json:"count"`
+	LootlistName string `json:"lootlist_name,omitempty"`
+}
+
+type OriginName struct {
+	Origin int    `json:"origin"`
+	Name   string `json:"name"`
+}
+
+type ItemLevel struct {
+	Name   string `json:"name"`
+	Levels []struct {
+		Level         int    `json:"level"`
+		RequiredScore int    `json:"required_score"`
+		Name          string `json:"name"`
+	} `json:"levels"`
+}
+
+type StringLookup struct {
+	TableName string `json:"table_name"`
+	Strings   []struct {
+		Index  int    `json:"index"`
+		String string `json:"string"`
+	} `json:"strings"`
+}
+
+type WeaponOption struct {
+	Defindex uint32
+	Name     string
+}
+
+// ============================================================
+// SECTION 2: ITEM & CAPABILITIES METHODS
+// ============================================================
+
+func (it *Item) InternStrings() {
+	if it == nil {
+		return
+	}
+
+	it.Name = stringpool.Intern(it.Name)
+	it.ItemName = stringpool.Intern(it.ItemName)
+	it.ItemClass = stringpool.Intern(it.ItemClass)
+	it.CraftClass = stringpool.Intern(it.CraftClass)
+	it.ImageURL = stringpool.Intern(it.ImageURL)
+	it.ImageURLLarge = stringpool.Intern(it.ImageURLLarge)
+	it.ItemSlot = stringpool.Intern(it.ItemSlot)
+
+	for i, cls := range it.UsedByClasses {
+		it.UsedByClasses[i] = stringpool.Intern(cls)
+	}
+}
+
+func (it *Item) IsTradableByFlags() bool  { return it.Flags&FlagCannotTrade == 0 }
+func (it *Item) IsCraftableByFlags() bool { return it.Flags&FlagCannotBeUsedInCrafting == 0 }
+func (it *Item) HasFlag(flag int) bool    { return it.Flags&flag != 0 }
+func (it *Item) GetLoadoutSlot() int {
+	if it.LoadoutSlot != 0 {
+		return it.LoadoutSlot
+	}
+
+	return LoadoutInvalid
+}
+func (it *Item) IsWeapon() bool { return it.CraftClass == "weapon" }
+func (it *Item) IsCosmetic() bool {
+	return it.LoadoutSlot == LoadoutHead || it.LoadoutSlot == LoadoutMisc || it.LoadoutSlot == LoadoutMisc2
+}
+
+func (it *Item) IsTaunt() bool {
+	return it.LoadoutSlot >= LoadoutTaunt && it.LoadoutSlot <= LoadoutTaunt8
+}
+func (it *Item) IsTool() bool { return it.ItemClass == "tool" }
+func (it *Item) IsPaintKitWeapon() bool {
+	return it.Capabilities != nil && it.Capabilities.CanCustomizeTexture
+}
+func (it *Item) ValidatePaintKit(id int) bool { return it.IsPaintKitWeapon() && id > 0 }
+
+func (it *Item) UnmarshalJSON(data []byte) error {
+	type Alias Item
+
+	var aux struct {
+		Alias
+		DefIndexAlt int `json:"def_index"`
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	*it = Item(aux.Alias)
+	if it.Defindex == 0 && aux.DefIndexAlt != 0 {
+		it.Defindex = aux.DefIndexAlt
+	}
+
+	return nil
+}
+
+func (s *Schema) indexItem(item *Item) {
+	if item == nil {
+		return
+	}
+
+	lowName := strings.ToLower(item.ItemName)
+	if lowName == "" {
+		lowName = strings.ToLower(item.Name)
+	}
+
+	s.itemsByDef[item.Defindex] = item
+
+	if lowName == "" || (item.ItemName == "Name Tag" && item.Defindex == 2093) {
+		return
+	}
+
+	if _, exists := s.itemsByName[lowName]; !exists {
+		s.itemsByName[lowName] = item
+	}
+
+	stripped := strings.TrimPrefix(lowName, "the ")
+	if _, exists := s.itemsByNameStripped[stripped]; !exists {
+		s.itemsByNameStripped[stripped] = item
+	}
+}
+
+func (s *Schema) ItemByNameWithThe(loweredName string) *Item {
+	if s == nil {
+		return nil
+	}
+
+	loweredName = strings.ToLower(loweredName)
+
+	if s.itemsByNameStripped != nil {
+		if item, ok := s.itemsByNameStripped[loweredName]; ok {
+			return item
+		}
+	}
+
+	if s.itemsByName != nil {
+		if item, ok := s.itemsByName[loweredName]; ok {
+			return item
+		}
+	}
+
+	stripped := strings.TrimPrefix(loweredName, "the ")
+
+	if s.itemsByNameStripped != nil {
+		if item, ok := s.itemsByNameStripped[stripped]; ok {
+			return item
+		}
+	}
+
+	if s.itemsByName != nil {
+		if item, ok := s.itemsByName[stripped]; ok {
+			return item
+		}
+	}
+
+	withThe := "the " + stripped
+	if s.itemsByName != nil {
+		if item, ok := s.itemsByName[withThe]; ok {
+			return item
+		}
+	}
+
+	if s.itemsByNameStripped != nil {
+		if item, ok := s.itemsByNameStripped[withThe]; ok {
+			return item
+		}
+	}
+
+	return nil
+}
+
 func (c *Capabilities) HasCapability(cap string) bool {
 	if c == nil {
 		return false
@@ -251,7 +411,6 @@ func (c *Capabilities) HasCapability(cap string) bool {
 	}
 }
 
-// CanApplyTool checks if a specific tool type can be applied to this item.
 func (c *Capabilities) CanApplyTool(toolType string) bool {
 	if c == nil {
 		return false
@@ -275,15 +434,6 @@ func (c *Capabilities) CanApplyTool(toolType string) bool {
 	}
 }
 
-// ItemAttribute represents a static attribute or modifier applied to an item.
-type ItemAttribute struct {
-	Name        string  `json:"name"`
-	Class       string  `json:"class"`
-	Value       float64 `json:"value"`
-	ValueString string  `json:"value_string,omitempty"`
-}
-
-// UnmarshalJSON custom unmarshaler to handle dynamic "value" types without allocations.
 func (a *ItemAttribute) UnmarshalJSON(data []byte) error {
 	type Alias ItemAttribute
 
@@ -310,142 +460,33 @@ func (a *ItemAttribute) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// AttributeSchema defines the structure and parsing rules for a specific attribute ID.
-type AttributeSchema struct {
-	Defindex        int    `json:"defindex"`
-	Name            string `json:"name"`
-	AttributeClass  string `json:"attribute_class"`
-	Description     string `json:"description_string"`
-	DescriptionFmt  string `json:"description_format"`
-	EffectType      string `json:"effect_type"`
-	Hidden          bool   `json:"hidden"`
-	StoredAsInteger bool   `json:"stored_as_integer"`
-}
+// ============================================================
+// SECTION 3: SCHEMA CONSTRUCTOR & INDEXING
+// ============================================================
 
-// ParticleEffect represents an Unusual or Killstreak particle effect.
-type ParticleEffect struct {
-	ID               int    `json:"id"`
-	System           string `json:"system"`
-	AttachToRootbone bool   `json:"attach_to_rootbone"`
-	Name             string `json:"name"`
-}
-
-// KillEaterScoreType defines a tracked statistic category.
-type KillEaterScoreType struct {
-	Type      int    `json:"type"`
-	TypeName  string `json:"type_name"`
-	LevelData string `json:"level_data"`
-}
-
-// ItemSet represents a collection of items that grant bonuses when equipped together.
-type ItemSet struct {
-	ItemSet    string          `json:"item_set"`
-	Name       string          `json:"name"`
-	Items      []string        `json:"items"`
-	Attributes []ItemAttribute `json:"attributes"`
-}
-
-// RecipeCategory represents the category of a crafting recipe.
-type RecipeCategory int
-
-// Possible recipe categories
-const (
-	RecipeCategoryCraftingItems RecipeCategory = 0
-	RecipeCategoryCommonItems   RecipeCategory = 1
-	RecipeCategoryRareItems     RecipeCategory = 2
-	RecipeCategorySpecial       RecipeCategory = 3
-)
-
-// RecipeDefinition represents a crafting recipe from the TF2 schema.
-type RecipeDefinition struct {
-	DefIndex             int                `json:"defindex"`
-	Name                 string             `json:"name"`
-	Disabled             bool               `json:"disabled"`
-	RequiresAllSameClass bool               `json:"require_all_same_class"`
-	RequiresAllSameSlot  bool               `json:"require_all_same_slot"`
-	PremiumAccountOnly   bool               `json:"premium_account_only"`
-	Category             RecipeCategory     `json:"category"`
-	InputItems           []RecipeInputItem  `json:"input_items"`
-	OutputItems          []RecipeOutputItem `json:"output_items"`
-}
-
-// RecipeInputItem represents an input ingredient for a crafting recipe.
-type RecipeInputItem struct {
-	DefIndex     int    `json:"defindex"`
-	Name         string `json:"name,omitempty"`
-	Count        int    `json:"count"`
-	Slot         int    `json:"slot"`
-	Class        string `json:"class"`
-	LootlistName string `json:"lootlist_name,omitempty"`
-	Quality      string `json:"quality,omitempty"`
-}
-
-// RecipeOutputItem represents an output result from a crafting recipe.
-type RecipeOutputItem struct {
-	DefIndex     int    `json:"defindex"`
-	Name         string `json:"name,omitempty"`
-	Count        int    `json:"count"`
-	LootlistName string `json:"lootlist_name,omitempty"`
-}
-
-// OriginName maps a numeric origin ID to its localized display name.
-type OriginName struct {
-	Origin int    `json:"origin"`
-	Name   string `json:"name"`
-}
-
-// ItemLevel defines name progression and thresholds for ranked items.
-type ItemLevel struct {
-	Name   string `json:"name"`
-	Levels []struct {
-		Level         int    `json:"level"`
-		RequiredScore int    `json:"required_score"`
-		Name          string `json:"name"`
-	} `json:"levels"`
-}
-
-// StringLookup represents a static lookup table used to map indexes to strings.
-type StringLookup struct {
-	TableName string `json:"table_name"`
-	Strings   []struct {
-		Index  int    `json:"index"`
-		String string `json:"string"`
-	} `json:"strings"`
-}
-
-// Schema represents the indexed TF2 item schema.
 type Schema struct {
 	Version string
 	Raw     *Raw
 	Time    time.Time
 
-	itemsByDef  map[int]*Item
-	itemsByName map[string]*Item
-
-	itemList           []*Item
-	killEaterTypesByID map[int]string
-	attrsByDef         map[int]*AttributeSchema
-
-	qualByID   map[int]string
-	qualByName map[string]int
-
-	effByID   map[int]string
-	effByName map[string]int
-
-	paintKitByID   map[int]string
-	paintKitByName map[string]int
-
-	paintByDecimal map[int]string
-	paintByName    map[string]int
-
-	crateSeriesList map[int]int
-
+	itemsByDef          map[int]*Item
+	itemsByName         map[string]*Item
+	itemList            []*Item
+	killEaterTypesByID  map[int]string
+	attrsByDef          map[int]*AttributeSchema
+	qualByID            map[int]string
+	qualByName          map[string]int
+	effByID             map[int]string
+	effByName           map[string]int
+	paintKitByID        map[int]string
+	paintKitByName      map[string]int
+	paintByDecimal      map[int]string
+	paintByName         map[string]int
+	crateSeriesList     map[int]int
 	itemsByNameStripped map[string]*Item
-
-	spellsByName map[string]sku.Spell
-	spellsByID   map[string]string
-
-	strangePartsCache map[string]string
+	spellsByName        map[string]sku.Spell
+	spellsByID          map[string]string
+	strangePartsCache   map[string]string
 
 	craftableWeapons             []*Item
 	craftableWeaponsForTrading   []string
@@ -459,18 +500,7 @@ type Schema struct {
 	recipes                      map[int]*RecipeDefinition
 }
 
-// New constructs a [Schema] instance and indexes the [Raw] payload for O(1) lookups.
 func New(raw *Raw) *Schema {
-	if raw != nil && len(raw.Schema.KillEaterScoreTypes) == 0 {
-		raw.Schema.KillEaterScoreTypes = make([]*KillEaterScoreType, 0, len(StrangePartsMap))
-		for typeID, typeName := range StrangePartsMap {
-			raw.Schema.KillEaterScoreTypes = append(raw.Schema.KillEaterScoreTypes, &KillEaterScoreType{
-				Type:     typeID,
-				TypeName: stringpool.Intern(typeName),
-			})
-		}
-	}
-
 	s := &Schema{Raw: raw}
 	s.buildIndices()
 
@@ -483,8 +513,8 @@ func (s *Schema) buildIndices() {
 	numQual := len(s.Raw.Schema.Qualities)
 
 	s.itemList = s.Raw.Schema.Items
-
 	s.killEaterTypesByID = make(map[int]string, len(s.Raw.Schema.KillEaterScoreTypes))
+
 	for _, p := range s.Raw.Schema.KillEaterScoreTypes {
 		s.killEaterTypesByID[p.Type] = stringpool.Intern(p.TypeName)
 	}
@@ -504,26 +534,7 @@ func (s *Schema) buildIndices() {
 
 	for _, item := range s.Raw.Schema.Items {
 		item.InternStrings()
-
-		lowName := strings.ToLower(item.ItemName)
-		if lowName == "" {
-			lowName = strings.ToLower(item.Name)
-		}
-
-		s.itemsByDef[item.Defindex] = item
-
-		if item.ItemQuality == 0 || (item.ItemName == "Name Tag" && item.Defindex == 2093) {
-			continue
-		}
-
-		if _, exists := s.itemsByName[lowName]; !exists {
-			s.itemsByName[lowName] = item
-		}
-
-		stripped := strings.TrimPrefix(lowName, "the ")
-		if _, exists := s.itemsByNameStripped[stripped]; !exists {
-			s.itemsByNameStripped[stripped] = item
-		}
+		s.indexItem(item)
 	}
 
 	for _, attr := range s.Raw.Schema.Attributes {
@@ -532,6 +543,19 @@ func (s *Schema) buildIndices() {
 		s.attrsByDef[attr.Defindex] = attr
 	}
 
+	s.indexQualities()
+	s.indexEffects()
+	s.indexPaints()
+
+	s.crateSeriesList = s.buildCrateSeriesList()
+	s.buildSpellIndices()
+	s.indexWeapons()
+	s.buildRecipes()
+
+	s.strangePartsCache = s.buildStrangePartsCache()
+}
+
+func (s *Schema) indexQualities() {
 	for qType, id := range s.Raw.Schema.Qualities {
 		if name, ok := s.Raw.Schema.QualityNames[qType]; ok {
 			internedName := stringpool.Intern(name)
@@ -547,39 +571,43 @@ func (s *Schema) buildIndices() {
 			10: "Customized", 11: "Strange", 12: "Completed",
 			13: "Haunted", 14: "Collector's", 15: "Decorated Weapon",
 		}
+
 		for id, name := range fallbackQualities {
 			internedName := stringpool.Intern(name)
 			s.qualByID[id] = internedName
 			s.qualByName[strings.ToLower(internedName)] = id
 		}
 	}
+}
 
+func (s *Schema) indexEffects() {
 	seenEffects := make(map[string]bool)
+
 	for _, eff := range s.Raw.Schema.AttributeControlledAttachedParticles {
-		if eff.Name == "" {
+		if eff.Name == "" || seenEffects[eff.Name] {
 			continue
 		}
 
-		if !seenEffects[eff.Name] {
-			internedName := stringpool.Intern(eff.Name)
-			s.effByID[eff.ID] = internedName
-			s.effByName[strings.ToLower(internedName)] = eff.ID
-			seenEffects[eff.Name] = true
+		internedName := stringpool.Intern(eff.Name)
+		s.effByID[eff.ID] = internedName
+		s.effByName[strings.ToLower(internedName)] = eff.ID
+		seenEffects[eff.Name] = true
 
-			switch eff.Name {
-			case "Eerie Orbiting Fire":
-				s.effByName["orbiting fire"] = 33
-				s.effByID[33] = "Orbiting Fire"
-			case "Nether Trail":
-				s.effByName["ether trail"] = 103
-				s.effByID[103] = "Ether Trail"
-			case "Refragmenting Reality":
-				s.effByName["fragmenting reality"] = 141
-				s.effByID[141] = "Fragmenting Reality"
-			}
+		switch eff.Name {
+		case "Eerie Orbiting Fire":
+			s.effByName["orbiting fire"] = 33
+			s.effByID[33] = "Orbiting Fire"
+		case "Nether Trail":
+			s.effByName["ether trail"] = 103
+			s.effByID[103] = "Ether Trail"
+		case "Refragmenting Reality":
+			s.effByName["fragmenting reality"] = 141
+			s.effByID[141] = "Fragmenting Reality"
 		}
 	}
+}
 
+func (s *Schema) indexPaints() {
 	for idStr, name := range s.Raw.Schema.PaintKits {
 		if id, err := strconv.Atoi(idStr); err == nil {
 			internedName := stringpool.Intern(name)
@@ -589,22 +617,19 @@ func (s *Schema) buildIndices() {
 	}
 
 	for _, it := range s.Raw.Schema.Items {
-		if strings.Contains(it.Name, "Paint Can") && it.Name != "Paint Can" && it.Attributes != nil {
-			if len(it.Attributes) > 0 {
-				decimal := int(it.Attributes[0].Value)
-				internedName := stringpool.Intern(it.ItemName)
-				s.paintByDecimal[decimal] = internedName
-				s.paintByName[strings.ToLower(internedName)] = decimal
-			}
+		if strings.Contains(it.Name, "Paint Can") && it.Name != "Paint Can" && len(it.Attributes) > 0 {
+			decimal := int(it.Attributes[0].Value)
+			internedName := stringpool.Intern(it.ItemName)
+			s.paintByDecimal[decimal] = internedName
+			s.paintByName[strings.ToLower(internedName)] = decimal
 		}
 	}
 
 	s.paintByDecimal[5801378] = "Legacy Paint"
 	s.paintByName["legacy paint"] = 5801378
+}
 
-	s.crateSeriesList = s.buildCrateSeriesList()
-	s.buildSpellIndices()
-
+func (s *Schema) indexWeapons() {
 	s.craftableWeapons = make([]*Item, 0)
 	for _, it := range s.Raw.Schema.Items {
 		if _, ok := weaponsToExclude[it.Defindex]; ok {
@@ -630,8 +655,10 @@ func (s *Schema) buildIndices() {
 	}
 
 	s.weaponsForCraftingByClass = make(map[string][]string)
+
 	for _, class := range Classes {
 		var classWeapons []string
+
 		for _, it := range s.craftableWeapons {
 			if slices.Contains(it.UsedByClasses, class) {
 				classWeapons = append(classWeapons, fmt.Sprintf("%d;6", it.Defindex))
@@ -645,6 +672,7 @@ func (s *Schema) buildIndices() {
 		Name string
 		ID   int
 	}, 0, len(s.effByID))
+
 	for id, name := range s.effByID {
 		s.unusualEffectsCache = append(s.unusualEffectsCache, struct {
 			Name string
@@ -658,18 +686,6 @@ func (s *Schema) buildIndices() {
 			s.paintableItemDefindexesCache = append(s.paintableItemDefindexesCache, it.Defindex)
 		}
 	}
-
-	s.buildRecipes()
-
-	s.Raw.ItemsGame = nil
-	s.Raw.Schema.Attributes = nil
-	s.Raw.Schema.ItemSets = nil
-	s.Raw.Schema.AttributeControlledAttachedParticles = nil
-	s.Raw.Schema.ItemLevels = nil
-	s.Raw.Schema.KillEaterScoreTypes = nil
-	s.Raw.Schema.StringLookups = nil
-	s.Raw.Schema.Items = nil
-	s.Raw = nil
 }
 
 func (s *Schema) buildSpellIndices() {
@@ -708,6 +724,7 @@ func (s *Schema) buildStrangePartsCache() map[string]string {
 		"Halloween Transmutes Performed": true, "Power Up Canteens Used": true,
 		"Contract Points Earned": true, "Contract Points Contributed To Friends": true,
 	}
+
 	m := make(map[string]string)
 
 	if s.Raw != nil {
@@ -720,11 +737,21 @@ func (s *Schema) buildStrangePartsCache() map[string]string {
 		}
 	}
 
+	for typeID, typeName := range StrangePartsMap {
+		if partsToExclude[typeName] || typeID == 0 || typeID == 97 {
+			continue
+		}
+
+		if _, exists := m[typeName]; !exists {
+			m[typeName] = fmt.Sprintf("sp%d", typeID)
+		}
+	}
+
 	return m
 }
 
 func (s *Schema) buildRecipes() {
-	if s.Raw.ItemsGame == nil {
+	if s.Raw == nil || s.Raw.ItemsGame == nil {
 		return
 	}
 
@@ -747,301 +774,18 @@ func (s *Schema) buildRecipes() {
 		}
 
 		recipe := parseRecipeBlock(defindex, blockStr)
-		if recipe == nil {
-			continue
+		if recipe != nil {
+			s.recipes[defindex] = recipe
 		}
-
-		s.recipes[defindex] = recipe
-	}
-}
-
-// ItemCount returns the number of items in the schema.
-func (s *Schema) ItemCount() int {
-	if s == nil {
-		return 0
-	}
-
-	return len(s.itemList)
-}
-
-// GetRecipe returns the recipe definition for the given defindex, or nil if not found.
-func (s *Schema) GetRecipe(defindex int) *RecipeDefinition {
-	if s == nil || s.recipes == nil {
-		return nil
-	}
-
-	r, ok := s.recipes[defindex]
-	if !ok {
-		return nil
-	}
-
-	return r
-}
-
-// GetAllRecipes returns all recipe definitions.
-func (s *Schema) GetAllRecipes() []*RecipeDefinition {
-	if s == nil {
-		return nil
-	}
-
-	recipes := make([]*RecipeDefinition, 0, len(s.recipes))
-	for _, r := range s.recipes {
-		recipes = append(recipes, r)
-	}
-
-	return recipes
-}
-
-func parseRecipeBlock(defindex int, block string) *RecipeDefinition {
-	r := &RecipeDefinition{DefIndex: defindex}
-
-	lines := strings.Split(block, "\n")
-
-	startIdx := 0
-	for i, l := range lines {
-		if strings.TrimSpace(l) == "{" {
-			startIdx = i + 1
-			break
-		}
-	}
-
-	sectionStack := []string{"root"}
-
-	var pendingKey string
-
-	var (
-		pendingInput         *RecipeInputItem
-		pendingOutput        *RecipeOutputItem
-		condField, condValue string
-	)
-
-	for _, line := range lines[startIdx:] {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-
-		if len(sectionStack) == 0 {
-			return nil
-		}
-
-		parent := sectionStack[len(sectionStack)-1]
-
-		if trimmed == "{" {
-			switch parent {
-			case "root":
-				switch pendingKey {
-				case "input_items":
-					sectionStack = append(sectionStack, "input_items")
-				case "output_items":
-					sectionStack = append(sectionStack, "output_items")
-				case "tool":
-					sectionStack = append(sectionStack, "tool")
-				default:
-					sectionStack = append(sectionStack, "skip")
-				}
-
-			case "input_items":
-				pendingInput = &RecipeInputItem{Count: 1, Slot: -1}
-				if c, cErr := strconv.Atoi(pendingKey); cErr == nil && c > 0 {
-					pendingInput.Count = c
-				}
-
-				sectionStack = append(sectionStack, "input_item")
-
-			case "output_items":
-				pendingOutput = &RecipeOutputItem{Count: 1}
-
-				sectionStack = append(sectionStack, "output_item")
-			case "input_item", "output_item":
-				if pendingKey == "conditions" {
-					sectionStack = append(sectionStack, "conditions")
-				} else {
-					sectionStack = append(sectionStack, "skip")
-				}
-
-			case "conditions":
-				condField = ""
-				condValue = ""
-
-				sectionStack = append(sectionStack, "condition")
-			case "tool":
-				sectionStack = append(sectionStack, "tool_"+pendingKey)
-			case "tool_usage", "tool_components":
-				sectionStack = append(sectionStack, "tool_"+pendingKey)
-			case "tool_input":
-				pendingInput = &RecipeInputItem{Count: 1, Slot: -1}
-
-				sectionStack = append(sectionStack, "dynamic_input")
-			case "dynamic_input":
-				if pendingKey == "counts" {
-					sectionStack = append(sectionStack, "counts")
-				} else {
-					sectionStack = append(sectionStack, "skip")
-				}
-
-			default:
-				sectionStack = append(sectionStack, "skip")
-			}
-
-			pendingKey = ""
-
-			continue
-		}
-
-		if trimmed == "}" {
-			top := sectionStack[len(sectionStack)-1]
-
-			switch top {
-			case "input_item":
-				if pendingInput != nil {
-					r.InputItems = append(r.InputItems, *pendingInput)
-					pendingInput = nil
-				}
-			case "output_item":
-				if pendingOutput != nil {
-					r.OutputItems = append(r.OutputItems, *pendingOutput)
-					pendingOutput = nil
-				}
-			case "condition":
-				if condField != "" {
-					if pendingInput != nil {
-						switch condField {
-						case "defindex":
-							pendingInput.DefIndex, _ = strconv.Atoi(condValue)
-						case "name":
-							pendingInput.Name = stringpool.Intern(condValue)
-						}
-					}
-
-					if pendingOutput != nil {
-						switch condField {
-						case "defindex":
-							pendingOutput.DefIndex, _ = strconv.Atoi(condValue)
-						case "name":
-							pendingOutput.Name = stringpool.Intern(condValue)
-						}
-					}
-				}
-
-			case "dynamic_input":
-				if pendingInput != nil {
-					r.InputItems = append(r.InputItems, *pendingInput)
-					pendingInput = nil
-				}
-			}
-
-			sectionStack = sectionStack[:len(sectionStack)-1]
-			pendingKey = ""
-
-			continue
-		}
-
-		key, value := parseRecipeVDFLine(trimmed)
-		if key == "" {
-			continue
-		}
-
-		top := sectionStack[len(sectionStack)-1]
-
-		switch top {
-		case "root":
-			pendingKey = key
-			switch key {
-			case "name":
-				r.Name = stringpool.Intern(value)
-			case "disabled":
-				r.Disabled = value == "1"
-			case "premium_only":
-				r.PremiumAccountOnly = value == "1"
-			case "all_same_class":
-				r.RequiresAllSameClass = value == "1"
-			case "all_same_slot":
-				r.RequiresAllSameSlot = value == "1"
-			case "category":
-				r.Category = parseRecipeCategory(value)
-			}
-
-		case "input_item", "output_item":
-			pendingKey = key
-
-		case "condition":
-			switch key {
-			case "field":
-				condField = key
-			case "value":
-				condValue = value
-			}
-
-		case "dynamic_input":
-			pendingKey = key
-			if pendingInput != nil {
-				switch key {
-				case "lootlist_name":
-					pendingInput.LootlistName = stringpool.Intern(value)
-				case "quality":
-					pendingInput.Quality = stringpool.Intern(value)
-				}
-			}
-
-		case "counts":
-			if pendingInput != nil {
-				if c, cErr := strconv.Atoi(value); cErr == nil {
-					pendingInput.Count = c
-				}
-			}
-		}
-	}
-
-	return r
-}
-
-func parseRecipeVDFLine(line string) (string, string) {
-	if !strings.HasPrefix(line, "\"") {
-		return "", ""
-	}
-
-	endQuote := strings.Index(line[1:], "\"")
-	if endQuote < 0 {
-		return "", ""
-	}
-
-	key := line[1 : endQuote+1]
-
-	rest := line[endQuote+2:]
-	rest = strings.TrimLeft(rest, " \t")
-
-	if len(rest) == 0 || !strings.HasPrefix(rest, "\"") {
-		return key, ""
-	}
-
-	rest = rest[1:]
-
-	endQuote2 := strings.Index(rest, "\"")
-	if endQuote2 < 0 {
-		return key, ""
-	}
-
-	return key, rest[:endQuote2]
-}
-
-func parseRecipeCategory(s string) RecipeCategory {
-	switch s {
-	case "crafting":
-		return RecipeCategoryCraftingItems
-	case "commonitem":
-		return RecipeCategoryCommonItems
-	case "rareitem":
-		return RecipeCategoryRareItems
-	case "special":
-		return RecipeCategorySpecial
-	default:
-		return RecipeCategoryCraftingItems
 	}
 }
 
 func (s *Schema) buildCrateSeriesList() map[int]int {
 	series := make(map[int]int)
+
+	if s.Raw == nil {
+		return series
+	}
 
 	for _, it := range s.Raw.Schema.Items {
 		if it.Attributes != nil {
@@ -1058,11 +802,7 @@ func (s *Schema) buildCrateSeriesList() map[int]int {
 		if items, ok := s.Raw.ItemsGame["items"].(map[string]any); ok {
 			for defindexStr, item := range items {
 				defindex, err := strconv.Atoi(defindexStr)
-				if err != nil {
-					continue
-				}
-
-				if _, ok := series[defindex]; ok {
+				if err != nil || series[defindex] != 0 {
 					continue
 				}
 
@@ -1094,52 +834,60 @@ func (s *Schema) buildCrateSeriesList() map[int]int {
 	return series
 }
 
-// ItemByDef returns the [Item] matching the specified defindex.
-func (s *Schema) ItemByDef(def int) *Item {
-	return s.itemsByDef[def]
+// ============================================================
+// SECTION 4: LOOKUP & QUERY API
+// ============================================================
+
+func (s *Schema) ItemCount() int {
+	if s == nil {
+		return 0
+	}
+
+	return len(s.itemList)
 }
 
-// ItemByName returns the [Item] matching the specified internal name.
-func (s *Schema) ItemByName(name string) *Item {
-	return s.itemsByName[strings.ToLower(name)]
+func (s *Schema) ItemByDef(def int) *Item                     { return s.itemsByDef[def] }
+func (s *Schema) ItemByName(name string) *Item                { return s.itemsByName[strings.ToLower(name)] }
+func (s *Schema) AttributeByDef(def int) *AttributeSchema     { return s.attrsByDef[def] }
+func (s *Schema) QualityByID(id int) string                   { return s.qualByID[id] }
+func (s *Schema) QualityIDByName(name string) int             { return s.qualByName[strings.ToLower(name)] }
+func (s *Schema) EffectByID(id int) string                    { return s.effByID[id] }
+func (s *Schema) EffectIDByName(name string) int              { return s.effByName[strings.ToLower(name)] }
+func (s *Schema) SkinByID(id int) string                      { return s.paintKitByID[id] }
+func (s *Schema) SkinIDByName(name string) int                { return s.paintKitByName[strings.ToLower(name)] }
+func (s *Schema) PaintDecimalByName(name string) int          { return s.paintByName[strings.ToLower(name)] }
+func (s *Schema) Qualities() map[string]int                   { return s.qualByName }
+func (s *Schema) ParticleEffects() map[string]int             { return s.effByName }
+func (s *Schema) PaintKitsByName() map[string]int             { return s.paintKitByName }
+func (s *Schema) PaintKits() map[string]int                   { return s.paintKitByName }
+func (s *Schema) Paints() map[string]int                      { return s.paintByName }
+func (s *Schema) PaintableItemDefindexes() []int              { return s.paintableItemDefindexesCache }
+func (s *Schema) CraftableWeaponsSchema() []*Item             { return s.craftableWeapons }
+func (s *Schema) WeaponsForCraftingByClass(c string) []string { return s.weaponsForCraftingByClass[c] }
+func (s *Schema) CraftableWeaponsForTrading() []string        { return s.craftableWeaponsForTrading }
+func (s *Schema) UncraftableWeaponsForTrading() []string      { return s.uncraftableWeaponsForTrading }
+func (s *Schema) CrateSeriesList() map[int]int                { return s.crateSeriesList }
+
+func (s *Schema) QualityName(qualityID int) string {
+	if s == nil {
+		return ""
+	}
+
+	return s.qualByID[qualityID]
 }
 
-// AttributeByDef returns the [AttributeSchema] matching the specified defindex.
-func (s *Schema) AttributeByDef(def int) *AttributeSchema {
-	return s.attrsByDef[def]
+func (s *Schema) QualityID(name string) int {
+	if s == nil {
+		return -1
+	}
+
+	if id, ok := s.qualByName[strings.ToLower(name)]; ok {
+		return id
+	}
+
+	return -1
 }
 
-// QualityByID returns the quality name matching the specified ID.
-func (s *Schema) QualityByID(id int) string {
-	return s.qualByID[id]
-}
-
-// QualityIDByName returns the quality ID matching the specified name.
-func (s *Schema) QualityIDByName(name string) int {
-	return s.qualByName[strings.ToLower(name)]
-}
-
-// EffectByID returns the particle effect name matching the specified ID.
-func (s *Schema) EffectByID(id int) string {
-	return s.effByID[id]
-}
-
-// EffectIDByName returns the particle effect ID matching the specified name.
-func (s *Schema) EffectIDByName(name string) int {
-	return s.effByName[strings.ToLower(name)]
-}
-
-// SkinByID returns the localized paint kit (skin) name matching the specified ID.
-func (s *Schema) SkinByID(id int) string {
-	return s.paintKitByID[id]
-}
-
-// SkinIDByName returns the paint kit ID matching the specified localized name.
-func (s *Schema) SkinIDByName(name string) int {
-	return s.paintKitByName[strings.ToLower(name)]
-}
-
-// PaintNameByDecimal returns the paint color name matching the decimal value.
 func (s *Schema) PaintNameByDecimal(decimal int) string {
 	if name, ok := s.paintByDecimal[decimal]; ok {
 		return name
@@ -1156,21 +904,6 @@ func (s *Schema) PaintNameByDecimal(decimal int) string {
 	return fmt.Sprintf("#%06X", decimal)
 }
 
-// PaintDecimalByName returns the paint color decimal value matching the name.
-func (s *Schema) PaintDecimalByName(name string) int {
-	return s.paintByName[strings.ToLower(name)]
-}
-
-// ItemByNameWithThe searches for an item, ignoring the "The " prefix in the pre-lowercased name.
-func (s *Schema) ItemByNameWithThe(loweredName string) *Item {
-	if strings.HasPrefix(loweredName, "the ") {
-		loweredName = strings.TrimSpace(loweredName[4:])
-	}
-
-	return s.itemsByNameStripped[loweredName]
-}
-
-// ItemBySKU returns the [Item] definition matching the provided SKU string.
 func (s *Schema) ItemBySKU(itemSku string) *Item {
 	item, err := sku.FromString(itemSku)
 	if err != nil {
@@ -1180,7 +913,6 @@ func (s *Schema) ItemBySKU(itemSku string) *Item {
 	return s.ItemByDef(item.Defindex)
 }
 
-// UnusualEffects returns a list of all indexed unusual particle effects.
 func (s *Schema) UnusualEffects() []struct {
 	Name string
 	ID   int
@@ -1188,17 +920,6 @@ func (s *Schema) UnusualEffects() []struct {
 	return s.unusualEffectsCache
 }
 
-// Paints returns a map of all paint color names to their decimal values.
-func (s *Schema) Paints() map[string]int {
-	return s.paintByName
-}
-
-// PaintableItemDefindexes returns a list of defindexes for all paintable items.
-func (s *Schema) PaintableItemDefindexes() []int {
-	return s.paintableItemDefindexesCache
-}
-
-// StrangeParts returns a pre-computed cached map of strange part names to their SKU suffixes.
 func (s *Schema) StrangeParts() map[string]string {
 	if s.strangePartsCache != nil {
 		return s.strangePartsCache
@@ -1207,7 +928,6 @@ func (s *Schema) StrangeParts() map[string]string {
 	return s.buildStrangePartsCache()
 }
 
-// SpellNameFromSKU returns the display name of the specified [sku.Spell].
 func (s *Schema) SpellNameFromSKU(spell sku.Spell) string {
 	idKey := fmt.Sprintf("%d-%d", spell.Attribute, spell.Value)
 
@@ -1224,57 +944,10 @@ func (s *Schema) SpellNameFromSKU(spell sku.Spell) string {
 	return name
 }
 
-// SpellIDByName returns the [sku.Spell] attributes matching the specified spell name.
 func (s *Schema) SpellIDByName(name string) (sku.Spell, bool) {
 	return IdentifySpell(name)
 }
 
-// CraftableWeaponsSchema returns all craftable weapon definitions in the schema.
-func (s *Schema) CraftableWeaponsSchema() []*Item {
-	return s.craftableWeapons
-}
-
-// WeaponsForCraftingByClass returns weapon SKUs usable by the specified character class.
-func (s *Schema) WeaponsForCraftingByClass(class string) []string {
-	return s.weaponsForCraftingByClass[class]
-}
-
-// CraftableWeaponsForTrading returns SKUs of all craftable unique weapons.
-func (s *Schema) CraftableWeaponsForTrading() []string {
-	return s.craftableWeaponsForTrading
-}
-
-// UncraftableWeaponsForTrading returns SKUs of all uncraftable unique weapons.
-func (s *Schema) UncraftableWeaponsForTrading() []string {
-	return s.uncraftableWeaponsForTrading
-}
-
-// CrateSeriesList returns a map of crate defindexes to their default series numbers.
-func (s *Schema) CrateSeriesList() map[int]int {
-	return s.crateSeriesList
-}
-
-// NormalizeDefindex converts retired or legacy defindexes to their canonical IDs.
-func (s *Schema) NormalizeDefindex(defindex int) int {
-	return NormalizeDefindex(defindex)
-}
-
-// IsAustraliumDefindex returns true if the defindex is eligible for an Australium variant.
-func (s *Schema) IsAustraliumDefindex(defindex int) bool {
-	return IsAustraliumDefindex(defindex)
-}
-
-// IsNativeFestive returns true if the defindex belongs to an older native Festive item.
-func (s *Schema) IsNativeFestive(defindex int) bool {
-	return IsNativeFestive(defindex)
-}
-
-// Qualities returns a map of all quality names to their numeric IDs.
-func (s *Schema) Qualities() map[string]int {
-	return s.qualByName
-}
-
-// WearByName returns the wear level ID matching the specified string.
 func (s *Schema) WearByName(name string) int {
 	name = strings.TrimSpace(name)
 	if !strings.HasPrefix(name, "(") {
@@ -1284,1270 +957,77 @@ func (s *Schema) WearByName(name string) int {
 	return wears[name]
 }
 
-// ParticleEffects returns a map of particle effect names to their numeric IDs.
-func (s *Schema) ParticleEffects() map[string]int {
-	return s.effByName
-}
-
-// PaintKitsByName returns a map of paint kit (skin) names to their numeric IDs.
-func (s *Schema) PaintKitsByName() map[string]int {
-	return s.paintKitByName
-}
-
-// PaintKits returns a map of paint kit names to their numeric IDs.
-func (s *Schema) PaintKits() map[string]int {
-	return s.paintKitByName
-}
-
-// QualityName returns the quality name for the given quality ID.
-func (s *Schema) QualityName(qualityID int) string {
-	if s == nil {
-		return ""
-	}
-
-	return s.qualByID[qualityID]
-}
-
-// QualityID returns the numeric quality ID for the given quality name.
-func (s *Schema) QualityID(name string) int {
-	if s == nil {
-		return -1
-	}
-
-	if id, ok := s.qualByName[strings.ToLower(name)]; ok {
-		return id
-	}
-
-	return -1
-}
-
-// IsPaintKitWeapon checks if the item is eligible for War Paint / PaintKit application.
-func (it *Item) IsPaintKitWeapon() bool {
-	return it.Capabilities != nil && it.Capabilities.CanCustomizeTexture
-}
-
-// ValidatePaintKit checks if a specific paintkit can be applied to this weapon item.
-func (it *Item) ValidatePaintKit(paintkitID int) bool {
-	if !it.IsPaintKitWeapon() {
-		return false
-	}
-
-	if paintkitID <= 0 {
-		return false
-	}
-
-	return true
-}
-
-// CheckExistence verifies whether the specified [sku.Item] possesses valid quality and attribute configurations.
-func (s *Schema) CheckExistence(item *sku.Item) bool {
-	schemaItem := s.ItemByDef(item.Defindex)
-	if schemaItem == nil {
-		return false
-	}
-
-	if schemaItem.ItemQuality == 0 || schemaItem.ItemQuality == QualityVintage ||
-		schemaItem.ItemQuality == QualityUnusual || schemaItem.ItemQuality == QualityStrange {
-		if item.Quality != schemaItem.ItemQuality {
-			return false
-		}
-	}
-
-	qualityValid := item.Quality == schemaItem.ItemQuality
-	if !qualityValid {
-		switch schemaItem.ItemQuality {
-		case QualityUnusual:
-			qualityValid = item.Quality == 11
-		case QualityUnique:
-			qualityValid = item.Quality == 1 || item.Quality == 3 || item.Quality == 11
-		case QualityStrange:
-			qualityValid = item.Quality == 5
-		}
-	}
-
-	if !qualityValid {
-		return false
-	}
-
-	if item.Quality2 != 0 {
-		isElevatedCapable := item.Quality == QualityUnusual ||
-			item.Quality == QualityVintage ||
-			item.Quality == QualityGenuine ||
-			item.Quality == QualityHaunted ||
-			item.Quality == QualityCollectors ||
-			item.Quality == QualityDecorated
-
-		if isElevatedCapable {
-			return false
-		}
-	}
-
-	if item.Quality != QualityGenuine {
-		if _, ok := exclusiveGenuineReversed[item.Defindex]; ok {
-			return false
-		}
-	} else {
-		if _, ok := exclusiveGenuine[item.Defindex]; ok {
-			return false
-		}
-	}
-
-	if _, ok := retiredKeys[item.Defindex]; ok {
-		switch item.Defindex {
-		case 5713, 5716, 5717, 5762:
-			if item.Craftable {
-				return false
-			}
-		default:
-			if !item.Craftable && item.Defindex != 5791 && item.Defindex != 5792 {
-				return false
-			}
-		}
-	}
-
-	hasExtraAttr := item.Quality != QualityUnique ||
-		item.Killstreak != 0 ||
-		item.Australium ||
-		item.Effect != 0 ||
-		item.Festivized ||
-		item.Paintkit != 0 ||
-		item.Wear != 0 ||
-		item.Quality2 != 0 ||
-		item.Craftnumber != 0 ||
-		item.Target != 0 ||
-		item.Output != 0 ||
-		item.OutputQuality != 0 ||
-		item.Paint != 0
-
-	if schemaItem.ItemClass == "supply_crate" && item.Crateseries == 0 {
-		if item.Defindex != 5739 && item.Defindex != 5760 &&
-			item.Defindex != 5737 && item.Defindex != 5738 {
-			return false
-		}
-
-		if hasExtraAttr {
-			return false
-		}
-	}
-
-	if item.Crateseries != 0 {
-		if hasExtraAttr {
-			return false
-		}
-
-		if schemaItem.ItemClass != "supply_crate" {
-			return false
-		}
-
-		if list, ok := validSingleSeries[item.Defindex]; ok {
-			if !slices.Contains(list, item.Crateseries) {
-				return false
-			}
-		} else if munition, ok := munitionCrate[item.Crateseries]; ok {
-			if item.Defindex != munition {
-				return false
-			}
-		} else {
-			if val, ok := s.crateSeriesList[item.Defindex]; !ok || val != item.Crateseries {
-				return false
-			}
-		}
-	}
-
-	return true
-}
-
-var nameBufferPool = sync.Pool{
-	New: func() any {
-		b := new(bytes.Buffer)
-		b.Grow(128)
-		return b
-	},
-}
-
-// ItemName constructs the localized display name for the specified [sku.Item] using zero-allocation buffer pooling.
-func (s *Schema) ItemName(item *sku.Item, proper, usePipeForSkin, scmFormat bool) string {
-	if item == nil {
-		return ""
-	}
-
-	schemaItem := s.ItemByDef(item.Defindex)
-	if schemaItem == nil {
-		return fmt.Sprintf("Item #%d", item.Defindex)
-	}
-
-	buf := nameBufferPool.Get().(*bytes.Buffer)
-
-	buf.Reset()
-	defer nameBufferPool.Put(buf)
-
-	hasWritten := false
-	appendWord := func(word string) {
-		if word == "" {
-			return
-		}
-
-		if hasWritten {
-			buf.WriteByte(' ')
-		}
-
-		buf.WriteString(word)
-
-		hasWritten = true
-	}
-
-	if !scmFormat && !item.Tradable {
-		appendWord("Non-Tradable")
-	}
-
-	if !scmFormat && !item.Craftable {
-		appendWord("Non-Craftable")
-	}
-
-	if item.Quality2 != 0 {
-		qName := s.QualityByID(item.Quality2)
-		if qName != "" {
-			if !scmFormat && (item.Wear != 0 || item.Paintkit != 0) {
-				qName += "(e)"
-			}
-
-			appendWord(qName)
-		}
-	}
-
-	addPrimaryQuality := false
-	switch {
-	case item.Quality == QualityUnique && item.Quality2 != Quality2None,
-		item.Quality != QualityUnique && item.Quality != QualityDecorated && item.Quality != QualityUnusual,
-		item.Quality == QualityUnusual && item.Effect == 0,
-		item.Quality == QualityUnusual && scmFormat,
-		schemaItem.ItemQuality == QualityUnusual:
-		addPrimaryQuality = true
-	}
-
-	if addPrimaryQuality {
-		qName := s.QualityByID(item.Quality)
-		if qName != "" {
-			appendWord(qName)
-		}
-	}
-
-	if !scmFormat && item.Effect != 0 {
-		effName := s.EffectByID(item.Effect)
-		if effName != "" {
-			appendWord(effName)
-		}
-	}
-
-	if item.Festivized {
-		appendWord("Festivized")
-	}
-
-	if item.Killstreak > 0 {
-		switch item.Killstreak {
-		case 1:
-			appendWord("Killstreak")
-		case 2:
-			appendWord("Specialized Killstreak")
-		case 3:
-			appendWord("Professional Killstreak")
-		}
-	}
-
-	if item.Target != 0 {
-		targetItem := s.ItemByDef(item.Target)
-		if targetItem != nil {
-			appendWord(targetItem.ItemName)
-		}
-	}
-
-	if item.OutputQuality != 0 && item.OutputQuality != 6 {
-		oqName := s.QualityByID(item.OutputQuality)
-		if oqName != "" {
-			appendWord(oqName)
-		}
-	}
-
-	if item.Output != 0 {
-		outItem := s.ItemByDef(item.Output)
-		if outItem != nil {
-			appendWord(outItem.ItemName)
-		}
-	}
-
-	if item.Australium {
-		appendWord("Australium")
-	}
-
-	if item.Paintkit != 0 {
-		skinName := s.SkinByID(item.Paintkit)
-		if skinName != "" {
-			if usePipeForSkin {
-				appendWord(skinName + " |")
-			} else {
-				appendWord(skinName)
-			}
-		}
-	}
-
-	baseName := ""
-	if info, ok := retiredKeys[item.Defindex]; ok {
-		baseName = info.Name
-	} else if schemaItem.ItemName != "" {
-		baseName = schemaItem.ItemName
-	} else {
-		baseName = schemaItem.Name
-	}
-
-	if proper && !hasWritten && schemaItem.ProperName {
-		baseName = "The " + baseName
-	}
-
-	appendWord(baseName)
-
-	if item.Wear != 0 {
-		if item.Wear >= 1 && item.Wear <= 5 {
-			appendWord("(" + wearNamesStatic[item.Wear-1] + ")")
-		}
-	}
-
-	for _, spell := range item.Spells {
-		appendWord("(Spell: " + s.SpellNameFromSKU(spell) + ")")
-	}
-
-	for _, partID := range item.Parts {
-		partName := "Unknown Part"
-		if name, ok := s.killEaterTypesByID[partID]; ok {
-			partName = name
-		}
-
-		val := 0
-		if item.PartValues != nil {
-			val = item.PartValues[partID]
-		}
-
-		appendWord(fmt.Sprintf("(%s: %d)", partName, val))
-	}
-
-	if item.Crateseries != 0 {
-		if scmFormat {
-			hasSeriesAttr := false
-			if schemaItem.Attributes != nil {
-				for _, attr := range schemaItem.Attributes {
-					if attr.Class == "supply_crate_series" {
-						hasSeriesAttr = true
-						break
-					}
-				}
-			}
-
-			if hasSeriesAttr {
-				appendWord(fmt.Sprintf("Series %%23%d", item.Crateseries))
-			}
-		} else {
-			appendWord(fmt.Sprintf("#%d", item.Crateseries))
-		}
-	} else if item.Craftnumber != 0 {
-		appendWord(fmt.Sprintf("#%d", item.Craftnumber))
-	}
-
-	if !scmFormat && item.Paint != 0 {
-		paintName := s.PaintNameByDecimal(item.Paint)
-		if paintName != "" {
-			appendWord(fmt.Sprintf("(Paint: %s)", paintName))
-		}
-	}
-
-	return buf.String()
-}
-
-// ItemFromName parses a localized display name string into a structured [sku.Item].
-func (s *Schema) ItemFromName(name string) *sku.Item {
-	item := &sku.Item{
-		Craftable: true,
-		Tradable:  true,
-	}
-	originalName := name
-	name = strings.ToLower(name)
-
-	debugLog("GetItemObjectFromName start:", originalName)
-
-	if strings.HasPrefix(name, "strange part:") ||
-		strings.HasPrefix(name, "strange cosmetic part:") ||
-		strings.HasPrefix(name, "strange filter:") ||
-		name == "strange count transfer tool" ||
-		name == "strange bacon grease" {
-		schemaItem := s.ItemByName(originalName)
-		if schemaItem != nil {
-			item.Defindex = schemaItem.Defindex
-			if item.Quality == 0 {
-				item.Quality = schemaItem.ItemQuality
-			}
-		}
-
-		debugLog("return early (strange part)", item)
-
-		return item
-	}
-
-	for _, w := range staticWearsTable {
-		if idx := strings.Index(name, w.str); idx != -1 {
-			name = strings.TrimSpace(name[:idx] + name[idx+len(w.str):])
-			item.Wear = w.val
-			break
-		}
-	}
-
-	isExplicitElevatedStrange := false
-
-	if idx := strings.Index(name, "strange(e)"); idx != -1 {
-		debugLog("strange(e) before", name, item)
-		item.Quality2 = QualityStrange
-		isExplicitElevatedStrange = true
-		name = strings.TrimSpace(name[:idx] + name[idx+10:])
-		debugLog("strange(e) after", name, item)
-	}
-
-	hasStrangePrefix := false
-
-	if strings.Contains(name, "strange") && !strings.Contains(name, "strangifier") {
-		debugLog("strange before", name, item)
-
-		hasStrangePrefix = true
-		name = strings.TrimSpace(strings.ReplaceAll(name, "strange", ""))
-		debugLog("strange after", name, item)
-	}
-
-	if strings.Contains(name, "craft") {
-		if idx := strings.Index(name, "uncraftable"); idx != -1 {
-			debugLog("non-craftable before", name, item)
-			name = strings.TrimSpace(name[:idx] + name[idx+11:])
-			item.Craftable = false
-			debugLog("non-craftable after", name, item)
-		} else if idx := strings.Index(name, "non-craftable"); idx != -1 {
-			debugLog("non-craftable before", name, item)
-			name = strings.TrimSpace(name[:idx] + name[idx+13:])
-			item.Craftable = false
-			debugLog("non-craftable after", name, item)
-		}
-	}
-
-	if strings.Contains(name, "trad") {
-		for _, sub := range []string{"untradeable", "untradable", "non-tradeable", "non-tradable"} {
-			if idx := strings.Index(name, sub); idx != -1 {
-				debugLog("non-tradable before", name, item)
-				name = strings.TrimSpace(name[:idx] + name[idx+len(sub):])
-				item.Tradable = false
-				debugLog("non-tradable after", name, item)
-
-				break
-			}
-		}
-	}
-
-	if strings.Contains(name, "unusualifier") {
-		debugLog("unusualifier before", name, item)
-		name = strings.ReplaceAll(name, "unusual ", "")
-		name = strings.ReplaceAll(name, " unusualifier", "")
-		name = strings.ReplaceAll(name, "unusualifier", "")
-		name = strings.TrimSpace(name)
-		item.Defindex = 9258
-		item.Quality = QualityUnusual
-
-		schemaItem := s.ItemByName(name)
-		if schemaItem != nil {
-			item.Target = schemaItem.Defindex
-		}
-
-		debugLog("unusualifier after", name, item)
-
-		return item
-	}
-
-	kitFabricatorDetected := strings.Contains(name, "kit fabricator")
-
-	for _, ks := range staticKillstreaksTable {
-		if idx := strings.Index(name, ks.phrase); idx != -1 {
-			name = strings.TrimSpace(name[:idx] + name[idx+len(ks.phrase):])
-			item.Killstreak = ks.value
-			break
-		}
-	}
-
-	if idx := strings.Index(name, "australium"); idx != -1 && !strings.Contains(name, "australium gold") {
-		debugLog("australium before", name, item)
-		name = strings.TrimSpace(name[:idx] + name[idx+10:])
-		item.Australium = true
-		debugLog("australium after", name, item)
-	}
-
-	if idx := strings.Index(name, "festivized"); idx != -1 && !strings.Contains(name, "festivized formation") {
-		debugLog("festivized before", name, item)
-		name = strings.TrimSpace(name[:idx] + name[idx+10:])
-		item.Festivized = true
-		debugLog("festivized after", name, item)
-	}
-
-	exception := []string{
-		"haunted ghosts", "haunted phantasm jr", "haunted phantasm",
-		"haunted metal scrap", "haunted hat", "unusual cap",
-		"vintage tyrolean", "vintage merryweather", "haunted kraken",
-		"haunted forever!", "haunted cremation", "haunted wick",
-		"haunted mist",
-	}
-
-	qualitySearch := name
-	for _, ex := range exception {
-		if idx := strings.Index(name, ex); idx != -1 {
-			qualitySearch = strings.TrimSpace(name[:idx] + name[idx+len(ex):])
-
-			break
-		}
-	}
-
-	if !slices.Contains(exception, qualitySearch) {
-		for qName, qID := range s.qualByName {
-			if qID == QualityDecorated {
-				continue
-			}
-
-			if qID == QualityCollectors && strings.Contains(qualitySearch, "collector's") &&
-				strings.Contains(qualitySearch, "chemistry set") {
-				continue
-			}
-
-			if qID == QualityCommunity && strings.HasPrefix(qualitySearch, "community sparkle") {
-				continue
-			}
-
-			if strings.HasPrefix(qualitySearch, qName) {
-				debugLog("quality before", name, item)
-
-				if item.Quality != 0 && item.Quality != qID {
-					if item.Quality2 == Quality2None {
-						item.Quality2 = item.Quality
-					}
-
-					item.Quality = qID
-				} else {
-					item.Quality = qID
-				}
-
-				name = strings.TrimSpace(strings.Replace(name, qName, "", 1))
-
-				debugLog("quality after", name, item)
-
-				break
-			}
-		}
-	}
-
-	excludeAtomic := strings.Contains(name, "bonk! atomic punch") || strings.Contains(name, "atomic accolade")
-
-	for effName, effID := range s.effByName {
-		if effName == "" {
-			continue
-		}
-
-		if strings.Contains(name, effName) {
-			if effName == "stardust" && strings.Contains(name, "starduster") {
-				sub := strings.ReplaceAll(name, "stardust", "")
-				if !strings.Contains(sub, "starduster") {
-					continue
-				}
-			}
-
-			if effName == "showstopper" && !strings.Contains(name, "taunt: ") &&
-				!strings.Contains(name, "shred alert") {
-				continue
-			}
-
-			if effName == "smoking" && (name == "smoking jacket" || strings.Contains(name, "smoking skid lid")) {
-				if !strings.HasPrefix(name, "smoking smoking") {
-					continue
-				}
-			}
-
-			if effName == "haunted ghosts" && strings.Contains(name, "haunted ghosts") && item.Wear != 0 {
-				continue
-			}
-
-			if effName == "pumpkin patch" && strings.Contains(name, "pumpkin patch") && item.Wear != 0 {
-				continue
-			}
-
-			if effName == "stardust" && strings.Contains(name, "stardust") && item.Wear != 0 {
-				continue
-			}
-
-			if effName == "atomic" && (strings.Contains(name, "subatomic") || excludeAtomic) {
-				continue
-			}
-
-			if effName == "spellbound" && (strings.Contains(name, "taunt:") || strings.Contains(name, "shred alert")) {
-				continue
-			}
-
-			if effName == "accursed" && strings.Contains(name, "accursed apparition") {
-				continue
-			}
-
-			if effName == "haunted" && strings.Contains(name, "haunted kraken") {
-				continue
-			}
-
-			if effName == "frostbite" && strings.Contains(name, "frostbite bonnet") {
-				continue
-			}
-
-			if effName == "sizzling" && strings.HasPrefix(name, "sizzling aroma") {
-				continue
-			}
-
-			if effName == "hot" {
-				if item.Wear == 0 {
-					continue
-				}
-
-				if !strings.Contains(name, "hot ") && (strings.Contains(name, "shotgun") ||
-					strings.Contains(name, "shot ") || strings.Contains(name, "plaid potshotter")) {
-					continue
-				}
-
-				if !strings.HasPrefix(name, "hot ") {
-					continue
-				}
-			}
-
-			if effName == "cool" && item.Wear == 0 {
-				continue
-			}
-
-			debugLog("effect before", name, item)
-			name = strings.TrimSpace(strings.ReplaceAll(name, effName, ""))
-
-			item.Effect = effID
-			if effID == 4 {
-				if item.Quality == 0 {
-					item.Quality = QualityUnusual
-				}
-			} else if item.Quality != QualityUnusual {
-				if item.Quality2 == Quality2None {
-					item.Quality2 = item.Quality
-				}
-
-				item.Quality = QualityUnusual
-			}
-
-			debugLog("effect after", name, item)
-
-			break
-		}
-	}
-
-	if item.Wear != 0 {
-		for pkName, pkID := range s.paintKitByName {
-			if strings.Contains(name, pkName) {
-				if strings.Contains(name, "mk.ii") && !strings.Contains(pkName, "mk.ii") {
-					continue
-				}
-
-				if strings.Contains(name, "(green)") && !strings.Contains(pkName, "(green)") {
-					continue
-				}
-
-				if strings.Contains(name, "chilly") && !strings.Contains(pkName, "chilly") {
-					continue
-				}
-
-				debugLog("paintkit before", name, item)
-				name = strings.ReplaceAll(name, pkName, "")
-				name = strings.ReplaceAll(name, " | ", "")
-				name = strings.TrimSpace(name)
-				item.Paintkit = pkID
-
-				if item.Effect != 0 {
-					if item.Quality == QualityUnusual && item.Quality2 == QualityStrange {
-						if !isExplicitElevatedStrange {
-							item.Quality = QualityStrange
-							item.Quality2 = Quality2None
-						} else {
-							item.Quality = QualityDecorated
-						}
-					} else if item.Quality == QualityUnusual && item.Quality2 == Quality2None {
-						item.Quality = QualityDecorated
-					}
-				}
-
-				if item.Quality == 0 {
-					item.Quality = QualityDecorated
-				}
-
-				debugLog("paintkit after", name, item)
-
-				break
-			}
-		}
-
-		if !strings.Contains(name, "war paint") {
-			oldDefindex := item.Defindex
-			switch {
-			case strings.Contains(name, "pistol") && pistolSkins[item.Paintkit] != 0:
-				item.Defindex = pistolSkins[item.Paintkit]
-			case strings.Contains(name, "rocket launcher") && rocketLauncherSkins[item.Paintkit] != 0:
-				item.Defindex = rocketLauncherSkins[item.Paintkit]
-			case strings.Contains(name, "medi gun") && medicgunSkins[item.Paintkit] != 0:
-				item.Defindex = medicgunSkins[item.Paintkit]
-			case strings.Contains(name, "revolver") && revolverSkins[item.Paintkit] != 0:
-				item.Defindex = revolverSkins[item.Paintkit]
-			case strings.Contains(name, "stickybomb launcher") && stickybombSkins[item.Paintkit] != 0:
-				item.Defindex = stickybombSkins[item.Paintkit]
-			case strings.Contains(name, "sniper rifle") && sniperRifleSkins[item.Paintkit] != 0:
-				item.Defindex = sniperRifleSkins[item.Paintkit]
-			case strings.Contains(name, "flame thrower") && flameThrowerSkins[item.Paintkit] != 0:
-				item.Defindex = flameThrowerSkins[item.Paintkit]
-			case strings.Contains(name, "minigun") && minigunSkins[item.Paintkit] != 0:
-				item.Defindex = minigunSkins[item.Paintkit]
-			case strings.Contains(name, "scattergun") && scattergunSkins[item.Paintkit] != 0:
-				item.Defindex = scattergunSkins[item.Paintkit]
-			case strings.Contains(name, "shotgun") && shotgunSkins[item.Paintkit] != 0:
-				item.Defindex = shotgunSkins[item.Paintkit]
-			case strings.Contains(name, "smg") && smgSkins[item.Paintkit] != 0:
-				item.Defindex = smgSkins[item.Paintkit]
-			case strings.Contains(name, "grenade launcher") && grenadeLauncherSkins[item.Paintkit] != 0:
-				item.Defindex = grenadeLauncherSkins[item.Paintkit]
-			case strings.Contains(name, "wrench") && wrenchSkins[item.Paintkit] != 0:
-				item.Defindex = wrenchSkins[item.Paintkit]
-			case strings.Contains(name, "knife") && knifeSkins[item.Paintkit] != 0:
-				item.Defindex = knifeSkins[item.Paintkit]
-			}
-
-			if oldDefindex != item.Defindex {
-				debugLog("return after skin mapping", name, item)
-				return item
-			}
-		}
-	}
-
-	if strings.Contains(name, "(paint: ") {
-		debugLog("paint before loop", name, item)
-		name = strings.ReplaceAll(name, "(paint: ", "")
-		name = strings.ReplaceAll(name, ")", "")
-		name = strings.TrimSpace(name)
-
-		for pName, pVal := range s.paintByName {
-			if strings.Contains(name, pName) {
-				debugLog("paint in loop before", name, item)
-				name = strings.TrimSpace(strings.ReplaceAll(name, pName, ""))
-				item.Paint = pVal
-				debugLog("paint after", name, item)
-
-				break
-			}
-		}
-	}
-
-	if kitFabricatorDetected && item.Killstreak > 1 {
-		debugLog("kit fabricator before", name, item)
-		name = strings.TrimSpace(strings.ReplaceAll(name, "kit fabricator", ""))
-
-		if item.Killstreak > 2 {
-			item.Defindex = 20003
-		} else {
-			item.Defindex = 20002
-		}
-
-		if name != "" {
-			schemaItem := s.ItemByName(name)
-			if schemaItem != nil {
-				item.Target = schemaItem.Defindex
-				if item.Quality == 0 {
-					item.Quality = schemaItem.ItemQuality
-				}
-			} else {
-				debugLog("return kit fabricator (no target)", name, item)
-				return item
-			}
-		}
-
-		if item.Quality == 0 {
-			item.Quality = QualityUnique
-		}
-
-		if item.Killstreak > 2 {
-			item.Output = 6526
-		} else {
-			item.Output = 6523
-		}
-
-		item.OutputQuality = QualityUnique
-		item.Killstreak = 0
-		debugLog("kit fabricator after", name, item)
-	}
-
-	if strings.Contains(name, "chemistry set") &&
-		(!strings.Contains(name, "strangifier chemistry set") || strings.Contains(name, "collector's")) {
-		debugLog("collector's chemistry set before", name, item)
-		name = strings.ReplaceAll(name, "collector's ", "")
-		name = strings.ReplaceAll(name, "chemistry set", "")
-		name = strings.TrimSpace(name)
-
-		if strings.Contains(name, "festive") && !strings.Contains(name, "a rather festive tree") {
-			item.Defindex = 20007
-		} else {
-			item.Defindex = 20006
-		}
-
-		item.Quality = QualityUnique
-
-		if name != "" {
-			schemaItem := s.ItemByName(name)
-			if schemaItem != nil {
-				item.Output = schemaItem.Defindex
-				item.OutputQuality = QualityCollectors
-			}
-		}
-
-		debugLog("collector's chemistry set after", name, item)
-
-		return item
-	}
-
-	if strings.Contains(name, "strangifier chemistry set") {
-		debugLog("strangifier chemistry set before", name, item)
-		name = strings.TrimSpace(strings.ReplaceAll(name, "strangifier chemistry set", ""))
-
-		item.Defindex = 20000
-		item.Quality = QualityUnique
-		item.Output = 6522
-		item.OutputQuality = QualityUnique
-
-		if name != "" {
-			schemaItem := s.ItemByName(name)
-			if schemaItem != nil {
-				item.Target = schemaItem.Defindex
-				if series, ok := strangifierChemistrySetSeries[item.Target]; ok {
-					item.Crateseries = series
-				}
-			}
-		}
-
-		debugLog("strangifier chemistry set after", name, item)
-
-		return item
-	}
-
-	if strings.Contains(name, "strangifier") && !strings.Contains(name, "strangifier chemistry set") {
-		debugLog("strangifier before", name, item)
-		name = strings.TrimSpace(strings.ReplaceAll(name, "strangifier", ""))
-		item.Defindex = 6522
-
-		schemaItem := s.ItemByName(name)
-		if schemaItem != nil {
-			item.Target = schemaItem.Defindex
-			if item.Quality == 0 {
-				item.Quality = schemaItem.ItemQuality
-			}
-		} else {
-			debugLog("return strangifier (no target)", name, item)
-			return item
-		}
-
-		debugLog("strangifier after", name, item)
-	}
-
-	if !kitFabricatorDetected && strings.Contains(name, "kit") && item.Killstreak > 0 {
-		debugLog("kit before", name, item)
-		kitType := item.Killstreak
-		item.Killstreak = 0
-
-		name = strings.TrimSpace(strings.ReplaceAll(name, "kit", ""))
-
-		switch kitType {
-		case 1:
-			item.Defindex = 6527
-		case 2:
-			item.Defindex = 6523
-		case 3:
-			item.Defindex = 6526
-		}
-
-		if name != "" {
-			schemaItem := s.ItemByName(name)
-			if schemaItem != nil {
-				item.Target = schemaItem.Defindex
-			} else {
-				debugLog("return kit (no target)", name, item)
-				return item
-			}
-		}
-
-		if item.Quality == 0 {
-			item.Quality = QualityUnique
-		}
-
-		debugLog("kit after", name, item)
-	}
-
-	if item.Defindex != 0 {
-		debugLog("return after defindex set", name, item)
-		return item
-	}
-
-	if item.Paintkit != 0 && strings.Contains(name, "war paint") {
-		debugLog("war paint before", name, item)
-
-		searchName := fmt.Sprintf("Paintkit %d", item.Paintkit)
-		if item.Quality == 0 {
-			item.Quality = QualityDecorated
-		}
-
-		for _, it := range s.itemList {
-			if it.Name == searchName {
-				item.Defindex = it.Defindex
-				break
-			}
-		}
-
-		debugLog("war paint after", name, item)
-
-		return item
-	}
-
-	name = strings.ReplaceAll(name, " series ", " ")
-	name = strings.ReplaceAll(name, " series#", " #")
-
-	var number int
-
-	if idx := strings.IndexByte(name, '#'); idx != -1 {
-		debugLog("with # before", name, item)
-		number, _ = strconv.Atoi(strings.TrimSpace(name[idx+1:]))
-		name = strings.TrimSpace(name[:idx])
-		debugLog("with # after", name, item)
-	}
-
-	if strings.Contains(name, "salvaged mann co. supply crate") && !strings.Contains(name, "key") {
-		debugLog("salvaged crate", name, item)
-		item.Crateseries = number
-		item.Defindex = 5068
-		item.Quality = QualityUnique
-		debugLog("return salvaged crate", name, item)
-
-		return item
-	}
-
-	if strings.Contains(name, "select reserve mann co. supply crate") && !strings.Contains(name, "key") {
-		item.Defindex = 5660
-		item.Crateseries = 60
-		item.Quality = QualityUnique
-
-		return item
-	}
-
-	if strings.Contains(name, "mann co. supply crate") && !strings.Contains(name, "key") {
-		debugLog("mann co crate", name, item)
-
-		crateseries := number
-		switch crateseries {
-		case 1, 3, 7, 12, 13, 18, 19, 23, 26, 31, 34, 39, 43, 47, 54, 57, 75:
-			item.Defindex = 5022
-		case 2, 4, 8, 11, 14, 17, 20, 24, 27, 32, 37, 42, 44, 49, 56, 71, 76:
-			item.Defindex = 5041
-		case 5, 9, 10, 15, 16, 21, 25, 28, 29, 33, 38, 41, 45, 55, 59, 77:
-			item.Defindex = 5045
-		}
-
-		item.Crateseries = crateseries
-		item.Quality = QualityUnique
-		debugLog("return mann co crate", name, item)
-
-		return item
-	}
-
-	if strings.Contains(name, "mann co. supply munition") {
-		debugLog("munition crate", name, item)
-
-		crateseries := number
-		if def, ok := munitionCrate[crateseries]; ok {
-			item.Defindex = def
-		}
-
-		item.Crateseries = crateseries
-		item.Quality = QualityUnique
-		debugLog("return munition crate", name, item)
-
-		return item
-	}
-
-	for _, keyName := range retiredKeysNames {
-		if name == keyName {
-			for _, info := range retiredKeys {
-				if strings.ToLower(info.Name) == keyName {
-					item.Defindex = info.Defindex
-					if item.Quality == 0 {
-						item.Quality = QualityUnique
-					}
-
-					debugLog("return retired key", name, item)
-
-					return item
-				}
-			}
-		}
-	}
-
-	schemaItem := s.ItemByNameWithThe(name)
-	if schemaItem == nil {
-		debugLog("return no schema item", name, item)
-		return item
-	}
-
-	item.Defindex = schemaItem.Defindex
-	if item.Quality == 0 {
-		item.Quality = schemaItem.ItemQuality
-	}
-
-	if item.Quality == QualityGenuine {
-		if newDef, ok := exclusiveGenuine[item.Defindex]; ok {
-			item.Defindex = newDef
-		}
-	}
-
-	if hasStrangePrefix {
-		isElevatedCapable := item.Quality == QualityUnusual ||
-			item.Quality == QualityVintage ||
-			item.Quality == QualityGenuine ||
-			item.Quality == QualityHaunted ||
-			item.Quality == QualityCollectors ||
-			item.Quality == QualityDecorated
-
-		if isElevatedCapable {
-			item.Quality2 = QualityStrange
-		} else {
-			item.Quality = QualityStrange
-		}
-	}
-
-	if schemaItem.ItemClass == "supply_crate" {
-		debugLog("supply_crate before", name, item)
-
-		if series, ok := s.crateSeriesList[item.Defindex]; ok {
-			item.Crateseries = series
-		} else if number != 0 {
-			item.Crateseries = number
-		}
-
-		debugLog("supply_crate after", name, item)
-	} else if number != 0 {
-		debugLog("craftnumber before", name, item)
-		item.Craftnumber = number
-		debugLog("craftnumber after", name, item)
-	}
-
-	debugLog("final return", name, item)
-
-	return item
-}
-
-// SkuFromName parses a localized name and returns its standardized SKU string.
-func (s *Schema) SkuFromName(name string) string {
-	item := s.ItemFromName(name)
-	return sku.FromObject(item)
-}
-
-// SKUFromItem normalizes the [sku.Item] and returns its standardized SKU string.
-func (s *Schema) SKUFromItem(item *sku.Item) string {
-	if item == nil {
-		return ""
-	}
-
-	s.NormalizeItem(item)
-
-	return sku.FromObject(item)
-}
-
-// ItemFromEconItem converts a generic [trading.Item] into a structured [sku.Item].
-func (s *Schema) ItemFromEconItem(item *trading.Item) *sku.Item {
-	if item == nil {
+func (s *Schema) GetRecipe(defindex int) *RecipeDefinition {
+	if s == nil || s.recipes == nil {
 		return nil
 	}
 
-	defindex := int(item.ClassID)
-
-	nameToParse := item.MarketHashName
-	if nameToParse == "" {
-		nameToParse = item.MarketName
-	}
-
-	var skuItem *sku.Item
-	if nameToParse != "" {
-		skuItem = s.ItemFromName(nameToParse)
-	}
-
-	if skuItem == nil || skuItem.Defindex == 0 {
-		if defindex > 0 {
-			skuItem = &sku.Item{
-				Defindex:  defindex,
-				Quality:   QualityUnique,
-				Craftable: true,
-				Tradable:  item.Tradable,
-			}
-		} else {
-			return nil
-		}
-	}
-
-	for _, tag := range item.Tags {
-		if tag.Category == "Exterior" {
-			if wearID := s.WearByName(tag.LocalizedName); wearID != 0 {
-				skuItem.Wear = wearID
-			}
-		}
-	}
-
-	if skuItem.Quality == QualityDecorated || item.ClassID == 205 {
-		lowerName := strings.ToLower(item.MarketHashName)
-		for pkName, pkID := range s.paintKitByName {
-			if strings.Contains(lowerName, pkName) {
-				skuItem.Paintkit = pkID
-				break
-			}
-		}
-	}
-
-	skuItem.Tradable = item.Tradable
-
-	for _, desc := range item.Descriptions {
-		val := strings.TrimSpace(desc.Value)
-		if val == "" {
-			continue
-		}
-
-		if wearName, ok := strings.CutPrefix(val, "Exterior: "); ok {
-			if wearID := s.WearByName(wearName); wearID != 0 {
-				skuItem.Wear = wearID
-			}
-
-			continue
-		}
-
-		if strings.Contains(val, "( Not Usable in Crafting )") {
-			skuItem.Craftable = false
-			break
-		}
-	}
-
-	for _, d := range item.Descriptions {
-		val := d.Value
-
-		isUnusual := skuItem.Quality == QualityUnusual || skuItem.Quality2 == QualityUnusual ||
-			skuItem.Quality == QualityDecorated
-		if isUnusual && skuItem.Effect == 0 {
-			if after, ok := strings.CutPrefix(val, "★ Unusual Effect: "); ok {
-				if id := s.EffectIDByName(after); id != 0 {
-					skuItem.Effect = id
-				}
-			}
-		}
-
-		if strings.Contains(val, "Killstreak Active") {
-			switch {
-			case strings.Contains(val, "Professional"):
-				skuItem.Killstreak = 3
-			case strings.Contains(val, "Specialized"):
-				skuItem.Killstreak = 2
-			case strings.Contains(val, "Killstreak"):
-				skuItem.Killstreak = 1
-			}
-		}
-
-		if paintName, ok := strings.CutPrefix(val, "Paint Color: "); ok {
-			if paintID := s.PaintDecimalByName(paintName); paintID != 0 {
-				skuItem.Paint = paintID
-			}
-		}
-
-		if strings.Contains(val, "Crate Series #") {
-			parts := strings.Split(val, "#")
-			if len(parts) == 2 {
-				if series, err := strconv.Atoi(parts[1]); err == nil {
-					skuItem.Crateseries = series
-				}
-			}
-		}
-
-		if strings.Contains(val, "Festivized") {
-			skuItem.Festivized = true
-		}
-
-		if d.Color == "756b5e" {
-			clean := strings.Trim(val, "()")
-			if before, after, ok := strings.Cut(clean, ":"); ok {
-				partName := strings.TrimSpace(before)
-				for name, suffix := range s.StrangeParts() {
-					if strings.Contains(partName, name) {
-						if partID, err := strconv.Atoi(strings.TrimPrefix(suffix, "sp")); err == nil {
-							skuItem.Parts = append(skuItem.Parts, partID)
-
-							valStr := strings.TrimSpace(after)
-
-							valStr = strings.ReplaceAll(valStr, ",", "")
-							if valInt, err := strconv.Atoi(valStr); err == nil {
-								if skuItem.PartValues == nil {
-									skuItem.PartValues = make(map[int]int)
-								}
-
-								skuItem.PartValues[partID] = valInt
-							}
-						}
-
-						break
-					}
-				}
-			}
-		}
-
-		if strings.ToLower(d.Color) == "7ea9d1" {
-			spellName := strings.TrimSpace(val)
-			if spell, ok := s.SpellIDByName(spellName); ok {
-				skuItem.Spells = append(skuItem.Spells, spell)
-			}
-		}
-	}
-
-	if !skuItem.Festivized && (strings.Contains(nameToParse, "Festivized") || s.IsNativeFestive(skuItem.Defindex)) {
-		skuItem.Festivized = true
-	}
-
-	if !skuItem.Australium && strings.Contains(nameToParse, "Australium") {
-		skuItem.Australium = true
-	}
-
-	if skuItem.Quality != 11 && strings.HasPrefix(item.MarketHashName, "Strange ") {
-		skuItem.Quality2 = 11
-	}
-
-	s.NormalizeItem(skuItem)
-
-	return skuItem
+	return s.recipes[defindex]
 }
 
-// SKUFromEconItem converts a generic [trading.Item] into a standardized TF2 SKU string.
-func (s *Schema) SKUFromEconItem(item *trading.Item) string {
-	skuItem := s.ItemFromEconItem(item)
-	if skuItem == nil {
-		return "unknown"
+func (s *Schema) GetAllRecipes() []*RecipeDefinition {
+	if s == nil {
+		return nil
 	}
 
-	return sku.FromObject(skuItem)
+	recipes := make([]*RecipeDefinition, 0, len(s.recipes))
+	for _, r := range s.recipes {
+		recipes = append(recipes, r)
+	}
+
+	return recipes
 }
 
-// IsPromoItem returns true if the specified [Item] is a promotional item.
+func (s *Schema) GetSupportedWeaponsForPaintkit(paintkitID int) []WeaponOption {
+	var options []WeaponOption
+
+	addOption := func(defindex uint32, name string, skinMap map[int]int) {
+		if skinMap[paintkitID] != 0 {
+			options = append(options, WeaponOption{
+				Defindex: defindex,
+				Name:     stringpool.Intern(name),
+			})
+		}
+	}
+
+	addOption(22, "Pistol", pistolSkins)
+	addOption(18, "Rocket Launcher", rocketLauncherSkins)
+	addOption(29, "Medi Gun", medicgunSkins)
+	addOption(24, "Revolver", revolverSkins)
+	addOption(20, "Stickybomb Launcher", stickybombSkins)
+	addOption(14, "Sniper Rifle", sniperRifleSkins)
+	addOption(21, "Flame Thrower", flameThrowerSkins)
+	addOption(15, "Minigun", minigunSkins)
+	addOption(13, "Scattergun", scattergunSkins)
+	addOption(12, "Shotgun", shotgunSkins)
+	addOption(16, "SMG", smgSkins)
+	addOption(7, "Wrench", wrenchSkins)
+	addOption(19, "Grenade Launcher", grenadeLauncherSkins)
+	addOption(4, "Knife", knifeSkins)
+
+	return options
+}
+
+// ============================================================
+// SECTION 5: NORMALIZATION & METADATA
+// ============================================================
+
+func (s *Schema) NormalizeDefindex(defindex int) int {
+	return NormalizeDefindex(defindex)
+}
+
+func (s *Schema) IsAustraliumDefindex(defindex int) bool {
+	return IsAustraliumDefindex(defindex)
+}
+
+func (s *Schema) IsNativeFestive(defindex int) bool {
+	return IsNativeFestive(defindex)
+}
+
 func (s *Schema) IsPromoItem(it *Item) bool {
 	return strings.HasPrefix(it.Name, "Promo ") && it.CraftClass == ""
 }
 
-// NormalizeItem adjusts the [sku.Item] defindex and quality parameters to follow trading standards.
 func (s *Schema) NormalizeItem(item *sku.Item) {
 	if item == nil {
 		return
@@ -2611,7 +1091,6 @@ func (s *Schema) NormalizeItem(item *sku.Item) {
 	}
 }
 
-// ToJSON serializes the [Schema] metadata and raw data to a generic JSON-friendly map.
 func (s *Schema) ToJSON() map[string]any {
 	if s == nil {
 		return nil
@@ -2625,10 +1104,8 @@ func (s *Schema) ToJSON() map[string]any {
 		"attribute_controlled_attached_particles": s.unusualEffectsCache,
 	}
 
-	if s.Raw != nil {
-		if len(s.Raw.Schema.OriginNames) > 0 {
-			rawSchema["originNames"] = s.Raw.Schema.OriginNames
-		}
+	if s.Raw != nil && len(s.Raw.Schema.OriginNames) > 0 {
+		rawSchema["originNames"] = s.Raw.Schema.OriginNames
 	}
 
 	return map[string]any{
@@ -2638,39 +1115,1511 @@ func (s *Schema) ToJSON() map[string]any {
 	}
 }
 
-// WeaponOption represents a base weapon definition name and defindex.
-type WeaponOption struct {
-	Defindex uint32
-	Name     string
-}
+// ============================================================
+// SECTION 6: SKU & ECON ITEM CONVERSION ENGINE
+// ============================================================
 
-// GetSupportedWeaponsForPaintkit returns the list of base weapons that can have the specified paintkit applied.
-func (s *Schema) GetSupportedWeaponsForPaintkit(paintkitID int) []WeaponOption {
-	var options []WeaponOption
+func (s *Schema) ItemName(item *sku.Item, proper, usePipeForSkin, scmFormat bool) string {
+	if item == nil {
+		return ""
+	}
 
-	addOption := func(defindex uint32, name string, skinMap map[int]int) {
-		if skinMap[paintkitID] != 0 {
-			options = append(options, WeaponOption{
-				Defindex: defindex,
-				Name:     stringpool.Intern(name),
-			})
+	schemaItem := s.ItemByDef(item.Defindex)
+	if schemaItem == nil {
+		return fmt.Sprintf("Item #%d", item.Defindex)
+	}
+
+	buf := nameBufferPool.Get().(*bytes.Buffer)
+
+	buf.Reset()
+	defer nameBufferPool.Put(buf)
+
+	hasWritten := false
+	appendWord := func(word string) {
+		if word == "" {
+			return
+		}
+
+		if hasWritten {
+			buf.WriteByte(' ')
+		}
+
+		buf.WriteString(word)
+
+		hasWritten = true
+	}
+
+	if !scmFormat && !item.Tradable {
+		appendWord("Non-Tradable")
+	}
+
+	if !scmFormat && !item.Craftable {
+		appendWord("Non-Craftable")
+	}
+
+	if item.Quality2 != 0 {
+		qName := s.QualityByID(item.Quality2)
+		if qName != "" {
+			if !scmFormat && (item.Wear != 0 || item.Paintkit != 0) {
+				qName += "(e)"
+			}
+
+			appendWord(qName)
 		}
 	}
 
-	addOption(22, "Pistol", pistolSkins)
-	addOption(18, "Rocket Launcher", rocketLauncherSkins)
-	addOption(29, "Medi Gun", medicgunSkins)
-	addOption(24, "Revolver", revolverSkins)
-	addOption(20, "Stickybomb Launcher", stickybombSkins)
-	addOption(14, "Sniper Rifle", sniperRifleSkins)
-	addOption(21, "Flame Thrower", flameThrowerSkins)
-	addOption(15, "Minigun", minigunSkins)
-	addOption(13, "Scattergun", scattergunSkins)
-	addOption(12, "Shotgun", shotgunSkins)
-	addOption(16, "SMG", smgSkins)
-	addOption(7, "Wrench", wrenchSkins)
-	addOption(19, "Grenade Launcher", grenadeLauncherSkins)
-	addOption(4, "Knife", knifeSkins)
+	addPrimaryQuality := false
+	switch {
+	case item.Quality == QualityUnique && item.Quality2 != Quality2None,
+		item.Quality != QualityUnique && item.Quality != QualityDecorated && item.Quality != QualityUnusual,
+		item.Quality == QualityUnusual && item.Effect == 0,
+		item.Quality == QualityUnusual && scmFormat,
+		scmFormat && item.Effect != 0,
+		schemaItem.ItemQuality == QualityUnusual:
+		addPrimaryQuality = true
+	}
 
-	return options
+	if addPrimaryQuality {
+		qID := item.Quality
+		if scmFormat && item.Effect != 0 {
+			qID = QualityUnusual
+		}
+
+		if qName := s.QualityByID(qID); qName != "" {
+			appendWord(qName)
+		}
+	}
+
+	if !scmFormat && item.Effect != 0 {
+		if effName := s.EffectByID(item.Effect); effName != "" {
+			appendWord(effName)
+		}
+	}
+
+	if item.Festivized {
+		appendWord("Festivized")
+	}
+
+	if item.Killstreak > 0 {
+		switch item.Killstreak {
+		case 1:
+			appendWord("Killstreak")
+		case 2:
+			appendWord("Specialized Killstreak")
+		case 3:
+			appendWord("Professional Killstreak")
+		}
+	}
+
+	if item.Target != 0 {
+		if targetItem := s.ItemByDef(item.Target); targetItem != nil {
+			appendWord(targetItem.ItemName)
+		}
+	}
+
+	if item.OutputQuality != 0 && item.OutputQuality != 6 {
+		if oqName := s.QualityByID(item.OutputQuality); oqName != "" {
+			appendWord(oqName)
+		}
+	}
+
+	if item.Output != 0 {
+		if outItem := s.ItemByDef(item.Output); outItem != nil {
+			appendWord(outItem.ItemName)
+		}
+	}
+
+	if item.Australium {
+		appendWord("Australium")
+	}
+
+	if item.Paintkit != 0 {
+		if skinName := s.SkinByID(item.Paintkit); skinName != "" {
+			if usePipeForSkin {
+				appendWord(skinName + " |")
+			} else {
+				appendWord(skinName)
+			}
+		}
+	}
+
+	baseName := ""
+	if info, ok := retiredKeys[item.Defindex]; ok {
+		baseName = info.Name
+	} else if schemaItem.ItemName != "" {
+		baseName = schemaItem.ItemName
+	} else {
+		baseName = schemaItem.Name
+	}
+
+	if proper && !hasWritten && schemaItem.ProperName {
+		baseName = "The " + baseName
+	}
+
+	appendWord(baseName)
+
+	if item.Wear >= 1 && item.Wear <= 5 {
+		appendWord("(" + wearNamesStatic[item.Wear-1] + ")")
+	}
+
+	for _, spell := range item.Spells {
+		appendWord("(Spell: " + s.SpellNameFromSKU(spell) + ")")
+	}
+
+	for _, partID := range item.Parts {
+		partName := "Unknown Part"
+		if name, ok := s.killEaterTypesByID[partID]; ok {
+			partName = name
+		}
+
+		val := 0
+		if item.PartValues != nil {
+			val = item.PartValues[partID]
+		}
+
+		appendWord(fmt.Sprintf("(%s: %d)", partName, val))
+	}
+
+	crateSeries := item.Crateseries
+	if crateSeries == 0 && item.Target != 0 {
+		if series, ok := strangifierChemistrySetSeries[item.Target]; ok {
+			crateSeries = series
+		}
+	}
+
+	if crateSeries != 0 {
+		if scmFormat {
+			appendWord(fmt.Sprintf("Series %%23%d", crateSeries))
+		} else {
+			appendWord(fmt.Sprintf("#%d", crateSeries))
+		}
+	} else if item.Craftnumber != 0 {
+		appendWord(fmt.Sprintf("#%d", item.Craftnumber))
+	}
+
+	if !scmFormat && item.Paint != 0 {
+		if paintName := s.PaintNameByDecimal(item.Paint); paintName != "" {
+			appendWord(fmt.Sprintf("(Paint: %s)", paintName))
+		}
+	}
+
+	return buf.String()
+}
+
+func (s *Schema) SkuFromName(name string) string {
+	item := s.ItemFromName(name)
+
+	return sku.FromObject(item)
+}
+
+func (s *Schema) SKUFromItem(item *sku.Item) string {
+	if item == nil {
+		return ""
+	}
+
+	s.NormalizeItem(item)
+
+	return sku.FromObject(item)
+}
+
+func (s *Schema) ItemFromEconItem(item *trading.Item) *sku.Item {
+	if item == nil || s == nil {
+		return nil
+	}
+
+	defindex := int(item.ClassID)
+	nameToParse := item.MarketHashName
+
+	if nameToParse == "" {
+		nameToParse = item.MarketName
+	}
+
+	var skuItem *sku.Item
+	if nameToParse != "" {
+		skuItem = s.ItemFromName(nameToParse)
+	}
+
+	if skuItem == nil {
+		defaultQuality := QualityUnique
+		if defindex == 0 {
+			defaultQuality = QualityNormal
+		}
+
+		skuItem = &sku.Item{
+			Defindex:  defindex,
+			Quality:   defaultQuality,
+			Craftable: true,
+			Tradable:  item.Tradable,
+		}
+	} else if skuItem.Defindex == 0 && defindex > 0 {
+		skuItem.Defindex = defindex
+	}
+
+	s.applyEconWearAndSkins(skuItem, item)
+	s.applyEconDescriptions(skuItem, item.Descriptions)
+
+	if !skuItem.Festivized && (strings.Contains(nameToParse, "Festivized") || s.IsNativeFestive(skuItem.Defindex)) {
+		skuItem.Festivized = true
+	}
+
+	if !skuItem.Australium && strings.Contains(nameToParse, "Australium") {
+		skuItem.Australium = true
+	}
+
+	if skuItem.Quality != 11 && strings.HasPrefix(item.MarketHashName, "Strange ") {
+		skuItem.Quality2 = 11
+	}
+
+	s.NormalizeItem(skuItem)
+
+	return skuItem
+}
+
+func (s *Schema) applyEconWearAndSkins(skuItem *sku.Item, item *trading.Item) {
+	for _, tag := range item.Tags {
+		if tag.Category == "Exterior" {
+			if wearID := s.WearByName(tag.LocalizedName); wearID != 0 {
+				skuItem.Wear = wearID
+			}
+		}
+	}
+
+	if skuItem.Quality == QualityDecorated || item.ClassID == 205 {
+		lowerName := strings.ToLower(item.MarketHashName)
+
+		for pkName, pkID := range s.paintKitByName {
+			if strings.Contains(lowerName, pkName) {
+				skuItem.Paintkit = pkID
+				break
+			}
+		}
+	}
+
+	skuItem.Tradable = item.Tradable
+}
+
+func (s *Schema) applyEconDescriptions(skuItem *sku.Item, descriptions []trading.Description) {
+	for _, desc := range descriptions {
+		val := strings.TrimSpace(desc.Value)
+		if val == "" {
+			continue
+		}
+
+		if wearName, ok := strings.CutPrefix(val, "Exterior: "); ok {
+			if wearID := s.WearByName(wearName); wearID != 0 {
+				skuItem.Wear = wearID
+			}
+
+			continue
+		}
+
+		if strings.Contains(val, "( Not Usable in Crafting )") {
+			skuItem.Craftable = false
+			continue
+		}
+
+		isUnusual := skuItem.Quality == QualityUnusual || skuItem.Quality2 == QualityUnusual ||
+			skuItem.Quality == QualityDecorated
+
+		if isUnusual && skuItem.Effect == 0 {
+			if after, ok := strings.CutPrefix(val, "★ Unusual Effect: "); ok {
+				if id := s.EffectIDByName(after); id != 0 {
+					skuItem.Effect = id
+				}
+			}
+		}
+
+		if strings.Contains(val, "Killstreak Active") {
+			switch {
+			case strings.Contains(val, "Professional"):
+				skuItem.Killstreak = 3
+			case strings.Contains(val, "Specialized"):
+				skuItem.Killstreak = 2
+			case strings.Contains(val, "Killstreak"):
+				skuItem.Killstreak = 1
+			}
+		}
+
+		if paintName, ok := strings.CutPrefix(val, "Paint Color: "); ok {
+			if paintID := s.PaintDecimalByName(paintName); paintID != 0 {
+				skuItem.Paint = paintID
+			}
+		}
+
+		if strings.Contains(val, "Crate Series #") {
+			parts := strings.Split(val, "#")
+			if len(parts) == 2 {
+				if series, err := strconv.Atoi(parts[1]); err == nil {
+					skuItem.Crateseries = series
+				}
+			}
+		}
+
+		if strings.Contains(val, "Festivized") {
+			skuItem.Festivized = true
+		}
+
+		if strings.EqualFold(desc.Color, "756b5e") {
+			s.parseEconStrangePart(skuItem, val)
+		}
+
+		if strings.EqualFold(desc.Color, "7ea9d1") {
+			if spell, ok := s.SpellIDByName(strings.TrimSpace(val)); ok {
+				skuItem.Spells = append(skuItem.Spells, spell)
+			}
+		}
+	}
+}
+
+func (s *Schema) parseEconStrangePart(skuItem *sku.Item, val string) {
+	clean := strings.Trim(val, "()")
+	before, after, ok := strings.Cut(clean, ":")
+
+	if !ok {
+		return
+	}
+
+	partName := strings.TrimSpace(before)
+
+	for name, suffix := range s.StrangeParts() {
+		if strings.Contains(partName, name) || strings.EqualFold(partName, name) {
+			if partID, err := strconv.Atoi(strings.TrimPrefix(suffix, "sp")); err == nil {
+				skuItem.Parts = append(skuItem.Parts, partID)
+
+				valStr := strings.TrimSpace(after)
+				valStr = strings.ReplaceAll(valStr, ",", "")
+
+				if valInt, err := strconv.Atoi(valStr); err == nil {
+					if skuItem.PartValues == nil {
+						skuItem.PartValues = make(map[int]int)
+					}
+
+					skuItem.PartValues[partID] = valInt
+				}
+			}
+
+			break
+		}
+	}
+}
+
+func (s *Schema) SKUFromEconItem(item *trading.Item) string {
+	skuItem := s.ItemFromEconItem(item)
+	if skuItem == nil {
+		return "unknown"
+	}
+
+	return sku.FromObject(skuItem)
+}
+
+func (s *Schema) ItemFromName(name string) *sku.Item {
+	item := &sku.Item{Craftable: true, Tradable: true}
+	originalName := name
+	name = strings.ToLower(name)
+
+	debugLog("GetItemObjectFromName start:", originalName)
+
+	if isStrangePartPrefix(name) {
+		if schemaItem := s.ItemByName(originalName); schemaItem != nil {
+			item.Defindex = schemaItem.Defindex
+			if item.Quality == 0 {
+				item.Quality = schemaItem.ItemQuality
+			}
+		}
+
+		return item
+	}
+
+	for _, w := range staticWearsTable {
+		if idx := strings.Index(name, w.str); idx != -1 {
+			name = strings.TrimSpace(name[:idx] + name[idx+len(w.str):])
+			item.Wear = w.val
+
+			break
+		}
+	}
+
+	isExplicitElevatedStrange := false
+
+	if idx := strings.Index(name, "strange(e)"); idx != -1 {
+		item.Quality2 = QualityStrange
+		isExplicitElevatedStrange = true
+		name = strings.TrimSpace(name[:idx] + name[idx+10:])
+	}
+
+	hasStrangePrefix := false
+
+	if strings.Contains(name, "strange") && !strings.Contains(name, "strangifier") {
+		hasStrangePrefix = true
+		name = strings.TrimSpace(strings.ReplaceAll(name, "strange", ""))
+	}
+
+	name = s.parseCraftAndTradeRestrictions(name, item)
+
+	if strings.Contains(name, "unusualifier") {
+		return s.parseUnusualifier(name, item)
+	}
+
+	kitFabricatorDetected := strings.Contains(name, "kit fabricator")
+
+	for _, ks := range staticKillstreaksTable {
+		if idx := strings.Index(name, ks.phrase); idx != -1 {
+			name = strings.TrimSpace(name[:idx] + name[idx+len(ks.phrase):])
+			item.Killstreak = ks.value
+
+			break
+		}
+	}
+
+	if idx := strings.Index(name, "australium"); idx != -1 && !strings.Contains(name, "australium gold") {
+		name = strings.TrimSpace(name[:idx] + name[idx+10:])
+		item.Australium = true
+	}
+
+	if idx := strings.Index(name, "festivized"); idx != -1 && !strings.Contains(name, "festivized formation") {
+		name = strings.TrimSpace(name[:idx] + name[idx+10:])
+		item.Festivized = true
+	}
+
+	name = s.parseQualityFromName(name, item)
+	name = s.parseEffectFromName(name, item)
+
+	if item.Wear != 0 {
+		if resItem, done := s.parsePaintkitAndSkins(name, item, isExplicitElevatedStrange); done {
+			return resItem
+		}
+	}
+
+	if strings.Contains(name, "(paint: ") {
+		name = s.parsePaintColorInName(name, item)
+	}
+
+	if kitFabricatorDetected && item.Killstreak > 1 {
+		if resItem, done := s.parseKitFabricator(name, item); done {
+			return resItem
+		}
+	}
+
+	if strings.Contains(name, "chemistry set") &&
+		(!strings.Contains(name, "strangifier chemistry set") || strings.Contains(name, "collector's")) {
+		return s.parseChemistrySet(name, item)
+	}
+
+	if strings.Contains(name, "strangifier chemistry set") {
+		return s.parseStrangifierChemistrySet(name, item)
+	}
+
+	if strings.Contains(name, "strangifier") && !strings.Contains(name, "strangifier chemistry set") {
+		name = strings.TrimSpace(strings.ReplaceAll(name, "strangifier", ""))
+		item.Defindex = 6522
+
+		if schemaItem := s.ItemByName(name); schemaItem != nil {
+			item.Target = schemaItem.Defindex
+			if item.Quality == 0 {
+				item.Quality = schemaItem.ItemQuality
+			}
+		} else {
+			return item
+		}
+	}
+
+	if !kitFabricatorDetected && strings.Contains(name, "kit") && item.Killstreak > 0 {
+		if resItem, done := s.parseKillstreakKit(name, item); done {
+			return resItem
+		}
+	}
+
+	if item.Defindex != 0 {
+		return item
+	}
+
+	if item.Paintkit != 0 && strings.Contains(name, "war paint") {
+		return s.parseWarPaint(item)
+	}
+
+	return s.parseCratesAndFinalItem(name, item, hasStrangePrefix)
+}
+
+func isStrangePartPrefix(name string) bool {
+	return strings.HasPrefix(name, "strange part:") ||
+		strings.HasPrefix(name, "strange cosmetic part:") ||
+		strings.HasPrefix(name, "strange filter:") ||
+		name == "strange count transfer tool" ||
+		name == "strange bacon grease"
+}
+
+func (s *Schema) parseCraftAndTradeRestrictions(name string, item *sku.Item) string {
+	if strings.Contains(name, "craft") {
+		if idx := strings.Index(name, "uncraftable"); idx != -1 {
+			name = strings.TrimSpace(name[:idx] + name[idx+11:])
+			item.Craftable = false
+		} else if idx := strings.Index(name, "non-craftable"); idx != -1 {
+			name = strings.TrimSpace(name[:idx] + name[idx+13:])
+			item.Craftable = false
+		}
+	}
+
+	if strings.Contains(name, "trad") {
+		for _, sub := range []string{"untradeable", "untradable", "non-tradeable", "non-tradable"} {
+			if idx := strings.Index(name, sub); idx != -1 {
+				name = strings.TrimSpace(name[:idx] + name[idx+len(sub):])
+				item.Tradable = false
+
+				break
+			}
+		}
+	}
+
+	return name
+}
+
+func (s *Schema) parseUnusualifier(name string, item *sku.Item) *sku.Item {
+	name = strings.ReplaceAll(name, "unusual ", "")
+	name = strings.ReplaceAll(name, " unusualifier", "")
+	name = strings.ReplaceAll(name, "unusualifier", "")
+	name = strings.TrimSpace(name)
+
+	item.Defindex = 9258
+	item.Quality = QualityUnusual
+
+	if schemaItem := s.ItemByName(name); schemaItem != nil {
+		item.Target = schemaItem.Defindex
+	}
+
+	return item
+}
+
+func (s *Schema) parseQualityFromName(name string, item *sku.Item) string {
+	exception := []string{
+		"haunted ghosts", "haunted phantasm jr", "haunted phantasm",
+		"haunted metal scrap", "haunted hat", "unusual cap",
+		"vintage tyrolean", "vintage merryweather", "haunted kraken",
+		"haunted forever!", "haunted cremation", "haunted wick",
+		"haunted mist",
+	}
+
+	qualitySearch := name
+	for _, ex := range exception {
+		if idx := strings.Index(name, ex); idx != -1 {
+			qualitySearch = strings.TrimSpace(name[:idx] + name[idx+len(ex):])
+
+			break
+		}
+	}
+
+	if slices.Contains(exception, qualitySearch) {
+		return name
+	}
+
+	for qName, qID := range s.qualByName {
+		if qID == QualityDecorated {
+			continue
+		}
+
+		if qID == QualityCollectors && strings.Contains(qualitySearch, "collector's") &&
+			strings.Contains(qualitySearch, "chemistry set") {
+			continue
+		}
+
+		if qID == QualityCommunity && strings.HasPrefix(qualitySearch, "community sparkle") {
+			continue
+		}
+
+		if strings.HasPrefix(qualitySearch, qName) {
+			if item.Quality != 0 && item.Quality != qID {
+				if item.Quality2 == Quality2None {
+					item.Quality2 = item.Quality
+				}
+
+				item.Quality = qID
+			} else {
+				item.Quality = qID
+			}
+
+			return strings.TrimSpace(strings.Replace(name, qName, "", 1))
+		}
+	}
+
+	return name
+}
+
+func (s *Schema) parseEffectFromName(name string, item *sku.Item) string {
+	excludeAtomic := strings.Contains(name, "bonk! atomic punch") || strings.Contains(name, "atomic accolade")
+
+	for effName, effID := range s.effByName {
+		if effName == "" || !strings.Contains(name, effName) {
+			continue
+		}
+
+		if effName == "stardust" && strings.Contains(name, "starduster") &&
+			!strings.Contains(strings.ReplaceAll(name, "stardust", ""), "starduster") {
+			continue
+		}
+
+		if effName == "showstopper" && !strings.Contains(name, "taunt: ") && !strings.Contains(name, "shred alert") {
+			continue
+		}
+
+		if effName == "smoking" && (name == "smoking jacket" || strings.Contains(name, "smoking skid lid")) &&
+			!strings.HasPrefix(name, "smoking smoking") {
+			continue
+		}
+
+		if (effName == "haunted ghosts" || effName == "pumpkin patch" || effName == "stardust") && item.Wear != 0 {
+			continue
+		}
+
+		if effName == "atomic" && (strings.Contains(name, "subatomic") || excludeAtomic) {
+			continue
+		}
+
+		if effName == "spellbound" && (strings.Contains(name, "taunt:") || strings.Contains(name, "shred alert")) {
+			continue
+		}
+
+		if effName == "accursed" && strings.Contains(name, "accursed apparition") ||
+			effName == "haunted" && strings.Contains(name, "haunted kraken") ||
+			effName == "frostbite" && strings.Contains(name, "frostbite bonnet") ||
+			effName == "sizzling" && strings.HasPrefix(name, "sizzling aroma") {
+			continue
+		}
+
+		if effName == "hot" {
+			if item.Wear == 0 ||
+				(!strings.Contains(name, "hot ") && (strings.Contains(name, "shotgun") || strings.Contains(name, "shot ") || strings.Contains(name, "plaid potshotter"))) ||
+				!strings.HasPrefix(name, "hot ") {
+				continue
+			}
+		}
+
+		if effName == "cool" && item.Wear == 0 {
+			continue
+		}
+
+		name = strings.TrimSpace(strings.ReplaceAll(name, effName, ""))
+		item.Effect = effID
+
+		if effID == 4 {
+			if item.Quality == 0 {
+				item.Quality = QualityUnusual
+			}
+		} else if item.Quality != QualityUnusual {
+			if item.Quality2 == Quality2None {
+				item.Quality2 = item.Quality
+			}
+
+			item.Quality = QualityUnusual
+		}
+
+		break
+	}
+
+	return name
+}
+
+func (s *Schema) parsePaintkitAndSkins(name string, item *sku.Item, isExplicitElevatedStrange bool) (*sku.Item, bool) {
+	for pkName, pkID := range s.paintKitByName {
+		if strings.Contains(name, pkName) {
+			if strings.Contains(name, "mk.ii") && !strings.Contains(pkName, "mk.ii") ||
+				strings.Contains(name, "(green)") && !strings.Contains(pkName, "(green)") ||
+				strings.Contains(name, "chilly") && !strings.Contains(pkName, "chilly") {
+				continue
+			}
+
+			name = strings.ReplaceAll(name, pkName, "")
+			name = strings.ReplaceAll(name, " | ", "")
+			name = strings.TrimSpace(name)
+			item.Paintkit = pkID
+
+			if item.Effect != 0 {
+				if item.Quality == QualityUnusual && item.Quality2 == QualityStrange {
+					if !isExplicitElevatedStrange {
+						item.Quality = QualityStrange
+						item.Quality2 = Quality2None
+					} else {
+						item.Quality = QualityDecorated
+					}
+				} else if item.Quality == QualityUnusual && item.Quality2 == Quality2None {
+					item.Quality = QualityDecorated
+				}
+			}
+
+			if item.Quality == 0 {
+				item.Quality = QualityDecorated
+			}
+
+			break
+		}
+	}
+
+	if !strings.Contains(name, "war paint") {
+		oldDefindex := item.Defindex
+
+		switch {
+		case strings.Contains(name, "pistol"):
+			if def, ok := pistolSkins[item.Paintkit]; ok && def != 0 {
+				item.Defindex = def
+			} else {
+				item.Defindex = 15013
+			}
+
+		case strings.Contains(name, "rocket launcher"):
+			if def, ok := rocketLauncherSkins[item.Paintkit]; ok && def != 0 {
+				item.Defindex = def
+			} else {
+				item.Defindex = 15014
+			}
+
+		case strings.Contains(name, "medi gun"):
+			if def, ok := medicgunSkins[item.Paintkit]; ok && def != 0 {
+				item.Defindex = def
+			} else {
+				item.Defindex = 15010
+			}
+
+		case strings.Contains(name, "revolver"):
+			if def, ok := revolverSkins[item.Paintkit]; ok && def != 0 {
+				item.Defindex = def
+			} else {
+				item.Defindex = 15011
+			}
+
+		case strings.Contains(name, "stickybomb launcher"):
+			if def, ok := stickybombSkins[item.Paintkit]; ok && def != 0 {
+				item.Defindex = def
+			} else {
+				item.Defindex = 15012
+			}
+
+		case strings.Contains(name, "sniper rifle"):
+			if def, ok := sniperRifleSkins[item.Paintkit]; ok && def != 0 {
+				item.Defindex = def
+			} else {
+				item.Defindex = 15007
+			}
+
+		case strings.Contains(name, "flame thrower"):
+			if def, ok := flameThrowerSkins[item.Paintkit]; ok && def != 0 {
+				item.Defindex = def
+			} else {
+				item.Defindex = 15005
+			}
+
+		case strings.Contains(name, "minigun"):
+			if def, ok := minigunSkins[item.Paintkit]; ok && def != 0 {
+				item.Defindex = def
+			} else {
+				item.Defindex = 15004
+			}
+
+		case strings.Contains(name, "scattergun"):
+			if def, ok := scattergunSkins[item.Paintkit]; ok && def != 0 {
+				item.Defindex = def
+			} else {
+				item.Defindex = 15002
+			}
+
+		case strings.Contains(name, "shotgun"):
+			if def, ok := shotgunSkins[item.Paintkit]; ok && def != 0 {
+				item.Defindex = def
+			} else {
+				item.Defindex = 15003
+			}
+
+		case strings.Contains(name, "smg"):
+			if def, ok := smgSkins[item.Paintkit]; ok && def != 0 {
+				item.Defindex = def
+			} else {
+				item.Defindex = 15001
+			}
+
+		case strings.Contains(name, "grenade launcher"):
+			if def, ok := grenadeLauncherSkins[item.Paintkit]; ok && def != 0 {
+				item.Defindex = def
+			} else {
+				item.Defindex = 15077
+			}
+
+		case strings.Contains(name, "wrench"):
+			if def, ok := wrenchSkins[item.Paintkit]; ok && def != 0 {
+				item.Defindex = def
+			} else {
+				item.Defindex = 15074
+			}
+
+		case strings.Contains(name, "knife"):
+			if def, ok := knifeSkins[item.Paintkit]; ok && def != 0 {
+				item.Defindex = def
+			} else {
+				item.Defindex = 15080
+			}
+		}
+
+		if oldDefindex != item.Defindex {
+			return item, true
+		}
+	}
+
+	return nil, false
+}
+
+func (s *Schema) parsePaintColorInName(name string, item *sku.Item) string {
+	name = strings.ReplaceAll(name, "(paint: ", "")
+	name = strings.ReplaceAll(name, ")", "")
+	name = strings.TrimSpace(name)
+
+	for pName, pVal := range s.paintByName {
+		if strings.Contains(name, pName) {
+			name = strings.TrimSpace(strings.ReplaceAll(name, pName, ""))
+			item.Paint = pVal
+
+			break
+		}
+	}
+
+	return name
+}
+
+func (s *Schema) parseKitFabricator(name string, item *sku.Item) (*sku.Item, bool) {
+	name = strings.TrimSpace(strings.ReplaceAll(name, "kit fabricator", ""))
+
+	if item.Killstreak > 2 {
+		item.Defindex = 20003
+	} else {
+		item.Defindex = 20002
+	}
+
+	if name != "" {
+		schemaItem := s.ItemByName(name)
+		if schemaItem != nil {
+			item.Target = schemaItem.Defindex
+			if item.Quality == 0 {
+				item.Quality = schemaItem.ItemQuality
+			}
+		} else {
+			return item, true
+		}
+	}
+
+	if item.Quality == 0 {
+		item.Quality = QualityUnique
+	}
+
+	if item.Killstreak > 2 {
+		item.Output = 6526
+	} else {
+		item.Output = 6523
+	}
+
+	item.OutputQuality = QualityUnique
+	item.Killstreak = 0
+
+	return nil, false
+}
+
+func (s *Schema) parseChemistrySet(name string, item *sku.Item) *sku.Item {
+	name = strings.ReplaceAll(name, "collector's ", "")
+	name = strings.ReplaceAll(name, "chemistry set", "")
+	name = strings.TrimSpace(name)
+
+	if strings.Contains(name, "festive") && !strings.Contains(name, "a rather festive tree") {
+		item.Defindex = 20007
+	} else {
+		item.Defindex = 20006
+	}
+
+	item.Quality = QualityUnique
+
+	if name != "" {
+		if schemaItem := s.ItemByName(name); schemaItem != nil {
+			item.Output = schemaItem.Defindex
+			item.OutputQuality = QualityCollectors
+		}
+	}
+
+	return item
+}
+
+func (s *Schema) parseStrangifierChemistrySet(name string, item *sku.Item) *sku.Item {
+	name = strings.TrimSpace(strings.ReplaceAll(name, "strangifier chemistry set", ""))
+
+	item.Defindex = 20000
+	item.Quality = QualityUnique
+	item.Output = 6522
+	item.OutputQuality = QualityUnique
+
+	if name != "" {
+		if schemaItem := s.ItemByName(name); schemaItem != nil {
+			item.Target = schemaItem.Defindex
+			if series, ok := strangifierChemistrySetSeries[item.Target]; ok {
+				item.Crateseries = series
+			}
+		}
+	}
+
+	return item
+}
+
+func (s *Schema) parseKillstreakKit(name string, item *sku.Item) (*sku.Item, bool) {
+	kitType := item.Killstreak
+	item.Killstreak = 0
+	name = strings.TrimSpace(strings.ReplaceAll(name, "kit", ""))
+
+	switch kitType {
+	case 1:
+		item.Defindex = 6527
+	case 2:
+		item.Defindex = 6523
+	case 3:
+		item.Defindex = 6526
+	}
+
+	if name != "" {
+		schemaItem := s.ItemByName(name)
+		if schemaItem != nil {
+			item.Target = schemaItem.Defindex
+		} else {
+			return item, true
+		}
+	}
+
+	if item.Quality == 0 {
+		item.Quality = QualityUnique
+	}
+
+	return nil, false
+}
+
+func (s *Schema) parseWarPaint(item *sku.Item) *sku.Item {
+	searchName := fmt.Sprintf("Paintkit %d", item.Paintkit)
+	if item.Quality == 0 {
+		item.Quality = QualityDecorated
+	}
+
+	for _, it := range s.itemList {
+		if it.Name == searchName {
+			item.Defindex = it.Defindex
+
+			break
+		}
+	}
+
+	return item
+}
+
+func (s *Schema) parseCratesAndFinalItem(name string, item *sku.Item, hasStrangePrefix bool) *sku.Item {
+	name = strings.ReplaceAll(name, " series ", " ")
+	name = strings.ReplaceAll(name, " series#", " #")
+
+	var number int
+	if idx := strings.IndexByte(name, '#'); idx != -1 {
+		number, _ = strconv.Atoi(strings.TrimSpace(name[idx+1:]))
+		name = strings.TrimSpace(name[:idx])
+	}
+
+	if strings.Contains(name, "salvaged mann co. supply crate") && !strings.Contains(name, "key") {
+		item.Crateseries = number
+		item.Defindex = 5068
+		item.Quality = QualityUnique
+
+		return item
+	}
+
+	if strings.Contains(name, "select reserve mann co. supply crate") && !strings.Contains(name, "key") {
+		item.Defindex = 5660
+		item.Crateseries = 60
+		item.Quality = QualityUnique
+
+		return item
+	}
+
+	if strings.Contains(name, "mann co. supply crate") && !strings.Contains(name, "key") {
+		crateseries := number
+		switch crateseries {
+		case 1, 3, 7, 12, 13, 18, 19, 23, 26, 31, 34, 39, 43, 47, 54, 57, 75:
+			item.Defindex = 5022
+		case 2, 4, 8, 11, 14, 17, 20, 24, 27, 32, 37, 42, 44, 49, 56, 71, 76:
+			item.Defindex = 5041
+		case 5, 9, 10, 15, 16, 21, 25, 28, 29, 33, 38, 41, 45, 55, 59, 77:
+			item.Defindex = 5045
+		}
+
+		item.Crateseries = crateseries
+		item.Quality = QualityUnique
+
+		return item
+	}
+
+	if strings.Contains(name, "mann co. supply munition") {
+		crateseries := number
+		if def, ok := munitionCrate[crateseries]; ok {
+			item.Defindex = def
+		}
+
+		item.Crateseries = crateseries
+		item.Quality = QualityUnique
+
+		return item
+	}
+
+	for _, keyName := range retiredKeysNames {
+		if name == keyName {
+			for _, info := range retiredKeys {
+				if strings.ToLower(info.Name) == keyName {
+					item.Defindex = info.Defindex
+					if item.Quality == 0 {
+						item.Quality = QualityUnique
+					}
+
+					return item
+				}
+			}
+		}
+	}
+
+	schemaItem := s.ItemByNameWithThe(name)
+	if schemaItem == nil {
+		return item
+	}
+
+	item.Defindex = schemaItem.Defindex
+	if item.Quality == 0 {
+		item.Quality = schemaItem.ItemQuality
+	}
+
+	if item.Quality == QualityGenuine {
+		if newDef, ok := exclusiveGenuine[item.Defindex]; ok {
+			item.Defindex = newDef
+		}
+	}
+
+	if hasStrangePrefix {
+		isElevatedCapable := item.Quality == QualityUnusual ||
+			item.Quality == QualityVintage ||
+			item.Quality == QualityGenuine ||
+			item.Quality == QualityHaunted ||
+			item.Quality == QualityCollectors ||
+			item.Quality == QualityDecorated
+
+		if isElevatedCapable {
+			item.Quality2 = QualityStrange
+		} else {
+			item.Quality = QualityStrange
+		}
+	}
+
+	if schemaItem.ItemClass == "supply_crate" {
+		if series, ok := s.crateSeriesList[item.Defindex]; ok {
+			item.Crateseries = series
+		} else if number != 0 {
+			item.Crateseries = number
+		}
+	} else if number != 0 {
+		item.Craftnumber = number
+	}
+
+	return item
+}
+
+// ============================================================
+// SECTION 7: VALIDATION ENGINE (FLAT GUARD CLAUSES)
+// ============================================================
+
+func (s *Schema) CheckExistence(item *sku.Item) bool {
+	schemaItem := s.ItemByDef(item.Defindex)
+	if schemaItem == nil {
+		return false
+	}
+
+	if !s.validateBaseQuality(item, schemaItem) {
+		return false
+	}
+
+	if !s.validateElevatedQuality(item) {
+		return false
+	}
+
+	if !s.validateGenuineMapping(item) {
+		return false
+	}
+
+	if !s.validateRetiredKey(item) {
+		return false
+	}
+
+	if !s.validateCrateSeries(item, schemaItem) {
+		return false
+	}
+
+	return true
+}
+
+func (s *Schema) validateBaseQuality(item *sku.Item, schemaItem *Item) bool {
+	if schemaItem.ItemQuality == 0 || schemaItem.ItemQuality == QualityVintage ||
+		schemaItem.ItemQuality == QualityUnusual || schemaItem.ItemQuality == QualityStrange {
+		if item.Quality != schemaItem.ItemQuality {
+			return false
+		}
+	}
+
+	if item.Quality == schemaItem.ItemQuality {
+		return true
+	}
+
+	switch schemaItem.ItemQuality {
+	case QualityUnusual:
+		return item.Quality == 11
+	case QualityUnique:
+		return item.Quality == 1 || item.Quality == 3 || item.Quality == 11
+	case QualityStrange:
+		return item.Quality == 5
+	}
+
+	return false
+}
+
+func (s *Schema) validateElevatedQuality(item *sku.Item) bool {
+	if item.Quality2 == 0 {
+		return true
+	}
+
+	isElevatedCapable := item.Quality == QualityUnusual ||
+		item.Quality == QualityVintage ||
+		item.Quality == QualityGenuine ||
+		item.Quality == QualityHaunted ||
+		item.Quality == QualityCollectors ||
+		item.Quality == QualityDecorated
+
+	return !isElevatedCapable
+}
+
+func (s *Schema) validateGenuineMapping(item *sku.Item) bool {
+	if item.Quality != QualityGenuine {
+		_, ok := exclusiveGenuineReversed[item.Defindex]
+
+		return !ok
+	}
+
+	_, ok := exclusiveGenuine[item.Defindex]
+
+	return !ok
+}
+
+func (s *Schema) validateRetiredKey(item *sku.Item) bool {
+	if _, ok := retiredKeys[item.Defindex]; !ok {
+		return true
+	}
+
+	switch item.Defindex {
+	case 5713, 5716, 5717, 5762:
+		return !item.Craftable
+	default:
+		if !item.Craftable && item.Defindex != 5791 && item.Defindex != 5792 {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (s *Schema) validateCrateSeries(item *sku.Item, schemaItem *Item) bool {
+	hasExtraAttr := item.Quality != QualityUnique ||
+		item.Killstreak != 0 || item.Australium || item.Effect != 0 ||
+		item.Festivized || item.Paintkit != 0 || item.Wear != 0 ||
+		item.Quality2 != 0 || item.Craftnumber != 0 || item.Target != 0 ||
+		item.Output != 0 || item.OutputQuality != 0 || item.Paint != 0
+
+	if schemaItem.ItemClass == "supply_crate" && item.Crateseries == 0 {
+		if item.Defindex != 5739 && item.Defindex != 5760 &&
+			item.Defindex != 5737 && item.Defindex != 5738 {
+			return false
+		}
+
+		return !hasExtraAttr
+	}
+
+	if item.Crateseries != 0 {
+		if hasExtraAttr || schemaItem.ItemClass != "supply_crate" {
+			return false
+		}
+
+		if list, ok := validSingleSeries[item.Defindex]; ok {
+			return slices.Contains(list, item.Crateseries)
+		}
+
+		if munition, ok := munitionCrate[item.Crateseries]; ok {
+			return item.Defindex == munition
+		}
+
+		val, ok := s.crateSeriesList[item.Defindex]
+
+		return ok && val == item.Crateseries
+	}
+
+	return true
+}
+
+// parseRecipeBlock parses a single VDF recipe text block into a RecipeDefinition.
+func parseRecipeBlock(defindex int, block string) *RecipeDefinition {
+	r := &RecipeDefinition{DefIndex: defindex}
+	lines := strings.Split(block, "\n")
+
+	startIdx := 0
+	for i, l := range lines {
+		if strings.TrimSpace(l) == "{" {
+			startIdx = i + 1
+			break
+		}
+	}
+
+	state := &recipeParseState{
+		r:            r,
+		sectionStack: []string{"root"},
+	}
+
+	for _, line := range lines[startIdx:] {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+
+		if len(state.sectionStack) == 0 {
+			return nil
+		}
+
+		switch trimmed {
+		case "{":
+			state.handleOpenBrace()
+		case "}":
+			state.handleCloseBrace()
+		default:
+			key, value := parseRecipeVDFLine(trimmed)
+			if key != "" {
+				state.handleKeyValue(key, value)
+			}
+		}
+	}
+
+	return r
+}
+
+type recipeParseState struct {
+	r             *RecipeDefinition
+	sectionStack  []string
+	pendingKey    string
+	pendingInput  *RecipeInputItem
+	pendingOutput *RecipeOutputItem
+	condField     string
+	condValue     string
+}
+
+func (s *recipeParseState) handleOpenBrace() {
+	parent := s.sectionStack[len(s.sectionStack)-1]
+
+	switch parent {
+	case "root":
+		switch s.pendingKey {
+		case "input_items":
+			s.sectionStack = append(s.sectionStack, "input_items")
+		case "output_items":
+			s.sectionStack = append(s.sectionStack, "output_items")
+		case "tool":
+			s.sectionStack = append(s.sectionStack, "tool")
+		default:
+			s.sectionStack = append(s.sectionStack, "skip")
+		}
+
+	case "input_items":
+		s.pendingInput = &RecipeInputItem{Count: 1, Slot: -1}
+		if c, err := strconv.Atoi(s.pendingKey); err == nil && c > 0 {
+			s.pendingInput.Count = c
+		}
+
+		s.sectionStack = append(s.sectionStack, "input_item")
+
+	case "output_items":
+		s.pendingOutput = &RecipeOutputItem{Count: 1}
+		s.sectionStack = append(s.sectionStack, "output_item")
+
+	case "input_item", "output_item":
+		if s.pendingKey == "conditions" {
+			s.sectionStack = append(s.sectionStack, "conditions")
+		} else {
+			s.sectionStack = append(s.sectionStack, "skip")
+		}
+
+	case "conditions":
+		s.condField = ""
+		s.condValue = ""
+		s.sectionStack = append(s.sectionStack, "condition")
+
+	case "tool", "tool_usage", "tool_components":
+		s.sectionStack = append(s.sectionStack, "tool_"+s.pendingKey)
+
+	case "tool_input":
+		s.pendingInput = &RecipeInputItem{Count: 1, Slot: -1}
+		s.sectionStack = append(s.sectionStack, "dynamic_input")
+
+	case "dynamic_input":
+		if s.pendingKey == "counts" {
+			s.sectionStack = append(s.sectionStack, "counts")
+		} else {
+			s.sectionStack = append(s.sectionStack, "skip")
+		}
+
+	default:
+		s.sectionStack = append(s.sectionStack, "skip")
+	}
+
+	s.pendingKey = ""
+}
+
+func (s *recipeParseState) handleCloseBrace() {
+	top := s.sectionStack[len(s.sectionStack)-1]
+
+	switch top {
+	case "input_item":
+		if s.pendingInput != nil {
+			s.r.InputItems = append(s.r.InputItems, *s.pendingInput)
+			s.pendingInput = nil
+		}
+
+	case "output_item":
+		if s.pendingOutput != nil {
+			s.r.OutputItems = append(s.r.OutputItems, *s.pendingOutput)
+			s.pendingOutput = nil
+		}
+
+	case "condition":
+		s.applyCondition()
+
+	case "dynamic_input":
+		if s.pendingInput != nil {
+			s.r.InputItems = append(s.r.InputItems, *s.pendingInput)
+			s.pendingInput = nil
+		}
+	}
+
+	s.sectionStack = s.sectionStack[:len(s.sectionStack)-1]
+	s.pendingKey = ""
+}
+
+func (s *recipeParseState) applyCondition() {
+	if s.condField == "" {
+		return
+	}
+
+	if s.pendingInput != nil {
+		switch s.condField {
+		case "defindex":
+			s.pendingInput.DefIndex, _ = strconv.Atoi(s.condValue)
+		case "name":
+			s.pendingInput.Name = stringpool.Intern(s.condValue)
+		}
+	}
+
+	if s.pendingOutput != nil {
+		switch s.condField {
+		case "defindex":
+			s.pendingOutput.DefIndex, _ = strconv.Atoi(s.condValue)
+		case "name":
+			s.pendingOutput.Name = stringpool.Intern(s.condValue)
+		}
+	}
+}
+
+func (s *recipeParseState) handleKeyValue(key, value string) {
+	top := s.sectionStack[len(s.sectionStack)-1]
+
+	switch top {
+	case "root":
+		s.pendingKey = key
+		switch key {
+		case "name":
+			s.r.Name = stringpool.Intern(value)
+		case "disabled":
+			s.r.Disabled = value == "1"
+		case "premium_only":
+			s.r.PremiumAccountOnly = value == "1"
+		case "all_same_class":
+			s.r.RequiresAllSameClass = value == "1"
+		case "all_same_slot":
+			s.r.RequiresAllSameSlot = value == "1"
+		case "category":
+			s.r.Category = parseRecipeCategory(value)
+		}
+
+	case "input_item", "output_item":
+		s.pendingKey = key
+
+	case "condition":
+		switch key {
+		case "field":
+			s.condField = value
+		case "value":
+			s.condValue = value
+		}
+
+	case "dynamic_input":
+		s.pendingKey = key
+		if s.pendingInput != nil {
+			switch key {
+			case "lootlist_name":
+				s.pendingInput.LootlistName = stringpool.Intern(value)
+			case "quality":
+				s.pendingInput.Quality = stringpool.Intern(value)
+			}
+		}
+
+	case "counts":
+		if s.pendingInput != nil {
+			if c, err := strconv.Atoi(value); err == nil {
+				s.pendingInput.Count = c
+			}
+		}
+	}
+}
+
+func parseRecipeVDFLine(line string) (string, string) {
+	if !strings.HasPrefix(line, "\"") {
+		return "", ""
+	}
+
+	endQuote := strings.Index(line[1:], "\"")
+	if endQuote < 0 {
+		return "", ""
+	}
+
+	key := line[1 : endQuote+1]
+
+	rest := line[endQuote+2:]
+	rest = strings.TrimLeft(rest, " \t")
+
+	if len(rest) == 0 || !strings.HasPrefix(rest, "\"") {
+		return key, ""
+	}
+
+	rest = rest[1:]
+
+	endQuote2 := strings.Index(rest, "\"")
+	if endQuote2 < 0 {
+		return key, ""
+	}
+
+	return key, rest[:endQuote2]
+}
+
+func parseRecipeCategory(s string) RecipeCategory {
+	switch s {
+	case "crafting":
+		return RecipeCategoryCraftingItems
+	case "commonitem":
+		return RecipeCategoryCommonItems
+	case "rareitem":
+		return RecipeCategoryRareItems
+	case "special":
+		return RecipeCategorySpecial
+	default:
+		return RecipeCategoryCraftingItems
+	}
 }

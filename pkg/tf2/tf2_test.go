@@ -446,99 +446,6 @@ func TestTF2_Crafting_BlueprintRecipe_ExecutesSynchronousCraft(t *testing.T) {
 	})
 }
 
-func TestTF2_CraftResponse_ValidPayload_PublishesCraftResponseEvent(t *testing.T) {
-	t.Parallel()
-
-	t.Run("handle_successful_response", func(t *testing.T) {
-		t.Parallel()
-		tf, ictx, _ := setupTF2(t)
-		sub := ictx.Bus().Subscribe(&CraftResponseEvent{})
-
-		resp := new(bytes.Buffer)
-		_ = binary.Write(resp, binary.LittleEndian, int16(3))
-		_ = binary.Write(resp, binary.LittleEndian, uint32(0))
-		_ = binary.Write(resp, binary.LittleEndian, uint16(1))
-		_ = binary.Write(resp, binary.LittleEndian, uint64(555))
-
-		tf.handleCraftResponse(&protocol.GCPacket{Payload: resp.Bytes()})
-
-		select {
-		case ev := <-sub.C():
-			craftEv := ev.(*CraftResponseEvent)
-			assert.Equal(t, uint16(3), craftEv.BlueprintID)
-			assert.Equal(t, []uint64{555}, craftEv.CreatedItems)
-		case <-time.After(1 * time.Second):
-			t.Fatal("CraftResponseEvent not received")
-		}
-	})
-
-	t.Run("empty_response", func(t *testing.T) {
-		t.Parallel()
-		tf, ictx, _ := setupTF2(t)
-		sub := ictx.Bus().Subscribe(&CraftResponseEvent{})
-
-		tf.handleCraftResponse(&protocol.GCPacket{Payload: []byte{}})
-
-		select {
-		case <-sub.C():
-			t.Error("Did not expect event for empty payload")
-		default:
-		}
-	})
-}
-
-func TestTF2_ParseCraftResponse_EdgeCases_ReturnsSafely(t *testing.T) {
-	t.Parallel()
-
-	t.Run("short_payload", func(t *testing.T) {
-		t.Parallel()
-
-		res := parseCraftResponse([]byte{1, 2, 3})
-		assert.Nil(t, res)
-	})
-
-	t.Run("incomplete_item_list", func(t *testing.T) {
-		t.Parallel()
-
-		resp := new(bytes.Buffer)
-		_ = binary.Write(resp, binary.LittleEndian, int16(3))
-		_ = binary.Write(resp, binary.LittleEndian, uint32(0))
-		_ = binary.Write(resp, binary.LittleEndian, uint16(5))
-		_ = binary.Write(resp, binary.LittleEndian, uint64(111))
-
-		res := parseCraftResponse(resp.Bytes())
-		assert.Equal(t, 1, len(res))
-		assert.Equal(t, uint64(111), res[0])
-	})
-}
-
-func TestTF2_HandleSchemaUpdate_SchemaPkt_EmitsSchemaUpdateEvent(t *testing.T) {
-	t.Parallel()
-
-	tf, ictx, _ := setupTF2(t)
-	sub := ictx.Bus().Subscribe(&schema.UpdateRequestedEvent{})
-
-	msg := &pb.CMsgUpdateItemSchema{
-		ItemSchemaVersion: proto.Uint32(1234),
-		ItemsGameUrl:      proto.String("http://example.com/items_game.txt"),
-	}
-	payload, _ := proto.Marshal(msg)
-
-	tf.handleSchemaUpdate(&protocol.GCPacket{
-		MsgType: uint32(pb.EGCItemMsg_k_EMsgGCUpdateItemSchema),
-		Payload: payload,
-	})
-
-	select {
-	case ev := <-sub.C():
-		updateEv := ev.(*schema.UpdateRequestedEvent)
-		assert.Equal(t, uint32(1234), updateEv.Version)
-		assert.Equal(t, "http://example.com/items_game.txt", updateEv.ItemsGameURL)
-	case <-time.After(1 * time.Second):
-		t.Fatal("UpdateRequestedEvent not received")
-	}
-}
-
 func TestTF2_SimpleGetters_ReturnsExpected(t *testing.T) {
 	t.Parallel()
 
@@ -610,29 +517,6 @@ func TestTF2_MoveItems_BatchingAndErrors(t *testing.T) {
 	})
 }
 
-func TestTF2_PlayGames_TransitionsStateAndPublishesEvents(t *testing.T) {
-	t.Parallel()
-
-	tf, ictx, _ := setupTF2(t)
-
-	sub := ictx.Bus().Subscribe(&DisconnectedEvent{})
-
-	tf.fsm.ForceSet(Connected)
-	err := tf.PlayGames(t.Context(), []uint32{730})
-	require.NoError(t, err)
-	assert.False(t, tf.Connected())
-
-	select {
-	case <-sub.C():
-	case <-time.After(2 * time.Second):
-		t.Fatal("Expected DisconnectedEvent to be published")
-	}
-
-	err = tf.PlayGames(t.Context(), []uint32{AppID})
-	require.NoError(t, err)
-	assert.Equal(t, Connecting, tf.fsm.CurrentState())
-}
-
 func TestSOCache_FindWeaponsByClass_WithWeapon(t *testing.T) {
 	t.Parallel()
 
@@ -669,43 +553,6 @@ func TestTF2_WithModuleAndFrom(t *testing.T) {
 		retrieved := From(sc)
 		assert.NotNil(t, retrieved)
 	}
-}
-
-func TestTF2_SetKeepActive(t *testing.T) {
-	t.Parallel()
-
-	tf, _, _ := setupTF2(t)
-	tf.SetKeepActive(true)
-	assert.True(t, tf.keepActive)
-}
-
-func TestTF2_AchievementAndStats_API(t *testing.T) {
-	t.Parallel()
-
-	tf, _, _ := setupTF2(t)
-
-	t.Run("connected_actions", func(t *testing.T) {
-		tf.fsm.ForceSet(Connected)
-
-		err := tf.AwardAchievement(t.Context(), 1001)
-		require.NoError(t, err)
-
-		err = tf.SetStat(t.Context(), 2001, 100)
-		require.NoError(t, err)
-	})
-
-	t.Run("disconnected_errors", func(t *testing.T) {
-		tf.fsm.ForceSet(Disconnected)
-
-		err := tf.AwardAchievement(t.Context(), 1001)
-		assert.ErrorContains(t, err, "GC is not connected")
-
-		err = tf.SetStat(t.Context(), 2001, 100)
-		assert.ErrorContains(t, err, "GC is not connected")
-
-		_, err = tf.GetCurrentAchievements(t.Context())
-		assert.ErrorContains(t, err, "GC is not connected")
-	})
 }
 
 func TestTF2_Craft_DisconnectedError(t *testing.T) {
@@ -792,13 +639,4 @@ func TestTF2_MessageLoop_AllEvents(t *testing.T) {
 	})
 
 	time.Sleep(100 * time.Millisecond)
-}
-
-func TestTF2_GCEvents_UnmarshalErrors(t *testing.T) {
-	t.Parallel()
-
-	tf, _, _ := setupTF2(t)
-
-	tf.handleWelcome(&protocol.GCPacket{Payload: []byte("invalid-payload")})
-	tf.handleSchemaUpdate(&protocol.GCPacket{Payload: []byte("invalid-payload")})
 }

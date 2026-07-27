@@ -282,7 +282,6 @@ func (b *Bot) setupBehaviors() {
 		tf2trading.EscrowMiddleware(webTradeManager, b.logger),
 		tf2trading.BanCheckMiddleware(b.bansManager, b.logger),
 		tf2trading.PricerMiddleware(b.pdbManager, schemaFunc, b.logger),
-		tf2trading.HalloweenSpellMiddleware(b.pdbClient, schemaFunc, b.tradeCfgManager.GetConfig, b.logger),
 		tf2trading.DupeCheckMiddleware(b.bptfChecker, b.logger),
 		tf2trading.StockLimitMiddleware(bp, stockCfg, b.logger),
 		tf2trading.SmartCounterMiddleware(

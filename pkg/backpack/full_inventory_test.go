@@ -33,7 +33,7 @@ type communityFixturePayload struct {
 		MarketHashName string             `json:"market_hash_name"`
 		Name           string             `json:"name"`
 		Tradable       int                `json:"tradable"`
-		AppData        *inventory.AppData `json:"app_data"`
+		AppData        *inventory.AppData `json:"app_data,omitempty"`
 		Descriptions   []struct {
 			Value string `json:"value"`
 			Color string `json:"color,omitempty"`
@@ -47,7 +47,7 @@ func loadFixturePayload(t testing.TB) (communityFixturePayload, map[string]struc
 	MarketHashName string             `json:"market_hash_name"`
 	Name           string             `json:"name"`
 	Tradable       int                `json:"tradable"`
-	AppData        *inventory.AppData `json:"app_data"`
+	AppData        *inventory.AppData `json:"app_data,omitempty"`
 	Descriptions   []struct {
 		Value string `json:"value"`
 		Color string `json:"color,omitempty"`
@@ -74,7 +74,7 @@ func loadFixturePayload(t testing.TB) (communityFixturePayload, map[string]struc
 		MarketHashName string             `json:"market_hash_name"`
 		Name           string             `json:"name"`
 		Tradable       int                `json:"tradable"`
-		AppData        *inventory.AppData `json:"app_data"`
+		AppData        *inventory.AppData `json:"app_data,omitempty"`
 		Descriptions   []struct {
 			Value string `json:"value"`
 			Color string `json:"color,omitempty"`

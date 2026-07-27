@@ -6,11 +6,9 @@ package backpack
 
 import "github.com/lemon4ksan/miyako/bus"
 
-// FullEvent is published when the backpack storage reaches its maximum capacity.
+// FullEvent is broadcast when the backpack inventory reaches or exceeds maximum slot capacity.
 type FullEvent struct {
 	bus.BaseEvent
-	// Count represents the current number of items in the backpack.
 	Count int
-	// Max represents the maximum available slots in the backpack.
-	Max int
+	Max   int
 }
