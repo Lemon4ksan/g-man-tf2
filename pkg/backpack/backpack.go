@@ -196,8 +196,10 @@ func (m *Backpack) GetItemsBySKU(targetSKU string) []uint64 {
 		return nil
 	}
 
-	var result []uint64
-	for _, item := range m.cache.GetItems() {
+	items := m.cache.GetItems()
+
+	result := make([]uint64, 0, len(items))
+	for _, item := range items {
 		if item.GetSKU(s) == targetSKU {
 			result = append(result, item.ID)
 		}
@@ -264,8 +266,10 @@ func (m *Backpack) FindCraftableItems(defIndex uint32, count int) []uint64 {
 		return m.soCache.FindCraftableItemsDirect(defIndex, count, m.locked)
 	}
 
-	var result []uint64
-	for _, item := range m.cache.GetItems() {
+	items := m.cache.GetItems()
+
+	result := make([]uint64, 0, len(items))
+	for _, item := range items {
 		if item.DefIndex == defIndex && item.IsCraftable && !m.locked.Has(item.ID) {
 			result = append(result, item.ID)
 			if count > 0 && len(result) == count {
@@ -477,8 +481,10 @@ func (m *Backpack) GetAssetIDs(targetSKU string) []uint64 {
 		return nil
 	}
 
-	var result []uint64
-	for _, item := range m.cache.GetItems() {
+	items := m.cache.GetItems()
+
+	result := make([]uint64, 0, len(items))
+	for _, item := range items {
 		if !m.locked.Has(item.ID) && item.IsTradable && item.GetSKU(s) == targetSKU {
 			result = append(result, item.ID)
 		}

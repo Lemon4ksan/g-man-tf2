@@ -8,21 +8,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 )
 
-var rxPriceKey = regexp.MustCompile(
-	`^(\d+);([0-9]|[1][0-5])(;((uncraftable)|(untrad(e)?able)|(australium)|(festive)|(strange)|((u|pk|td-|c|od-|oq-|p|sd)\d+)|(w[1-5])|(kt-[1-3])|(n((100)|[1-9]\d?))))*?$|^\d+$`,
-)
-
 var ErrEmptySKU = errors.New("invalid SKU: empty")
-
-func IsValid(sku string) bool {
-	return rxPriceKey.MatchString(sku)
-}
 
 type Item struct {
 	Defindex      int
@@ -46,6 +37,47 @@ type Item struct {
 	Parts         []int
 	PartValues    map[int]int
 	Seed          int
+}
+
+func GetItem() *Item {
+	item := itemPool.Get().(*Item)
+	item.Reset()
+
+	return item
+}
+
+func IsValid(skuStr string) bool {
+	if len(skuStr) == 0 {
+		return false
+	}
+
+	item := GetItem()
+	err := ParseInto(skuStr, item)
+	ReleaseItem(item)
+
+	if err == nil {
+		return true
+	}
+
+	_, ok := parseFastInt(skuStr)
+
+	return ok
+}
+
+func ToPricingSKU(skuStr string) string {
+	item, err := FromString(skuStr)
+	if err != nil {
+		return skuStr
+	}
+	defer ReleaseItem(item)
+
+	item.Festivized = false
+	item.Spells = item.Spells[:0]
+	item.Parts = item.Parts[:0]
+	item.PartValues = nil
+	item.Paint = 0
+
+	return FromObject(item)
 }
 
 func (it *Item) Reset() {
@@ -91,8 +123,6 @@ var itemPool = sync.Pool{
 		return &Item{
 			Craftable: true,
 			Tradable:  true,
-			Spells:    make([]Spell, 0, 4),
-			Parts:     make([]int, 0, 4),
 		}
 	},
 }
@@ -356,7 +386,7 @@ func parseSKUAttribute(item *Item, part string) {
 
 func parsePaintOrPaintkit(item *Item, part string) {
 	if strings.HasPrefix(part, "pk") && len(part) > 2 {
-		if val, err := strconv.Atoi(part[2:]); err == nil {
+		if val, ok := parseFastInt(part[2:]); ok {
 			item.Paintkit = val
 		}
 
@@ -364,7 +394,7 @@ func parsePaintOrPaintkit(item *Item, part string) {
 	}
 
 	if len(part) > 1 && part[1] >= '0' && part[1] <= '9' && !strings.Contains(part, "-") {
-		if val, err := strconv.Atoi(part[1:]); err == nil {
+		if val, ok := parseFastInt(part[1:]); ok {
 			item.Paint = val
 		}
 	}
@@ -376,24 +406,24 @@ func parseSpellOrStrangeAttr(item *Item, part string) {
 		item.Quality2 = 11
 
 	case strings.HasPrefix(part, "sd") && len(part) > 2:
-		if val, err := strconv.Atoi(part[2:]); err == nil {
+		if val, ok := parseFastInt(part[2:]); ok {
 			item.Seed = val
 		}
 
 	case strings.HasPrefix(part, "sp") && len(part) > 2:
-		if val, err := strconv.Atoi(part[2:]); err == nil {
+		if val, ok := parseFastInt(part[2:]); ok {
 			item.Parts = append(item.Parts, val)
 		}
 
 	case strings.HasPrefix(part, "s-") && len(part) > 2:
 		if idx := strings.IndexByte(part[2:], '-'); idx != -1 {
-			a, _ := strconv.Atoi(part[2 : 2+idx])
-			v, _ := strconv.Atoi(part[2+idx+1:])
+			a, _ := parseFastInt(part[2 : 2+idx])
+			v, _ := parseFastInt(part[2+idx+1:])
 			item.Spells = append(item.Spells, Spell{Attribute: a, Value: v})
 		}
 
 	case len(part) > 1 && part[1] >= '0' && part[1] <= '9':
-		if val, err := strconv.Atoi(part[1:]); err == nil {
+		if val, ok := parseFastInt(part[1:]); ok {
 			item.Spells = append(item.Spells, Spell{Attribute: val, Value: 1})
 		}
 	}
@@ -406,8 +436,26 @@ func parseUnusualOrRestrictions(item *Item, part string) {
 	case part == "untradable" || part == "untradeable":
 		item.Tradable = false
 	case len(part) > 1 && part[1] >= '0' && part[1] <= '9':
-		if val, err := strconv.Atoi(part[1:]); err == nil {
+		if val, ok := parseFastInt(part[1:]); ok {
 			item.Effect = val
 		}
 	}
+}
+
+func parseFastInt(s string) (int, bool) {
+	if len(s) == 0 {
+		return 0, false
+	}
+
+	var v int
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+
+		v = v*10 + int(c-'0')
+	}
+
+	return v, true
 }

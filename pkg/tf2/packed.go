@@ -111,6 +111,9 @@ func (p PackedItem) ToItem(s *schema.Schema) *Item {
 }
 
 func (p PackedItem) ToSKU(s *schema.Schema) string {
+	sItem := sku.GetItem()
+	defer sku.ReleaseItem(sItem)
+
 	quality := int(p.Quality)
 	quality2 := 0
 
@@ -123,21 +126,19 @@ func (p PackedItem) ToSKU(s *schema.Schema) string {
 		quality2 = schema.Quality2Strange
 	}
 
-	sItem := &sku.Item{
-		Defindex:    int(p.DefIndex),
-		Quality:     quality,
-		Quality2:    quality2,
-		Tradable:    p.Flags.Has(FlagTradable),
-		Craftable:   p.Flags.Has(FlagCraftable),
-		Killstreak:  int(p.Killstreak),
-		Australium:  p.Flags.Has(FlagAustralium),
-		Effect:      int(p.Effect),
-		Festivized:  p.Flags.Has(FlagFestivized),
-		Paintkit:    int(p.Paintkit),
-		Wear:        int(p.Wear),
-		Crateseries: int(p.CrateSeries),
-		Paint:       int(p.Paint),
-	}
+	sItem.Defindex = int(p.DefIndex)
+	sItem.Quality = quality
+	sItem.Quality2 = quality2
+	sItem.Tradable = p.Flags.Has(FlagTradable)
+	sItem.Craftable = p.Flags.Has(FlagCraftable)
+	sItem.Killstreak = int(p.Killstreak)
+	sItem.Australium = p.Flags.Has(FlagAustralium)
+	sItem.Effect = int(p.Effect)
+	sItem.Festivized = p.Flags.Has(FlagFestivized)
+	sItem.Paintkit = int(p.Paintkit)
+	sItem.Wear = int(p.Wear)
+	sItem.Crateseries = int(p.CrateSeries)
+	sItem.Paint = int(p.Paint)
 
 	if s != nil {
 		s.NormalizeItem(sItem)

@@ -14,6 +14,7 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/steam/community/inventory"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 
+	"github.com/lemon4ksan/g-man-tf2/internal/bytesconv"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
@@ -141,6 +142,10 @@ func MapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 		ID:              mustParseUint64(asset.AssetID),
 		Quantity:        1,
 		FlagCannotTrade: desc.Tradable == 0,
+	}
+
+	if desc.AppData == nil && len(desc.Tags) == 0 && len(desc.Descriptions) == 0 && desc.Name == "" {
+		return item
 	}
 
 	if amount, err := strconv.Atoi(asset.Amount); err == nil {
@@ -310,11 +315,13 @@ func parseCEconDescriptions(item *TF2Item, econ *inventory.CEconItem, s *schema.
 			)
 		}
 
-		if strings.EqualFold(d.Color, "756b5e") {
+		color := strings.ToLower(d.Color)
+
+		if color == "756b5e" {
 			parseStrangePartColorAttr(item, val, s)
 		}
 
-		if strings.EqualFold(d.Color, "7ea9d1") && s != nil {
+		if color == "7ea9d1" && s != nil {
 			if spell, ok := s.SpellIDByName(strings.TrimSpace(val)); ok {
 				item.Attributes = append(
 					item.Attributes,
@@ -356,8 +363,8 @@ func parseKillstreakAttr(item *TF2Item, val, marketHashName string) {
 
 func parseStrangePartColorAttr(item *TF2Item, val string, s *schema.Schema) {
 	clean := strings.Trim(val, "()")
-	before, _, ok := strings.Cut(clean, ":")
 
+	before, _, ok := strings.Cut(clean, ":")
 	if !ok {
 		return
 	}
@@ -365,16 +372,29 @@ func parseStrangePartColorAttr(item *TF2Item, val string, s *schema.Schema) {
 	partName := strings.TrimSpace(before)
 
 	if s != nil {
-		for name, suffix := range s.StrangeParts() {
-			if strings.Contains(partName, name) || strings.EqualFold(partName, name) {
-				if partID, err := strconv.Atoi(strings.TrimPrefix(suffix, "sp")); err == nil {
+		partsMap := s.StrangeParts()
+
+		if suffix, found := partsMap[partName]; found {
+			if partID, ok := bytesconv.ParseUint64(bytesconv.S2B(strings.TrimPrefix(suffix, "sp"))); ok {
+				item.Attributes = append(item.Attributes, TF2Attribute{
+					Defindex: schema.DefPartsProxy + len(item.Attributes),
+					Value:    float64(partID),
+				})
+
+				return
+			}
+		}
+
+		for name, suffix := range partsMap {
+			if strings.Contains(partName, name) {
+				if partID, ok := bytesconv.ParseUint64(bytesconv.S2B(strings.TrimPrefix(suffix, "sp"))); ok {
 					item.Attributes = append(item.Attributes, TF2Attribute{
 						Defindex: schema.DefPartsProxy + len(item.Attributes),
 						Value:    float64(partID),
 					})
-				}
 
-				return
+					return
+				}
 			}
 		}
 	}

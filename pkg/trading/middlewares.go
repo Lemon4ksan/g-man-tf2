@@ -18,6 +18,7 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/trading/reason"
 	"github.com/lemon4ksan/miyako/log"
 
+	"github.com/lemon4ksan/g-man-tf2/internal/bytesconv"
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 	"github.com/lemon4ksan/g-man-tf2/pkg/crafting"
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
@@ -103,11 +104,11 @@ func PricerMiddleware(mgr PriceProvider, schemaProvider func() *schema.Schema, l
 			skus := make(map[string]bool, totalItems)
 
 			for _, item := range ctx.Offer.ItemsToGive {
-				skus[GetPricingSKU(item.SKU)] = true
+				skus[sku.ToPricingSKU(item.SKU)] = true
 			}
 
 			for _, item := range ctx.Offer.ItemsToReceive {
-				skus[GetPricingSKU(item.SKU)] = true
+				skus[sku.ToPricingSKU(item.SKU)] = true
 			}
 
 			skuList := make([]string, 0, len(skus))
@@ -160,7 +161,7 @@ func PricerMiddleware(mgr PriceProvider, schemaProvider func() *schema.Schema, l
 }
 
 func enrichPaintedFallback(itemSKU string, priceMap map[string]*pricedb.Price, mgr PriceProvider, logger log.Logger) {
-	pricingSKU := GetPricingSKU(itemSKU)
+	pricingSKU := sku.ToPricingSKU(itemSKU)
 	if _, ok := priceMap[pricingSKU]; !ok {
 		if itObj, err := sku.FromString(pricingSKU); err == nil && itObj.Paint != 0 {
 			itObj.Paint = 0
@@ -187,7 +188,7 @@ func verifyItemPriced(
 	logger log.Logger,
 	ctx *engine.TradeContext,
 ) error {
-	pricingSKU := GetPricingSKU(item.SKU)
+	pricingSKU := sku.ToPricingSKU(item.SKU)
 	if _, ok := priceMap[pricingSKU]; !ok {
 		if isUniqueWeapon(item.SKU, schemaProvider()) {
 			return nil
@@ -462,20 +463,6 @@ func isUnusual(target string) bool {
 	return it.Quality == 5
 }
 
-func GetPricingSKU(skuStr string) string {
-	it, err := sku.FromString(skuStr)
-	if err != nil {
-		return skuStr
-	}
-
-	it.Festivized = false
-	it.Spells = nil
-	it.Parts = nil
-	it.PartValues = nil
-
-	return sku.FromObject(it)
-}
-
 func calculateValueDiff(ctx *engine.TradeContext, useSeparateKeyRates bool) (currency.Scrap, error) {
 	pricesRaw, ok := ctx.Get("prices").Value()
 	if !ok {
@@ -510,7 +497,7 @@ func calculateValueDiff(ctx *engine.TradeContext, useSeparateKeyRates bool) (cur
 	var ourTotalScrapVal, theirTotalScrapVal float64
 
 	for _, item := range ctx.Offer.ItemsToGive {
-		pricingSKU := GetPricingSKU(item.SKU)
+		pricingSKU := sku.ToPricingSKU(item.SKU)
 		p, ok := priceMap[pricingSKU]
 
 		if !ok {
@@ -534,7 +521,7 @@ func calculateValueDiff(ctx *engine.TradeContext, useSeparateKeyRates bool) (cur
 	}
 
 	for _, item := range ctx.Offer.ItemsToReceive {
-		pricingSKU := GetPricingSKU(item.SKU)
+		pricingSKU := sku.ToPricingSKU(item.SKU)
 		p, ok := priceMap[pricingSKU]
 
 		if !ok {
@@ -623,4 +610,135 @@ func HasSpells(it *trading.Item) bool {
 	}
 
 	return false
+}
+
+// SpellPredictor defines the subset of pricedb methods needed for Halloween spell price predictions.
+type SpellPredictor interface {
+	PredictSpellPrice(ctx context.Context, spells, item string) (*pricedb.SpellPredictionResponse, error)
+}
+
+// HalloweenSpellMiddleware computes spell price premiums on spelled weapons and injects them into the trade value context.
+func HalloweenSpellMiddleware(
+	predictor SpellPredictor,
+	schemaProvider func() *schema.Schema,
+	configProvider func() Config,
+	logger log.Logger,
+) engine.Middleware {
+	return func(next engine.Handler) engine.Handler {
+		return func(ctx *engine.TradeContext) error {
+			pricesRaw, ok := ctx.Get("prices").Value()
+			if !ok {
+				return next(ctx)
+			}
+
+			priceMap, ok := pricesRaw.(map[string]*pricedb.Price)
+			if !ok {
+				return next(ctx)
+			}
+
+			ourSpellPremium, _ := computeSpellPremium(
+				ctx, ctx.Offer.ItemsToGive, priceMap, schemaProvider, configProvider, logger, predictor,
+			)
+			theirSpellPremium, _ := computeSpellPremium(
+				ctx, ctx.Offer.ItemsToReceive, priceMap, schemaProvider, configProvider, logger, predictor,
+			)
+
+			ctx.Set("our_spell_premium_scrap", ourSpellPremium)
+			ctx.Set("their_spell_premium_scrap", theirSpellPremium)
+
+			return next(ctx)
+		}
+	}
+}
+
+func computeSpellPremium(
+	ctx context.Context,
+	items []*trading.Item,
+	priceMap map[string]*pricedb.Price,
+	schemaProvider func() *schema.Schema,
+	configProvider func() Config,
+	logger log.Logger,
+	predictor SpellPredictor,
+) (currency.Scrap, error) {
+	var totalPremium currency.Scrap
+
+	for _, item := range items {
+		pricingSKU := sku.ToPricingSKU(item.SKU)
+
+		p, hasPrice := priceMap[pricingSKU]
+		if !hasPrice {
+			continue
+		}
+
+		var spells []sku.Spell
+		for _, desc := range item.Descriptions {
+			if bytesconv.EqualFoldASCII(desc.Color, "7ea9d1") {
+				if spell, ok := schema.IdentifySpell(desc.Value); ok {
+					spells = append(spells, spell)
+				}
+			}
+		}
+
+		if len(spells) == 0 {
+			continue
+		}
+
+		sh := schemaProvider()
+		if sh == nil {
+			logger.Warn("Schema is not ready, skipping spell premium calculation for item", log.String("sku", item.SKU))
+			continue
+		}
+
+		var spellNames []string
+		for _, s := range spells {
+			name := sh.SpellNameFromSKU(s)
+			if name != "" && !strings.Contains(name, "Unknown Spell") {
+				spellNames = append(spellNames, name)
+			}
+		}
+
+		if len(spellNames) == 0 {
+			continue
+		}
+
+		spellsQuery := strings.Join(spellNames, ",")
+		logger.Debug("Predicting spell premium for item", log.String("item", p.Name), log.String("spells", spellsQuery))
+
+		var (
+			premiumRef      float64
+			resolvedFromAPI bool
+		)
+
+		prediction, err := predictor.PredictSpellPrice(ctx, spellsQuery, p.Name)
+		if err == nil && prediction != nil {
+			if premium, ok := prediction.PremiumRanges["mid"]; ok {
+				premiumRef = premium.Ref
+				resolvedFromAPI = true
+			}
+		}
+
+		if !resolvedFromAPI {
+			cfg := configProvider()
+
+			var staticTotal float64
+
+			for _, sName := range spellNames {
+				matchedVal := 2.0
+				for k, v := range cfg.FallbackSpellPremiums {
+					if strings.EqualFold(k, sName) || strings.EqualFold(strings.TrimPrefix(k, "Halloween: "), sName) {
+						matchedVal = v
+						break
+					}
+				}
+
+				staticTotal += matchedVal
+			}
+
+			premiumRef = staticTotal
+		}
+
+		totalPremium += currency.ToScrap(premiumRef)
+	}
+
+	return totalPremium, nil
 }

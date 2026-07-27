@@ -18,6 +18,7 @@ import (
 	json "github.com/goccy/go-json"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 
+	"github.com/lemon4ksan/g-man-tf2/internal/bytesconv"
 	"github.com/lemon4ksan/g-man-tf2/internal/stringpool"
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 )
@@ -95,6 +96,7 @@ type Item struct {
 	Attributes    []ItemAttribute `json:"attributes,omitempty"`
 	Name          string          `json:"name"`
 	ItemName      string          `json:"item_name"`
+	ItemTypeName  string          `json:"item_type_name,omitempty"`
 	ItemClass     string          `json:"item_class"`
 	CraftClass    string          `json:"craft_class,omitempty"`
 	ImageURL      string          `json:"image_url,omitempty"`
@@ -299,6 +301,33 @@ func (it *Item) UnmarshalJSON(data []byte) error {
 	}
 
 	return nil
+}
+
+func containsFoldASCII(s, substr string) bool {
+	nSub := len(substr)
+
+	nS := len(s)
+	if nSub == 0 || nSub > nS {
+		return false
+	}
+
+	limit := nS - nSub
+	for i := 0; i <= limit; i++ {
+		if bytesconv.EqualFoldASCII(s[i:i+nSub], substr) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func isExcludedPattern(name string) bool {
+	return containsFoldASCII(name, "medal") ||
+		containsFoldASCII(name, "tournament") ||
+		containsFoldASCII(name, "etf2l") ||
+		containsFoldASCII(name, "ugc ") ||
+		containsFoldASCII(name, "rgl.gg") ||
+		containsFoldASCII(name, "asiafortress")
 }
 
 func (s *Schema) indexItem(item *Item) {
@@ -1459,11 +1488,11 @@ func (s *Schema) applyEconDescriptions(skuItem *sku.Item, descriptions []trading
 			skuItem.Festivized = true
 		}
 
-		if strings.EqualFold(desc.Color, "756b5e") {
+		if bytesconv.EqualFoldASCII(desc.Color, "756b5e") {
 			s.parseEconStrangePart(skuItem, val)
 		}
 
-		if strings.EqualFold(desc.Color, "7ea9d1") {
+		if bytesconv.EqualFoldASCII(desc.Color, "7ea9d1") {
 			if spell, ok := s.SpellIDByName(strings.TrimSpace(val)); ok {
 				skuItem.Spells = append(skuItem.Spells, spell)
 			}
@@ -1512,10 +1541,36 @@ func (s *Schema) SKUFromEconItem(item *trading.Item) string {
 	return sku.FromObject(skuItem)
 }
 
+func isSpecialName(name string) bool {
+	return strings.Contains(name, "chemistry set") ||
+		strings.Contains(name, "strangifier") ||
+		strings.Contains(name, "unusualifier") ||
+		strings.Contains(name, "kit") ||
+		strings.Contains(name, "crate") ||
+		strings.Contains(name, "war paint") ||
+		strings.Contains(name, "strange part")
+}
+
 func (s *Schema) ItemFromName(name string) *sku.Item {
 	item := &sku.Item{Craftable: true, Tradable: true}
+
+	if isExcludedPattern(name) {
+		return item
+	}
+
 	originalName := name
 	name = strings.ToLower(name)
+
+	if !isSpecialName(name) {
+		if schemaItem := s.ItemByNameWithThe(name); schemaItem != nil {
+			item.Defindex = schemaItem.Defindex
+			if item.Quality == 0 {
+				item.Quality = schemaItem.ItemQuality
+			}
+
+			return item
+		}
+	}
 
 	debugLog("GetItemObjectFromName start:", originalName)
 

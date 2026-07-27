@@ -16,7 +16,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime/debug"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +32,7 @@ import (
 	"github.com/lemon4ksan/miyako/generic"
 	"github.com/lemon4ksan/miyako/log"
 
+	"github.com/lemon4ksan/g-man-tf2/internal/bytesconv"
 	"github.com/lemon4ksan/g-man-tf2/internal/stringpool"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 )
@@ -42,6 +42,8 @@ const ModuleName string = "tf2_schema"
 type Config struct {
 	UpdateInterval     time.Duration
 	LiteMode           bool
+	ExcludeMedals      bool
+	ExcludeUntradable  bool
 	CachePath          string
 	PaintKitURL        string
 	SchemaMirrorURL    string
@@ -53,6 +55,8 @@ func DefaultConfig() Config {
 	return Config{
 		UpdateInterval:     24 * time.Hour,
 		LiteMode:           false,
+		ExcludeMedals:      true,
+		ExcludeUntradable:  false,
 		CachePath:          "cache/tf2/json",
 		PaintKitURL:        "https://raw.githubusercontent.com/SteamDatabase/GameTracking-TF2/master/tf/resource/tf_proto_obj_defs_english.txt",
 		ItemsGameMirrorURL: "https://raw.githubusercontent.com/SteamDatabase/GameTracking-TF2/master/tf/scripts/items/items_game.txt",
@@ -65,6 +69,51 @@ func WithModule(cfg Config) steam.Option {
 
 func From(c *steam.Client) *Manager {
 	return steam.GetModule[*Manager](c)
+}
+
+func IsMedal(it *Item) bool {
+	if it == nil {
+		return false
+	}
+
+	switch it.ItemTypeName {
+	case "#TF_Wearable_TournamentMedal", "#TF_Wearable_Medal", "Tournament Medal", "Medal":
+		return true
+	}
+
+	if strings.HasPrefix(it.ItemName, "#TF_TournamentMedal_") ||
+		strings.HasPrefix(it.ItemName, "#TF_Wearable_Tournament") {
+		return true
+	}
+
+	nameLower := strings.ToLower(it.Name)
+	if strings.Contains(nameLower, "tournament medal") ||
+		strings.Contains(nameLower, "ugc tournament") ||
+		strings.Contains(nameLower, "etf2l") ||
+		strings.Contains(nameLower, "asiafortress") ||
+		strings.Contains(nameLower, "rgl.gg") {
+		return true
+	}
+
+	return false
+}
+
+func IsUntradable(it *Item) bool {
+	if it == nil {
+		return false
+	}
+
+	if !it.IsTradableByFlags() {
+		return true
+	}
+
+	for _, attr := range it.Attributes {
+		if (attr.Name == "cannot trade" || attr.Class == "cannot_trade") && attr.Value == 1 {
+			return true
+		}
+	}
+
+	return false
 }
 
 type OverviewResult struct {
@@ -542,8 +591,14 @@ func (m *Manager) parseItemsGameItems(ctx context.Context, url string) []*Item {
 	inItemBlock := false
 
 	for scanner.Scan() {
-		line := scanner.Text()
-		trimmed := strings.TrimSpace(line)
+		lineBytes := scanner.Bytes()
+
+		trimmedBytes := bytes.TrimSpace(lineBytes)
+		if len(trimmedBytes) == 0 {
+			continue
+		}
+
+		trimmed := bytesconv.B2S(trimmedBytes)
 
 		if trimmed == "{" {
 			bracketCount++
@@ -583,10 +638,8 @@ func (m *Manager) parseItemsGameItems(ctx context.Context, url string) []*Item {
 		}
 
 		if bracketCount == 2 && !inItemBlock {
-			if m := rxDefindex.FindStringSubmatch(trimmed); len(m) == 2 {
-				if di, e := strconv.Atoi(m[1]); e == nil {
-					pendingDefindex = di
-				}
+			if di, ok := parseQuotedDefindex(trimmed); ok {
+				pendingDefindex = di
 			}
 
 			continue
@@ -625,7 +678,6 @@ func (m *Manager) parseItemsGameItems(ctx context.Context, url string) []*Item {
 	}
 
 	var result []*Item
-
 	for _, gi := range found {
 		displayName := gi.name
 
@@ -635,12 +687,8 @@ func (m *Manager) parseItemsGameItems(ctx context.Context, url string) []*Item {
 					displayName = loc
 				} else {
 					baseToken := stripStyleSuffix(gi.localizedName)
-					if baseToken != gi.localizedName {
-						if loc, ok := translations[baseToken]; ok {
-							displayName = loc
-						} else {
-							displayName = gi.localizedName
-						}
+					if loc, ok := translations[baseToken]; ok {
+						displayName = loc
 					} else {
 						displayName = gi.localizedName
 					}
@@ -678,20 +726,51 @@ func (m *Manager) parseItemsGameItems(ctx context.Context, url string) []*Item {
 }
 
 func toCamelCase(s string) string {
-	parts := strings.Split(s, "_")
-	for i, p := range parts {
-		if len(p) > 0 {
-			parts[i] = strings.ToUpper(p[:1]) + p[1:]
-		}
+	if len(s) == 0 {
+		return ""
 	}
 
-	return strings.Join(parts, "")
+	var b strings.Builder
+	b.Grow(len(s))
+
+	upperNext := true
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '_' {
+			upperNext = true
+			continue
+		}
+
+		if upperNext && c >= 'a' && c <= 'z' {
+			c -= 'a' - 'A'
+		}
+
+		upperNext = false
+
+		b.WriteByte(c)
+	}
+
+	return b.String()
 }
 
 func stripStyleSuffix(s string) string {
-	re := regexp.MustCompile(`_Style\d+$`)
+	idx := strings.LastIndex(s, "_Style")
+	if idx == -1 {
+		return s
+	}
 
-	return re.ReplaceAllString(s, "")
+	suffix := s[idx+len("_Style"):]
+	if len(suffix) == 0 {
+		return s
+	}
+
+	for i := 0; i < len(suffix); i++ {
+		if suffix[i] < '0' || suffix[i] > '9' {
+			return s
+		}
+	}
+
+	return s[:idx]
 }
 
 func (m *Manager) refreshLoop(ctx context.Context) {
@@ -733,6 +812,10 @@ func (m *Manager) buildSchemaDirect(
 
 	for _, item := range overview.Items {
 		if item != nil && item.Defindex > 0 {
+			if m.shouldExcludeItem(item) {
+				continue
+			}
+
 			item.InternStrings()
 
 			if existing, found := itemsByDefIndex[item.Defindex]; found {
@@ -799,6 +882,22 @@ func (m *Manager) pruneItemsGame(raw *Raw) {
 	for _, key := range keysToRemove {
 		delete(raw.ItemsGame, key)
 	}
+}
+
+func (m *Manager) shouldExcludeItem(item *Item) bool {
+	if item == nil {
+		return true
+	}
+
+	if m.config.ExcludeMedals && IsMedal(item) {
+		return true
+	}
+
+	if m.config.ExcludeUntradable && IsUntradable(item) {
+		return true
+	}
+
+	return false
 }
 
 func (m *Manager) getSchemaOverviewDirect(ctx context.Context) (*OverviewResponse, error) {
@@ -903,10 +1002,7 @@ func (m *Manager) getPaintKits(ctx context.Context) (map[string]string, error) {
 	return paintKits, nil
 }
 
-var (
-	rxDefindex = regexp.MustCompile(`^\s*"(\d+)"\s*$`)
-	rxSeries   = regexp.MustCompile(`^\s*"set supply crate series"\s+"(\d+)"\s*$`)
-)
+var rxDefindex = regexp.MustCompile(`^\s*"(\d+)"\s*$`)
 
 func (m *Manager) getItemsGame(ctx context.Context, url string) (map[string]any, error) {
 	url = generic.Coalesce(url, m.config.ItemsGameMirrorURL)
@@ -1033,15 +1129,12 @@ func (m *Manager) getItemsGame(ctx context.Context, url string) (map[string]any,
 					currentDefindex = match[1]
 				}
 			} else if bracketCount == 4 && currentDefindex != "" {
-				if match := rxSeries.FindStringSubmatch(line); len(match) == 2 {
-					series, _ := strconv.Atoi(match[1])
-
+				if series, ok := parseCrateSeriesLine(line); ok {
 					seriesMap[currentDefindex] = map[string]any{
 						"static_attrs": map[string]any{
 							"set supply crate series": float64(series),
 						},
 					}
-
 					currentDefindex = ""
 				}
 			}
@@ -1116,6 +1209,17 @@ func (m *Manager) loadFromCache() error {
 		}
 	}
 
+	if m.config.ExcludeMedals || m.config.ExcludeUntradable {
+		filtered := make([]*Item, 0, len(raw.Schema.Items))
+		for _, item := range raw.Schema.Items {
+			if !m.shouldExcludeItem(item) {
+				filtered = append(filtered, item)
+			}
+		}
+
+		raw.Schema.Items = filtered
+	}
+
 	loadedSchema := New(&raw)
 
 	m.mu.Lock()
@@ -1136,4 +1240,59 @@ func writeFile(path string, data []byte) error {
 
 func readFile(path string) ([]byte, error) {
 	return os.ReadFile(path)
+}
+
+func parseQuotedDefindex(line string) (int, bool) {
+	trimmed := strings.TrimSpace(line)
+	if len(trimmed) < 3 || trimmed[0] != '"' {
+		return 0, false
+	}
+
+	endQuote := strings.IndexByte(trimmed[1:], '"')
+	if endQuote <= 0 {
+		return 0, false
+	}
+
+	key := trimmed[1 : 1+endQuote]
+	if len(key) == 0 {
+		return 0, false
+	}
+
+	var v int
+	for i := 0; i < len(key); i++ {
+		c := key[i]
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+
+		v = v*10 + int(c-'0')
+	}
+
+	rest := strings.TrimSpace(trimmed[2+endQuote:])
+	if len(rest) > 0 && rest[0] == '"' {
+		return 0, false
+	}
+
+	return v, true
+}
+
+func parseCrateSeriesLine(line string) (int, bool) {
+	trimmed := strings.TrimSpace(line)
+
+	const prefix = `"set supply crate series"`
+	if !strings.HasPrefix(trimmed, prefix) {
+		return 0, false
+	}
+
+	rest := strings.TrimSpace(trimmed[len(prefix):])
+	if len(rest) < 3 || rest[0] != '"' || rest[len(rest)-1] != '"' {
+		return 0, false
+	}
+
+	val, ok := bytesconv.ParseUint64(bytesconv.S2B(rest[1 : len(rest)-1]))
+	if !ok {
+		return 0, false
+	}
+
+	return int(val), true
 }

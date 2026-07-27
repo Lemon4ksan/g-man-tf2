@@ -28,6 +28,7 @@ import (
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/rep"
+	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 )
 
@@ -1178,7 +1179,7 @@ func TestFindPartnerCurrency_WithKeys(t *testing.T) {
 
 func TestGetPricingSKU_Error(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "invalid_sku", GetPricingSKU("invalid_sku"))
+	assert.Equal(t, "invalid_sku", sku.ToPricingSKU("invalid_sku"))
 }
 
 func TestCalculateValueDiff_Error_Paths(t *testing.T) {

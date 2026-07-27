@@ -410,6 +410,19 @@ func (r *Remote) collectMissingDescriptionKeys(items []inventory.CEconItem) []ui
 			continue
 		}
 
+		if r.schema != nil {
+			nameToParse := desc.MarketHashName
+			if nameToParse == "" {
+				nameToParse = desc.Name
+			}
+
+			if nameToParse != "" {
+				if parsed := r.schema.ItemFromName(nameToParse); parsed != nil && parsed.Defindex > 0 {
+					continue
+				}
+			}
+		}
+
 		cID, _ := bytesconv.ParseUint64(bytesconv.S2B(desc.ClassID))
 		instID, _ := bytesconv.ParseUint64(bytesconv.S2B(desc.InstanceID))
 		k := uintDescKey{ClassID: cID, InstanceID: instID}

@@ -229,7 +229,7 @@ func (c *SOCache) GetAssetIDsDirect(targetSKU string, locked generic.Set[uint64]
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	var result []uint64
+	result := make([]uint64, 0, len(c.items))
 	for id, item := range c.items {
 		if item.IsTradable() && item.ToSKU(c.schema) == targetSKU && (locked == nil || !locked.Has(id)) {
 			result = append(result, id)
