@@ -22,14 +22,14 @@ import (
 	"github.com/lemon4ksan/miyako/generic"
 	"github.com/lemon4ksan/miyako/log"
 
+	"github.com/lemon4ksan/g-man-tf2/internal/bytesconv"
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
+	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 )
 
 // Remote manages auditing and validation tasks for external player inventories.
-// It loads inventory data from the Steam community web interface and enriches
-// missing item metadata via ISteamEconomy/GetAssetClassInfo.
-// Use [NewRemote] to instantiate and configure remote profile sessions.
+// Uses streaming page-by-page fetching and compact PackedItem memory representation.
 type Remote struct {
 	steamID   uint64
 	client    service.Doer
@@ -39,11 +39,12 @@ type Remote struct {
 
 	dupeCheckers []DupeChecker
 
-	mu        sync.Mutex
-	items     []TF2Item
-	slots     int
-	fetched   bool
-	descCache *sync.Map
+	mu          sync.Mutex
+	items       []TF2Item
+	packedItems []tf2.PackedItem
+	slots       int
+	fetched     bool
+	descCache   *sync.Map
 }
 
 // Option defines configuration setter functions for initializing [Remote] instances.
@@ -71,7 +72,6 @@ func WithAssetClassCache(cache *sync.Map) Option {
 }
 
 // NewRemote constructs a new configured [Remote] instance for auditing external profiles.
-// The community requester is required for inventory fetching.
 func NewRemote(
 	steamID uint64,
 	client service.Doer,
@@ -86,6 +86,7 @@ func NewRemote(
 		logger:       log.Discard,
 		dupeCheckers: make([]DupeChecker, 0),
 		items:        make([]TF2Item, 0),
+		packedItems:  make([]tf2.PackedItem, 0),
 		schema:       schema,
 		descCache:    &sync.Map{},
 	}
@@ -96,7 +97,6 @@ func NewRemote(
 }
 
 // GetItems retrieves all items in the external inventory.
-// Returns an error if the inventory fails to load.
 func (r *Remote) GetItems(ctx context.Context) ([]TF2Item, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -114,25 +114,21 @@ func (r *Remote) GetItems(ctx context.Context) ([]TF2Item, error) {
 }
 
 // GetItemsBySKU retrieves all items in the external inventory matching the specified SKU.
-// Returns an error if the inventory fails to load due to privacy settings or API rate limits.
+// Performs zero-allocation search over the flat packedItems slice.
 func (r *Remote) GetItemsBySKU(ctx context.Context, targetSKU string) ([]TF2Item, error) {
 	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if !r.fetched {
 		if err := r.fetch(ctx); err != nil {
-			r.mu.Unlock()
 			return nil, err
 		}
 	}
 
-	items := make([]TF2Item, len(r.items))
-	copy(items, r.items)
-	r.mu.Unlock()
-
 	var result []TF2Item
-
-	for _, it := range items {
-		if it.ToSKU() == targetSKU {
-			result = append(result, it)
+	for i := range r.packedItems {
+		if r.packedItems[i].ToSKU(r.schema) == targetSKU {
+			result = append(result, r.items[i])
 		}
 	}
 
@@ -140,7 +136,6 @@ func (r *Remote) GetItemsBySKU(ctx context.Context, targetSKU string) ([]TF2Item
 }
 
 // CanTradeWithoutHold queries Steam API trade escrow times for the external account.
-// Returns true if the trade can be completed instantly, or an error if the request fails.
 func (r *Remote) CanTradeWithoutHold(ctx context.Context, token string) (bool, error) {
 	req := &webapi.IEconService_GetTradeHoldDurations_v1_Request{
 		SteamIDTarget: r.steamID, TradeOfferAccessToken: token,
@@ -160,8 +155,6 @@ func (r *Remote) CanTradeWithoutHold(ctx context.Context, token string) (bool, e
 }
 
 // IsDuped queries history checking engines to verify if the specified asset is a duplicate.
-// It verifies the current asset ID first, then falls back to verifying the item's original ID.
-// Returns a boolean flag pointer, or an error if the asset is not found.
 func (r *Remote) IsDuped(ctx context.Context, assetID uint64) (*bool, error) {
 	duped, recorded, err := r.checkWithServices(ctx, assetID)
 	if err != nil {
@@ -180,17 +173,15 @@ func (r *Remote) IsDuped(ctx context.Context, assetID uint64) (*bool, error) {
 		}
 	}
 
-	items := r.items
-	r.mu.Unlock()
-
 	var targetItem *TF2Item
-
-	for _, item := range items {
-		if item.ID == assetID {
-			targetItem = &item
+	for i := range r.items {
+		if r.items[i].ID == assetID {
+			targetItem = &r.items[i]
 			break
 		}
 	}
+
+	r.mu.Unlock()
 
 	if targetItem == nil {
 		return nil, ErrItemNotFound
@@ -208,23 +199,35 @@ func (r *Remote) IsDuped(ctx context.Context, assetID uint64) (*bool, error) {
 	return nil, nil
 }
 
-// FindMetalInPartnerInventory searches the partner's inventory to match the required scrap value.
-// It returns a slice of matching [trading.Item] currencies, or an error if the partner lacks change.
+// FindMetalInPartnerInventory searches the partner's inventory in a single pass over packed items.
 func (r *Remote) FindMetalInPartnerInventory(ctx context.Context, amount currency.Scrap) ([]*trading.Item, error) {
-	refinedItems, err := r.GetItemsBySKU(ctx, currency.SKURefined)
-	if err != nil {
-		refinedItems = nil
+	r.mu.Lock()
+	if !r.fetched {
+		if err := r.fetch(ctx); err != nil {
+			r.mu.Unlock()
+			return nil, err
+		}
 	}
 
-	reclaimedItems, err := r.GetItemsBySKU(ctx, currency.SKUReclaimed)
-	if err != nil {
-		reclaimedItems = nil
+	var (
+		refinedItems   []TF2Item
+		reclaimedItems []TF2Item
+		scrapItems     []TF2Item
+	)
+
+	for i := range r.items {
+		skuStr := r.items[i].ToSKU()
+		switch skuStr {
+		case currency.SKURefined:
+			refinedItems = append(refinedItems, r.items[i])
+		case currency.SKUReclaimed:
+			reclaimedItems = append(reclaimedItems, r.items[i])
+		case currency.SKUScrap:
+			scrapItems = append(scrapItems, r.items[i])
+		}
 	}
 
-	scrapItems, err := r.GetItemsBySKU(ctx, currency.SKUScrap)
-	if err != nil {
-		scrapItems = nil
-	}
+	r.mu.Unlock()
 
 	bestVal := -1
 	bestRef, bestRec, bestScr := 0, 0, 0
@@ -335,40 +338,51 @@ func (r *Remote) fetch(ctx context.Context) error {
 		return errors.New("cannot fetch remote inventory: no schema available")
 	}
 
-	return r.fetchCommunity(ctx)
+	return r.fetchCommunityStreaming(ctx)
 }
 
-func (r *Remote) fetchCommunity(ctx context.Context) error {
-	items, currencies, total, err := inventory.GetUserInventoryContents(
-		ctx, r.community, r.steamID, 440, 2, false, "english",
+// fetchCommunityStreaming processes the remote inventory page-by-page.
+// Temporary JSON pages and descriptions are garbage-collected immediately
+// after conversion into 32-byte PackedItem value structs.
+func (r *Remote) fetchCommunityStreaming(ctx context.Context) error {
+	var (
+		unifiedItems = make([]TF2Item, 0, 500)
+		packedList   = make([]tf2.PackedItem, 0, 500)
+	)
+
+	totalCount, err := inventory.StreamUserInventoryContents(
+		ctx,
+		r.community,
+		r.steamID,
+		440,
+		2,
+		false,
+		"english",
+		func(econItem *inventory.CEconItem, isCurrency bool) bool {
+			tfItem := MapCEconToTF2(*econItem, r.schema)
+			unifiedItems = append(unifiedItems, tfItem)
+
+			packed := PackTF2Item(&tfItem)
+			packedList = append(packedList, packed)
+
+			return true
+		},
 	)
 	if err != nil {
-		return fmt.Errorf("community inventory fetch failed: %w", err)
-	}
-
-	allCEconItems := make([]inventory.CEconItem, 0, len(items)+len(currencies))
-	allCEconItems = append(allCEconItems, items...)
-	allCEconItems = append(allCEconItems, currencies...)
-
-	if err := r.enrichCommunityItems(ctx, allCEconItems); err != nil {
-		r.logger.Warn("Failed to enrich community items descriptions", log.Err(err))
-	}
-
-	unifiedItems := make([]TF2Item, 0, len(allCEconItems))
-	for _, it := range allCEconItems {
-		unifiedItems = append(unifiedItems, mapCEconToTF2(it, r.schema))
+		return fmt.Errorf("community streaming inventory fetch failed: %w", err)
 	}
 
 	r.items = unifiedItems
-	r.slots = total
+	r.packedItems = packedList
+	r.slots = totalCount
 	r.fetched = true
 
 	return nil
 }
 
-type descKey struct {
-	ClassID    string
-	InstanceID string
+type uintDescKey struct {
+	ClassID    uint64
+	InstanceID uint64
 }
 
 type rawAssetClassDescription struct {
@@ -377,31 +391,42 @@ type rawAssetClassDescription struct {
 	AppData    map[string]any `json:"app_data,omitempty"`
 }
 
-// enrichCommunityItems performs a batch query to ISteamEconomy/GetAssetClassInfo
-// to fill in missing AppData for items obtained from the community web interface.
 func (r *Remote) enrichCommunityItems(ctx context.Context, items []inventory.CEconItem) error {
 	if r.client == nil {
 		r.logger.Warn("No WebAPI client available, skipping community items enrichment")
 		return nil
 	}
 
-	var missingKeys []descKey
+	var missingKeys []uintDescKey
 
-	seenKeys := make(map[descKey]bool)
+	seenKeys := make(map[uintDescKey]bool)
 
 	for _, it := range items {
 		desc := it.Description
-		if len(desc.AppData) == 0 && len(desc.Tags) == 0 && len(desc.Descriptions) == 0 && desc.Name == "" {
+		if desc.AppData == nil && len(desc.Tags) == 0 && len(desc.Descriptions) == 0 && desc.Name == "" {
 			continue
 		}
 
-		hasDefIndex := false
-		if desc.AppData != nil {
-			_, hasDefIndex = desc.AppData["def_index"]
+		hasDefIndex := desc.AppData != nil && desc.AppData.DefIndex > 0
+
+		if !hasDefIndex && r.schema != nil {
+			nameToParse := desc.MarketHashName
+			if nameToParse == "" {
+				nameToParse = desc.Name
+			}
+
+			if nameToParse != "" {
+				if parsed := r.schema.ItemFromName(nameToParse); parsed != nil && parsed.Defindex > 0 {
+					hasDefIndex = true
+				}
+			}
 		}
 
 		if !hasDefIndex {
-			k := descKey{ClassID: desc.ClassID, InstanceID: desc.InstanceID}
+			cID, _ := bytesconv.ParseUint64(bytesconv.S2B(desc.ClassID))
+			instID, _ := bytesconv.ParseUint64(bytesconv.S2B(desc.InstanceID))
+			k := uintDescKey{ClassID: cID, InstanceID: instID}
+
 			if _, cached := r.descCache.Load(k); !cached {
 				if !seenKeys[k] {
 					seenKeys[k] = true
@@ -432,10 +457,10 @@ func (r *Remote) enrichCommunityItems(ctx context.Context, items []inventory.CEc
 		}
 
 		for idx, k := range chunk {
-			params.Set(fmt.Sprintf("classid%d", idx), k.ClassID)
+			params.Set(fmt.Sprintf("classid%d", idx), strconv.FormatUint(k.ClassID, 10))
 
-			if k.InstanceID != "0" && k.InstanceID != "" {
-				params.Set(fmt.Sprintf("instanceid%d", idx), k.InstanceID)
+			if k.InstanceID != 0 {
+				params.Set(fmt.Sprintf("instanceid%d", idx), strconv.FormatUint(k.InstanceID, 10))
 			}
 		}
 
@@ -454,12 +479,15 @@ func (r *Remote) enrichCommunityItems(ctx context.Context, items []inventory.CEc
 
 				var desc rawAssetClassDescription
 				if err := json.Unmarshal(rawVal, &desc); err == nil {
-					cID := desc.ClassID
-					if cID == "" {
-						cID = key
+					cIDStr := desc.ClassID
+					if cIDStr == "" {
+						cIDStr = key
 					}
 
-					dk := descKey{ClassID: cID, InstanceID: desc.InstanceID}
+					cID, _ := bytesconv.ParseUint64(bytesconv.S2B(cIDStr))
+					instID, _ := bytesconv.ParseUint64(bytesconv.S2B(desc.InstanceID))
+					dk := uintDescKey{ClassID: cID, InstanceID: instID}
+
 					r.descCache.Store(dk, desc)
 				}
 			}
@@ -477,13 +505,12 @@ func (r *Remote) applyCachedDescriptions(items []inventory.CEconItem) {
 			continue
 		}
 
-		hasDefIndex := false
-		if items[i].Description.AppData != nil {
-			_, hasDefIndex = items[i].Description.AppData["def_index"]
-		}
+		hasDefIndex := items[i].Description.AppData != nil && items[i].Description.AppData.DefIndex > 0
 
 		if !hasDefIndex {
-			k := descKey{ClassID: items[i].Description.ClassID, InstanceID: items[i].Description.InstanceID}
+			cID, _ := bytesconv.ParseUint64(bytesconv.S2B(items[i].Description.ClassID))
+			instID, _ := bytesconv.ParseUint64(bytesconv.S2B(items[i].Description.InstanceID))
+			k := uintDescKey{ClassID: cID, InstanceID: instID}
 
 			var resolved rawAssetClassDescription
 
@@ -492,13 +519,21 @@ func (r *Remote) applyCachedDescriptions(items []inventory.CEconItem) {
 			if cachedVal, ok := r.descCache.Load(k); ok {
 				resolved = cachedVal.(rawAssetClassDescription)
 				found = true
-			} else if cachedVal, ok := r.descCache.Load(descKey{ClassID: items[i].Description.ClassID, InstanceID: "0"}); ok {
+			} else if cachedVal, ok := r.descCache.Load(uintDescKey{ClassID: cID, InstanceID: 0}); ok {
 				resolved = cachedVal.(rawAssetClassDescription)
 				found = true
 			}
 
 			if found && resolved.AppData != nil {
-				items[i].Description.AppData = resolved.AppData
+				if items[i].Description.AppData == nil {
+					items[i].Description.AppData = &inventory.AppData{}
+				}
+
+				if di, ok := resolved.AppData["def_index"]; ok {
+					if val, ok := di.(float64); ok {
+						items[i].Description.AppData.DefIndex = int(val)
+					}
+				}
 			}
 		}
 	}

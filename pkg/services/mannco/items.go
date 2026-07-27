@@ -299,7 +299,7 @@ type BackpackDetailsResponse struct {
 // Route: GET /item/details/{item}
 // Permission: API Only (No session required)
 func (c *Client) GetItemDetails(ctx context.Context, item string) (*ItemDetails, error) {
-	return request.GetTo[ItemDetails](ctx, c.getClient(), "/item/details/{item}", mod.WithVar("item", item))
+	return request.GetTo[ItemDetails](ctx, c.r, "/item/details/{item}", mod.WithVar("item", item))
 }
 
 // SalesGraphReq contains query parameters for GetItemSalesGraph.
@@ -316,7 +316,7 @@ func (c *Client) GetItemSalesGraph(ctx context.Context, item, period string) (*I
 	req := SalesGraphReq{Period: period}
 
 	return request.GetTo[ItemSalesGraph](
-		ctx, c.getClient(), "/item/salesGraph/{item}",
+		ctx, c.r, "/item/salesGraph/{item}",
 		mod.WithVar("item", item),
 		mod.WithQuery(req),
 	)
@@ -339,7 +339,7 @@ func (c *Client) GetListingCount(ctx context.Context, item, userID string) (*Lis
 		opts = append(opts, mod.WithVar("userid", userID))
 	}
 
-	return request.GetTo[ListingCount](ctx, c.getClient(), path, opts...)
+	return request.GetTo[ListingCount](ctx, c.r, path, opts...)
 }
 
 // ListingsReq holds query arguments for GetItemListings.
@@ -369,7 +369,7 @@ func (c *Client) GetItemListings(ctx context.Context, item, userID string, query
 
 	opts = append(opts, mod.WithQuery(query))
 
-	resp, err := request.GetTo[[]Listing](ctx, c.getClient(), path, opts...)
+	resp, err := request.GetTo[[]Listing](ctx, c.r, path, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -382,7 +382,7 @@ func (c *Client) GetItemListings(ctx context.Context, item, userID string, query
 // Route: GET /item/buyorderList/{item}
 // Permission: API Only
 func (c *Client) GetBuyOrderList(ctx context.Context, item string) (*BuyOrderList, error) {
-	return request.GetTo[BuyOrderList](ctx, c.getClient(), "/item/buyorderList/{item}", mod.WithVar("item", item))
+	return request.GetTo[BuyOrderList](ctx, c.r, "/item/buyorderList/{item}", mod.WithVar("item", item))
 }
 
 // GetItemPricing returns calculated lowest sale, highest buy order, Steam price,
@@ -391,7 +391,7 @@ func (c *Client) GetBuyOrderList(ctx context.Context, item string) (*BuyOrderLis
 // Route: GET /item/pricing/{item}
 // Permission: Connected + API
 func (c *Client) GetItemPricing(ctx context.Context, item string) (*ItemPricing, error) {
-	return request.GetTo[ItemPricing](ctx, c.getClient(), "/item/pricing/{item}", mod.WithVar("item", item))
+	return request.GetTo[ItemPricing](ctx, c.r, "/item/pricing/{item}", mod.WithVar("item", item))
 }
 
 // BulkPricingReq contains query parameters for GetBulkPricing.
@@ -409,7 +409,7 @@ func (c *Client) GetBulkPricing(ctx context.Context, items []string) (*BulkPrici
 		Items: strings.Join(items, ","),
 	}
 
-	return request.GetTo[BulkPricing](ctx, c.getClient(), "/item/pricing/bulk", mod.WithQuery(req))
+	return request.GetTo[BulkPricing](ctx, c.r, "/item/pricing/bulk", mod.WithQuery(req))
 }
 
 // GetBackpackDetailsTF2 queries full item details and backpack metrics for a TF2 asset ID.
@@ -418,7 +418,7 @@ func (c *Client) GetBulkPricing(ctx context.Context, items []string) (*BulkPrici
 // Permission: API Only
 func (c *Client) GetBackpackDetailsTF2(ctx context.Context, backpackID string) (*BackpackDetailsResponse, error) {
 	return request.GetTo[BackpackDetailsResponse](
-		ctx, c.getClient(), "/item/details/fromid/{backpackid}",
+		ctx, c.r, "/item/details/fromid/{backpackid}",
 		mod.WithVar("backpackid", backpackID),
 	)
 }
@@ -429,7 +429,7 @@ func (c *Client) GetBackpackDetailsTF2(ctx context.Context, backpackID string) (
 // Permission: API Only
 func (c *Client) GetBackpackDetailsCS2(ctx context.Context, backpackID string) (*BackpackDetailsResponse, error) {
 	return request.GetTo[BackpackDetailsResponse](
-		ctx, c.getClient(), "/item/cs/details/fromid/{backpackid}",
+		ctx, c.r, "/item/cs/details/fromid/{backpackid}",
 		mod.WithVar("backpackid", backpackID),
 	)
 }

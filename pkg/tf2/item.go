@@ -5,11 +5,12 @@
 package tf2
 
 import (
-	"fmt"
 	"slices"
+	"strconv"
 
 	"github.com/lemon4ksan/g-man/pkg/trading"
 
+	"github.com/lemon4ksan/g-man-tf2/internal/bytesconv"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 )
@@ -389,11 +390,15 @@ func (i Item) ToEconItem() *trading.Item {
 		SKU:            i.SKU,
 	}
 
-	attrs := make([]trading.Attribute, 0)
+	attrs := make([]trading.Attribute, 0, len(i.Spells)+len(i.Parts)+4)
+
+	var floatBuf [24]byte
+
 	addAttr := func(defindex int, val float64) {
+		b := strconv.AppendFloat(floatBuf[:0], val, 'g', -1, 64)
 		attrs = append(attrs, trading.Attribute{
 			Defindex:   defindex,
-			Value:      fmt.Sprintf("%g", val),
+			Value:      bytesconv.B2S(b),
 			FloatValue: val,
 		})
 	}

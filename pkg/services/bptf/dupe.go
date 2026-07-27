@@ -38,7 +38,7 @@ func NewBackpackTFChecker(client *Client) *BackpackTFChecker {
 func (c *BackpackTFChecker) CheckHistory(ctx context.Context, assetID uint64) (backpack.HistoryStatus, error) {
 	path := "https://backpack.tf/item/" + strconv.FormatUint(assetID, 10)
 
-	resp, err := request.GetTo[[]byte](ctx, c.bptfClient.REST(), path, decode.WithRaw())
+	resp, err := request.GetTo[[]byte](ctx, c.bptfClient.R(), path, decode.WithRaw())
 	if err != nil {
 		var apiErr *aoni.APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {

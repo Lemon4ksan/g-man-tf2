@@ -188,7 +188,7 @@ type UpdateCartResponse struct {
 // Route: GET /cart/get
 // Permission: Connected + API
 func (c *Client) GetCart(ctx context.Context) (*GetCartResponse, error) {
-	return request.GetTo[GetCartResponse](ctx, c.getClient(), "/cart/get")
+	return request.GetTo[GetCartResponse](ctx, c.r, "/cart/get")
 }
 
 // AddToCart inserts a single listing into user's shopping cart by Steam asset ID.
@@ -198,7 +198,7 @@ func (c *Client) GetCart(ctx context.Context) (*GetCartResponse, error) {
 // Permission: Connected + API
 func (c *Client) AddToCart(ctx context.Context, assetID string) (*GetCartResponse, error) {
 	req := AddCartReq{AssetID: assetID}
-	return request.PostTo[GetCartResponse](ctx, c.getClient(), "/cart/add", req)
+	return request.PostTo[GetCartResponse](ctx, c.r, "/cart/add", req)
 }
 
 // BulkAddToCart searches the cheapest marketplace listings for an item, excluding
@@ -214,7 +214,7 @@ func (c *Client) BulkAddToCart(ctx context.Context, itemID, count int, sellerUse
 		SellerUserID: sellerUserID,
 	}
 
-	return request.PostTo[GetCartResponse](ctx, c.getClient(), "/cart/bulk", req)
+	return request.PostTo[GetCartResponse](ctx, c.r, "/cart/bulk", req)
 }
 
 // RemoveFromCart deletes an entire cart row (and all its associated asset IDs) from the cart.
@@ -223,7 +223,7 @@ func (c *Client) BulkAddToCart(ctx context.Context, itemID, count int, sellerUse
 // Permission: Connected + API
 func (c *Client) RemoveFromCart(ctx context.Context, cartID int) (*GetCartResponse, error) {
 	req := RemoveCartReq{CartID: cartID}
-	return request.PostTo[GetCartResponse](ctx, c.getClient(), "/cart/remove", req)
+	return request.PostTo[GetCartResponse](ctx, c.r, "/cart/remove", req)
 }
 
 // UpdateCart triggers an integrity scan on the cart. Invalid items (sold, price altered)
@@ -234,5 +234,5 @@ func (c *Client) RemoveFromCart(ctx context.Context, cartID int) (*GetCartRespon
 // Route: POST /cart/update
 // Permission: Connected + API
 func (c *Client) UpdateCart(ctx context.Context) (*UpdateCartResponse, error) {
-	return request.PostTo[UpdateCartResponse](ctx, c.getClient(), "/cart/update", nil)
+	return request.PostTo[UpdateCartResponse](ctx, c.r, "/cart/update", nil)
 }

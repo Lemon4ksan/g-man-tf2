@@ -284,7 +284,7 @@ func TestClient(t *testing.T) {
 		t.Parallel()
 
 		client, _ := setupTestClient(t)
-		rest := client.REST()
+		rest := client.R()
 		assert.NotNil(t, rest)
 	})
 }

@@ -27,9 +27,10 @@ func TestPriceManager_WatchAndGet(t *testing.T) {
 	t.Parallel()
 
 	logger := log.New(log.DefaultConfig(log.LevelError))
-	client := NewClient(nil)
+	r := aoni.NewClient(nil)
+	client := NewClient(r)
 
-	manager := NewManager(client, logger)
+	manager := NewManager(client, r, logger)
 	assert.Equal(t, BehaviorName, manager.Name())
 
 	assert.Len(t, manager.GetWatchedSKUs(), 0)
@@ -74,8 +75,9 @@ func TestPriceManager_UpdatesAndFetch(t *testing.T) {
 	stub.SetJSONResponse("api/items-bulk", 200, allPrices)
 
 	logger := log.New(log.DefaultConfig(log.LevelError))
-	client := NewClient(aoni.NewClient(stub))
-	manager := NewManager(client, logger)
+	r := aoni.NewClient(stub)
+	client := NewClient(r)
+	manager := NewManager(client, r, logger)
 
 	t.Run("seed_empty", func(t *testing.T) {
 		err := manager.SeedFromBackpack(t.Context(), nil)
@@ -113,19 +115,15 @@ func TestPriceManager_UpdatesAndFetch(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, fetchedEmpty, 0)
 	})
-
-	t.Run("get_all_prices", func(t *testing.T) {
-		all := manager.GetAllPrices()
-		assert.Len(t, all, 2)
-	})
 }
 
 func TestPriceManager_SocketUpdates(t *testing.T) {
 	t.Parallel()
 
 	logger := log.New(log.DefaultConfig(log.LevelError))
-	client := NewClient(nil)
-	manager := NewManager(client, logger)
+	r := aoni.NewClient(nil)
+	client := NewClient(r)
+	manager := NewManager(client, r, logger)
 
 	priceUpdate := &Price{
 		SKU:  "5021;6",
@@ -157,12 +155,13 @@ func TestPriceManager_OrchestratorOption(t *testing.T) {
 	t.Parallel()
 
 	logger := log.New(log.DefaultConfig(log.LevelError))
-	client := NewClient(nil)
+	r := aoni.NewClient(nil)
+	client := NewClient(r)
 	b := bus.New()
 	orchestrator := behavior.NewOrchestrator(b, logger)
 
 	assert.NotPanics(t, func() {
-		WithPriceManager(orchestrator, client)
+		WithPriceManager(orchestrator, client, r)
 	})
 }
 
@@ -205,12 +204,13 @@ func TestPriceManager_RealtimeWebsocketHandshake(t *testing.T) {
 	wsURL := strings.Replace(server.URL, "http://", "ws://", 1)
 
 	logger := log.New(log.DefaultConfig(log.LevelError))
-	client := NewClient(nil)
+	r := aoni.NewClient(nil)
+	client := NewClient(r)
 
 	manager := &Manager{
 		client:       client,
 		logger:       logger.With(log.Module(BehaviorName)),
-		cache:        make(map[string]*Price),
+		cache:        make(map[string]PackedPrice),
 		watchedSKUs:  make(map[string]struct{}),
 		syncInterval: 10 * time.Millisecond,
 	}
@@ -218,11 +218,11 @@ func TestPriceManager_RealtimeWebsocketHandshake(t *testing.T) {
 	var priceUpdated sync.WaitGroup
 	priceUpdated.Add(1)
 
-	manager.socket = NewSocketManager(wsURL, client.rest, manager.logger)
+	manager.socket = NewSocketManager(wsURL, r, manager.logger)
 	manager.socket.OnPrice(func(p *Price) {
 		if p.SKU == "5021;6" && p.Buy.Metal == 82.0 {
 			manager.mu.Lock()
-			manager.cache[p.SKU] = p
+			manager.cache[p.SKU] = PackPrice(p)
 			manager.mu.Unlock()
 			priceUpdated.Done()
 		}
@@ -260,7 +260,8 @@ func TestPriceManager_EventPublication(t *testing.T) {
 
 	logger := log.New(log.DefaultConfig(log.LevelError))
 	eventBus := bus.New()
-	manager := NewManager(nil, logger).WithBus(eventBus)
+	r := aoni.NewClient(nil)
+	manager := NewManager(nil, r, logger).WithBus(eventBus)
 
 	sub := eventBus.Subscribe(&PricelistUpdatedEvent{})
 	defer sub.Unsubscribe()

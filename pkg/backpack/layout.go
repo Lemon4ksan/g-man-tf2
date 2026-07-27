@@ -182,7 +182,7 @@ func isActionItem(sch *schema.Item) bool {
 		return false
 	}
 
-	if sch.ItemClass == "action" || sch.CraftClass == "action" {
+	if sch.ItemClass == "action" || sch.CraftClass == "action" || sch.ItemSlot == "action" {
 		return true
 	}
 
@@ -193,7 +193,7 @@ func isActionItem(sch *schema.Item) bool {
 		return true
 	}
 
-	if nameLower == "secret saxton" || internalLower == "gift - 1 player" {
+	if nameLower == "secret saxton" || internalLower == "gift - 1 player" || strings.Contains(nameLower, "gargoyle") {
 		return true
 	}
 
@@ -266,6 +266,13 @@ func DefaultLayout() Layout {
 					And(Not(IsTradable()), IsCosmetic()),
 				},
 				OrderBy: CosmeticsSorter,
+			},
+			{
+				Name: "Untradable Tools & Actions",
+				Filters: []Filter{
+					And(Not(IsTradable()), Or(IsTool(), IsAction())),
+				},
+				OrderBy: DefindexSorter,
 			},
 			{
 				Name: "Untradable Misc",

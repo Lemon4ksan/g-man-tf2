@@ -235,7 +235,7 @@ func TestClient(t *testing.T) {
 
 		stub.SetRawResponse("api/v2/events", 200, []byte("event: test\ndata: payload\n\n"))
 
-		ch, err := client.StreamEvents(ctx, "events", "token_123")
+		ch, _, err := client.StreamEvents(ctx, "events", "token_123")
 		require.NoError(t, err)
 		assert.NotNil(t, ch)
 	})
@@ -291,12 +291,12 @@ func TestClient(t *testing.T) {
 
 		stub.SetRawResponse("api/v2/events", 200, []byte("event: test\ndata: payload\n\n"))
 
-		ch, err := client.StreamEvents(ctx, "events", "")
+		ch, _, err := client.StreamEvents(ctx, "events", "")
 		require.NoError(t, err)
 		assert.NotNil(t, ch)
 
 		stub.ResponseErrs["api/v2/events-error"] = errors.New("network error")
-		_, err = client.StreamEvents(ctx, "events-error", "token")
+		_, _, err = client.StreamEvents(ctx, "events-error", "token")
 		assert.Error(t, err)
 	})
 

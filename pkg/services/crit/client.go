@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package crit provides an integration client for crit.tf classifieds, group stores and showcase APIs.
 package crit
 
 import (
@@ -10,14 +9,15 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 
 	"github.com/lemon4ksan/aoni"
+	"github.com/lemon4ksan/aoni/fast"
 	"github.com/lemon4ksan/aoni/mod"
 	"github.com/lemon4ksan/aoni/option"
 	"github.com/lemon4ksan/aoni/realtime/stream"
 	"github.com/lemon4ksan/aoni/request"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
-	"github.com/lemon4ksan/miyako/log"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 )
@@ -33,31 +33,66 @@ type Config struct {
 
 // Client interacts with the crit.tf v2 API.
 type Client struct {
-	rest *aoni.Client
+	mu    sync.Mutex
+	token string
+	r     request.Requester
 }
 
-// NewClient creates a new crit.tf API client targeting v2 endpoints by default.
-func NewClient(rest *aoni.Client, apiKey string) *Client {
+// NewClient creates a new crit.tf API client targeting v2 endpoints by default using fast.Client.
+func NewClient(rest aoni.RequestDoer, apiKey string) *Client {
+	c := &Client{}
+
 	if rest == nil {
-		rest = aoni.NewClient(nil,
-			option.WithBaseURL(BaseURL),
-			option.WithUserAgent("G-man Bot/1.0"),
-			option.WithBaseResponse(func() aoni.BaseResponse {
-				return &critResponse{}
-			}),
-		)
+		rest = fast.NewClient()
+	}
+
+	opts := []option.Option{
+		option.WithBaseURL(BaseURL),
+		option.WithHeaderFunc("X-Short-Lived-Token", c.Token),
+		option.WithUserAgent("G-man Bot/1.0"),
+		option.WithBaseResponse(func() aoni.BaseResponse {
+			return &critResponse{}
+		}),
 	}
 
 	if apiKey != "" {
-		rest = rest.With(option.WithHeader("X-API-Key", apiKey))
+		opts = append(opts, option.WithHeader("X-API-Key", apiKey))
 	}
 
-	return &Client{rest: rest}
+	c.r = request.AsRequester(aoni.Configure(rest, opts...))
+
+	return c
+}
+
+// Token returns the current token used for authentication.
+// Use [Client.FetchAuthToken] to obtain a new token.
+func (c *Client) Token() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.token
+}
+
+func (c *Client) setToken(token string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.token = token
+}
+
+// With applies the given options to the client, returning a new client with the updated configuration.
+func (c *Client) With(opts ...aoni.ClientOption) *Client {
+	if len(opts) == 0 {
+		return c
+	}
+
+	return &Client{
+		r: request.AsRequester(aoni.Configure(c.r, opts...)),
+	}
 }
 
 // FetchMyListings retrieves all active listings for the authenticated user.
 func (c *Client) FetchMyListings(ctx context.Context) ([]Listing, error) {
-	resp, err := request.GetTo[ListingsResponse](ctx, c.rest, "listings/my")
+	resp, err := request.GetTo[ListingsResponse](ctx, c.r, "listings/my")
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +108,7 @@ func (c *Client) CreateListing(ctx context.Context, assetID string, currencies p
 		"price_metal": currencies.Metal,
 	}
 
-	resp, err := request.PostTo[ListingsResponse](ctx, c.rest, "listings", payload)
+	resp, err := request.PostTo[ListingsResponse](ctx, c.r, "listings", payload)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +128,7 @@ func (c *Client) UpdateListing(ctx context.Context, listingID string, currencies
 	}
 
 	resp, err := request.PutTo[ListingsResponse](
-		ctx, c.rest, "listings/{listingID}", payload,
+		ctx, c.r, "listings/{listingID}", payload,
 		mod.WithVar("listingID", listingID),
 	)
 	if err != nil {
@@ -110,7 +145,7 @@ func (c *Client) UpdateListing(ctx context.Context, listingID string, currencies
 // DeleteListing deletes an active listing by its database ID.
 func (c *Client) DeleteListing(ctx context.Context, listingID string) error {
 	_, err := request.DeleteTo[Response](
-		ctx, c.rest, "listings/{listingID}", nil,
+		ctx, c.r, "listings/{listingID}", nil,
 		mod.WithVar("listingID", listingID),
 	)
 
@@ -119,12 +154,12 @@ func (c *Client) DeleteListing(ctx context.Context, listingID string) error {
 
 // RefreshInventory requests crit.tf to sync the latest inventory status from Steam.
 func (c *Client) RefreshInventory(ctx context.Context) (*InventoryResponse, error) {
-	return request.PostTo[InventoryResponse](ctx, c.rest, "inventory/refresh", nil)
+	return request.PostTo[InventoryResponse](ctx, c.r, "inventory/refresh", nil)
 }
 
 // GetMyGroup retrieves store group details of the authenticated bot.
 func (c *Client) GetMyGroup(ctx context.Context) (*Group, error) {
-	resp, err := request.GetTo[GroupResponse](ctx, c.rest, "groups/my")
+	resp, err := request.GetTo[GroupResponse](ctx, c.r, "groups/my")
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +174,7 @@ func (c *Client) GetMyGroup(ctx context.Context) (*Group, error) {
 // InviteToGroup sends a store group membership invite to a user.
 func (c *Client) InviteToGroup(ctx context.Context, groupID int, targetSteamID id.ID) error {
 	_, err := request.PostTo[Response](
-		ctx, c.rest, "groups/{groupID}/invite",
+		ctx, c.r, "groups/{groupID}/invite",
 		map[string]string{"steam_id": targetSteamID.String()},
 		mod.WithVar("groupID", groupID),
 	)
@@ -149,7 +184,7 @@ func (c *Client) InviteToGroup(ctx context.Context, groupID int, targetSteamID i
 
 // GetPendingInvites retrieves pending store group invitations.
 func (c *Client) GetPendingInvites(ctx context.Context) ([]Invite, error) {
-	resp, err := request.GetTo[InvitesResponse](ctx, c.rest, "groups/invites")
+	resp, err := request.GetTo[InvitesResponse](ctx, c.r, "groups/invites")
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +195,7 @@ func (c *Client) GetPendingInvites(ctx context.Context) ([]Invite, error) {
 // AcceptGroupInvite accepts a pending group invite.
 func (c *Client) AcceptGroupInvite(ctx context.Context, groupID int) error {
 	_, err := request.PostTo[Response](
-		ctx, c.rest, "groups/{groupID}/accept", nil,
+		ctx, c.r, "groups/{groupID}/accept", nil,
 		mod.WithVar("groupID", groupID),
 	)
 
@@ -170,7 +205,7 @@ func (c *Client) AcceptGroupInvite(ctx context.Context, groupID int) error {
 // LeaveGroup leaves a store group.
 func (c *Client) LeaveGroup(ctx context.Context, groupID int) error {
 	_, err := request.PostTo[Response](
-		ctx, c.rest, "groups/{groupID}/leave", nil,
+		ctx, c.r, "groups/{groupID}/leave", nil,
 		mod.WithVar("groupID", groupID),
 	)
 
@@ -178,6 +213,7 @@ func (c *Client) LeaveGroup(ctx context.Context, groupID int) error {
 }
 
 // FetchAuthToken requests an SSE auth token from Crit.tf API.
+// The token is stored in the client and can be retrieved using [Client.Token].
 func (c *Client) FetchAuthToken(ctx context.Context) (string, error) {
 	type tokenResp struct {
 		OK     bool   `json:"ok"`
@@ -185,9 +221,7 @@ func (c *Client) FetchAuthToken(ctx context.Context) (string, error) {
 		Reason string `json:"reason,omitempty"`
 	}
 
-	data, err := request.GetTo[tokenResp](
-		ctx, c.rest.With(option.WithBaseResponse(nil)), "bot-api/auth-token",
-	)
+	data, err := request.GetTo[tokenResp](ctx, c.r, "bot-api/auth-token", mod.WithoutBaseResponse())
 	if err != nil {
 		return "", fmt.Errorf("crit: auth token request failed: %w", err)
 	}
@@ -200,14 +234,13 @@ func (c *Client) FetchAuthToken(ctx context.Context) (string, error) {
 		return "", errors.New("crit: api error: unknown reason")
 	}
 
-	// Update client with Short-Lived Token header for all subsequent API requests
-	c.rest = c.rest.With(option.WithHeader("X-Short-Lived-Token", data.Token))
+	c.setToken(data.Token)
 
 	return data.Token, nil
 }
 
 // StreamEvents connects to the SSE endpoint and returns a channel of SSEEvent.
-func (c *Client) StreamEvents(ctx context.Context, streamURL, token string) (<-chan SSEEvent, error) {
+func (c *Client) StreamEvents(ctx context.Context, streamURL, token string) (<-chan SSEEvent, <-chan error, error) {
 	var mods []aoni.RequestModifier
 	if token != "" {
 		req := struct {
@@ -216,27 +249,19 @@ func (c *Client) StreamEvents(ctx context.Context, streamURL, token string) (<-c
 		mods = append(mods, mod.WithQuery(req))
 	}
 
-	out, errs, err := stream.SSE[SSEEvent](ctx, c.rest, streamURL, mods...)
+	out, errs, err := stream.SSE[SSEEvent](ctx, c.r, streamURL, mods...)
 	if err != nil {
-		return nil, fmt.Errorf("crit: failed to start sse stream: %w", err)
+		return nil, nil, fmt.Errorf("crit: failed to start sse stream: %w", err)
 	}
 
-	go func() {
-		for err := range errs {
-			if err != nil && !errors.Is(err, context.Canceled) {
-				c.rest.Logger().Error("SSE stream error", log.Err(err))
-			}
-		}
-	}()
-
-	return out, nil
+	return out, errs, nil
 }
 
 // SendDeadMansRequest sends a heartbeat signal to Crit.tf backend to indicate the bot is alive.
 func (c *Client) SendDeadMansRequest(ctx context.Context) (bool, error) {
 	payload := map[string]bool{"alive": true}
 
-	resp, err := request.Post(ctx, c.rest, "bot-api/alive", payload)
+	resp, err := request.Post(ctx, c.r, "bot-api/alive", payload)
 	if err != nil {
 		return false, fmt.Errorf("crit: dead man request failed: %w", err)
 	}
@@ -247,7 +272,7 @@ func (c *Client) SendDeadMansRequest(ctx context.Context) (bool, error) {
 
 // GetInventory retrieves the cached inventory of the bot from Crit.tf backend.
 func (c *Client) GetInventory(ctx context.Context) ([]any, error) {
-	resp, err := request.GetTo[InventoryResponse](ctx, c.rest, "inventory")
+	resp, err := request.GetTo[InventoryResponse](ctx, c.r, "inventory")
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +284,7 @@ func (c *Client) GetInventory(ctx context.Context) ([]any, error) {
 func (c *Client) UpdateTradeURL(ctx context.Context, tradeURL string) (bool, error) {
 	payload := map[string]string{"trade_url": tradeURL}
 
-	resp, err := request.PutTo[Response](ctx, c.rest, "user/trade-url", payload)
+	resp, err := request.PutTo[Response](ctx, c.r, "user/trade-url", payload)
 	if err != nil {
 		return false, err
 	}
@@ -269,7 +294,7 @@ func (c *Client) UpdateTradeURL(ctx context.Context, tradeURL string) (bool, err
 
 // GetUserInfo retrieves the authenticated user information from Crit.tf.
 func (c *Client) GetUserInfo(ctx context.Context) (*User, error) {
-	resp, err := request.GetTo[UserResponse](ctx, c.rest, "user")
+	resp, err := request.GetTo[UserResponse](ctx, c.r, "user")
 	if err != nil {
 		return nil, err
 	}

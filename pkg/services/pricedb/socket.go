@@ -25,10 +25,10 @@ import (
 
 // SocketManager handles the real-time price updates via Socket.IO.
 type SocketManager struct {
+	r         aoni.WSDialer
 	url       string
 	logger    log.Logger
 	userAgent string
-	client    *aoni.Client
 
 	mu   sync.Mutex
 	conn *websocket.Conn
@@ -37,14 +37,14 @@ type SocketManager struct {
 }
 
 // NewSocketManager creates a new Socket.IO client for PriceDB.
-func NewSocketManager(rawURL string, client *aoni.Client, logger log.Logger) *SocketManager {
-	if client == nil {
-		client = request.DefaultClient
+func NewSocketManager(rawURL string, r aoni.WSDialer, logger log.Logger) *SocketManager {
+	if r == nil {
+		r = request.DefaultClient
 	}
 
 	return &SocketManager{
+		r:      r,
 		url:    generic.Coalesce(rawURL, "ws://ws.pricedb.io/"),
-		client: client,
 		logger: logger.With(log.Module("pricedb_socket")),
 	}
 }
@@ -96,7 +96,7 @@ func (s *SocketManager) connectAndListen(ctx context.Context) error {
 		mods = append(mods, mod.WithUserAgent(s.userAgent))
 	}
 
-	wsConn, resp, err := ws.DialWebSocket(ctx, s.client, u.String(), mods...)
+	wsConn, resp, err := ws.DialWebSocket(ctx, s.r, u.String(), mods...)
 	if err != nil {
 		return err
 	}

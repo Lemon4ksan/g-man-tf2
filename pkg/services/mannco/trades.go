@@ -51,7 +51,7 @@ type ResendTradeQuery struct {
 // Route: GET /trades/active
 // Permission: Connected + API
 func (c *Client) GetActiveTrades(ctx context.Context) (*GetTradesResponse, error) {
-	return request.GetTo[GetTradesResponse](ctx, c.getClient(), "/trades/active")
+	return request.GetTo[GetTradesResponse](ctx, c.r, "/trades/active")
 }
 
 // GetAllTrades returns up to the last 500 historical trades (completed, failed) for the user.
@@ -60,7 +60,7 @@ func (c *Client) GetActiveTrades(ctx context.Context) (*GetTradesResponse, error
 // Route: GET /trades/all
 // Permission: Connected + API
 func (c *Client) GetAllTrades(ctx context.Context) (*GetTradesResponse, error) {
-	return request.GetTo[GetTradesResponse](ctx, c.getClient(), "/trades/all")
+	return request.GetTo[GetTradesResponse](ctx, c.r, "/trades/all")
 }
 
 // ResendTrade triggers a retry for a failed or pending withdrawal trade.
@@ -70,5 +70,5 @@ func (c *Client) GetAllTrades(ctx context.Context) (*GetTradesResponse, error) {
 // Permission: Connected + API
 func (c *Client) ResendTrade(ctx context.Context, tradeID int) (*ResendTradeResponse, error) {
 	req := ResendTradeQuery{ID: tradeID}
-	return request.GetTo[ResendTradeResponse](ctx, c.getClient(), "/trade/resend", mod.WithQuery(req))
+	return request.GetTo[ResendTradeResponse](ctx, c.r, "/trade/resend", mod.WithQuery(req))
 }

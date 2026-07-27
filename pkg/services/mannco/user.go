@@ -245,7 +245,7 @@ type TransactionDetailsResponse struct {
 // Route: GET /user/disconnect
 // Permission: Connected + API
 func (c *Client) Disconnect(ctx context.Context) (*DisconnectResponse, error) {
-	return request.GetTo[DisconnectResponse](ctx, c.getClient(), "/user/disconnect")
+	return request.GetTo[DisconnectResponse](ctx, c.r, "/user/disconnect")
 }
 
 // GetUserInfo returns account metadata, balance, name, and 2FA status.
@@ -253,7 +253,7 @@ func (c *Client) Disconnect(ctx context.Context) (*DisconnectResponse, error) {
 // Route: GET /user/infos
 // Permission: Connected + API
 func (c *Client) GetUserInfo(ctx context.Context) (*UserInfoResponse, error) {
-	return request.GetTo[UserInfoResponse](ctx, c.getClient(), "/user/infos")
+	return request.GetTo[UserInfoResponse](ctx, c.r, "/user/infos")
 }
 
 // GetBalance returns current account balance in cents.
@@ -261,7 +261,7 @@ func (c *Client) GetUserInfo(ctx context.Context) (*UserInfoResponse, error) {
 // Route: GET /user/balance
 // Permission: Connected + API
 func (c *Client) GetBalance(ctx context.Context) (*UserBalanceResponse, error) {
-	return request.GetTo[UserBalanceResponse](ctx, c.getClient(), "/user/balance")
+	return request.GetTo[UserBalanceResponse](ctx, c.r, "/user/balance")
 }
 
 // GetNotifications returns unread notification metrics across categories.
@@ -269,7 +269,7 @@ func (c *Client) GetBalance(ctx context.Context) (*UserBalanceResponse, error) {
 // Route: GET /user/notifications
 // Permission: Connected + API
 func (c *Client) GetNotifications(ctx context.Context) (*NotificationsResponse, error) {
-	return request.GetTo[NotificationsResponse](ctx, c.getClient(), "/user/notifications")
+	return request.GetTo[NotificationsResponse](ctx, c.r, "/user/notifications")
 }
 
 // GetIPSessionList retrieves active and historical user login sessions.
@@ -277,7 +277,7 @@ func (c *Client) GetNotifications(ctx context.Context) (*NotificationsResponse, 
 // Route: GET /user/ipList
 // Permission: Connected + API
 func (c *Client) GetIPSessionList(ctx context.Context, query IPSessionListQuery) (*IPSessionListResponse, error) {
-	return request.GetTo[IPSessionListResponse](ctx, c.getClient(), "/user/ipList", mod.WithQuery(query))
+	return request.GetTo[IPSessionListResponse](ctx, c.r, "/user/ipList", mod.WithQuery(query))
 }
 
 // GetPublicStoreProfile returns minimal public profile details of a storefront ID.
@@ -287,7 +287,7 @@ func (c *Client) GetIPSessionList(ctx context.Context, query IPSessionListQuery)
 // Permission: API Only (No session required)
 func (c *Client) GetPublicStoreProfile(ctx context.Context, identifier string) (*PublicStoreProfile, error) {
 	return request.GetTo[PublicStoreProfile](
-		ctx, c.getClient(), "/user/store/{identifier}",
+		ctx, c.r, "/user/store/{identifier}",
 		mod.WithVar("identifier", identifier),
 	)
 }
@@ -297,7 +297,7 @@ func (c *Client) GetPublicStoreProfile(ctx context.Context, identifier string) (
 // Route: GET /user/getSalesInfos
 // Permission: Connected + API
 func (c *Client) GetSalesInfos(ctx context.Context) (*SalesInfosResponse, error) {
-	return request.GetTo[SalesInfosResponse](ctx, c.getClient(), "/user/getSalesInfos")
+	return request.GetTo[SalesInfosResponse](ctx, c.r, "/user/getSalesInfos")
 }
 
 // GetSalesChartInfos returns aggregated sales data for plotting charts.
@@ -305,7 +305,7 @@ func (c *Client) GetSalesInfos(ctx context.Context) (*SalesInfosResponse, error)
 // Route: GET /user/getSalesChartInfos
 // Permission: Connected + API
 func (c *Client) GetSalesChartInfos(ctx context.Context, query SalesChartQuery) (*SalesChartResponse, error) {
-	return request.GetTo[SalesChartResponse](ctx, c.getClient(), "/user/getSalesChartInfos", mod.WithQuery(query))
+	return request.GetTo[SalesChartResponse](ctx, c.r, "/user/getSalesChartInfos", mod.WithQuery(query))
 }
 
 // GetBalanceHistory returns logs of deposits, payments, and balance adjustments.
@@ -313,7 +313,7 @@ func (c *Client) GetSalesChartInfos(ctx context.Context, query SalesChartQuery) 
 // Route: GET /user/getBalanceHistory
 // Permission: Connected + API
 func (c *Client) GetBalanceHistory(ctx context.Context, query BalanceHistoryQuery) (*BalanceHistoryResponse, error) {
-	return request.GetTo[BalanceHistoryResponse](ctx, c.getClient(), "/user/getBalanceHistory", mod.WithQuery(query))
+	return request.GetTo[BalanceHistoryResponse](ctx, c.r, "/user/getBalanceHistory", mod.WithQuery(query))
 }
 
 // GetPurchaseHistory returns purchase checkout logs.
@@ -321,7 +321,7 @@ func (c *Client) GetBalanceHistory(ctx context.Context, query BalanceHistoryQuer
 // Route: GET /user/getPurchaseHistory
 // Permission: Connected + API
 func (c *Client) GetPurchaseHistory(ctx context.Context, query PurchaseHistoryQuery) (*PurchaseHistoryResponse, error) {
-	return request.GetTo[PurchaseHistoryResponse](ctx, c.getClient(), "/user/getPurchaseHistory", mod.WithQuery(query))
+	return request.GetTo[PurchaseHistoryResponse](ctx, c.r, "/user/getPurchaseHistory", mod.WithQuery(query))
 }
 
 // GetSalesHistory returns marketplace sales logs.
@@ -330,7 +330,7 @@ func (c *Client) GetPurchaseHistory(ctx context.Context, query PurchaseHistoryQu
 // Route: GET /user/getSalesHistory
 // Permission: Connected + API
 func (c *Client) GetSalesHistory(ctx context.Context, query SalesHistoryQuery) (*SalesHistoryResponse, error) {
-	return request.GetTo[SalesHistoryResponse](ctx, c.getClient(), "/user/getSalesHistory", mod.WithQuery(query))
+	return request.GetTo[SalesHistoryResponse](ctx, c.r, "/user/getSalesHistory", mod.WithQuery(query))
 }
 
 // GetSalesHistoryForUser returns the sales history of another user.
@@ -344,7 +344,7 @@ func (c *Client) GetSalesHistoryForUser(
 	query SalesHistoryQuery,
 ) (*SalesHistoryResponse, error) {
 	return request.GetTo[SalesHistoryResponse](
-		ctx, c.getClient(), "/user/getSalesHistory/{userid}",
+		ctx, c.r, "/user/getSalesHistory/{userid}",
 		mod.WithVar("userid", userID),
 		mod.WithQuery(query),
 	)
@@ -355,7 +355,7 @@ func (c *Client) GetSalesHistoryForUser(
 // Route: GET /user/getCashoutHistory
 // Permission: Connected + API
 func (c *Client) GetCashoutHistory(ctx context.Context, query CashoutHistoryQuery) (*CashoutHistoryResponse, error) {
-	return request.GetTo[CashoutHistoryResponse](ctx, c.getClient(), "/user/getCashoutHistory", mod.WithQuery(query))
+	return request.GetTo[CashoutHistoryResponse](ctx, c.r, "/user/getCashoutHistory", mod.WithQuery(query))
 }
 
 // GetTransactionHistory returns ledger details.
@@ -367,7 +367,7 @@ func (c *Client) GetTransactionHistory(
 	query TransactionHistoryQuery,
 ) (*TransactionHistoryResponse, error) {
 	return request.GetTo[TransactionHistoryResponse](
-		ctx, c.getClient(), "/user/getTransactionHistory",
+		ctx, c.r, "/user/getTransactionHistory",
 		mod.WithQuery(query),
 	)
 }
@@ -380,7 +380,7 @@ func (c *Client) GetTransactionDetails(ctx context.Context, transactionID string
 	req := TransactionDetailsQuery{TransactionID: transactionID}
 
 	return request.GetTo[TransactionDetailsResponse](
-		ctx, c.getClient(), "/user/getTransactionDetails",
+		ctx, c.r, "/user/getTransactionDetails",
 		mod.WithQuery(req),
 	)
 }

@@ -448,7 +448,7 @@ func TestRemote_EnrichCommunityItems_NoMissingKeys(t *testing.T) {
 				Description: inventory.Description{
 					ClassID:    "1",
 					InstanceID: "0",
-					AppData:    map[string]any{"def_index": "13"},
+					AppData:    &inventory.AppData{DefIndex: 13},
 				},
 			},
 		},

@@ -67,7 +67,8 @@ type SOCache struct {
 	schema *schema.Schema
 	logger log.Logger
 
-	items     map[uint64]*Item
+	items     map[uint64]PackedItem // Value map (32 bytes per item, zero pointers)
+	fullItems map[uint64]*Item      // Fallback for rare items with custom text/spells/parts
 	slots     uint32
 	isPremium bool
 	loaded    bool
@@ -86,10 +87,11 @@ type SOCache struct {
 // NewSOCache creates a new empty Shared Object Cache.
 func NewSOCache(coord CoordinatorProvider, opts ...Option) *SOCache {
 	s := &SOCache{
-		items:   make(map[uint64]*Item),
-		ratings: make(map[int32]uint32),
-		coord:   coord,
-		logger:  log.Discard,
+		items:     make(map[uint64]PackedItem),
+		fullItems: make(map[uint64]*Item),
+		ratings:   make(map[int32]uint32),
+		coord:     coord,
+		logger:    log.Discard,
 	}
 
 	for _, opt := range opts {
@@ -105,20 +107,20 @@ func NewSOCache(coord CoordinatorProvider, opts ...Option) *SOCache {
 
 // UpdateSchema sets the active item schema and automatically applies all schema-based
 // normalizations, overrides, and SKU strings to all currently cached items.
+// UpdateSchema sets the active item schema and automatically updates cached fullItems.
 func (c *SOCache) UpdateSchema(s *schema.Schema) {
 	if s == nil {
 		return
 	}
 
 	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	c.schema = s
-	for _, item := range c.items {
+	for _, item := range c.fullItems {
 		item.Fix(s)
 		item.SKU = item.GetSKU(s)
 	}
-
-	c.mu.Unlock()
 }
 
 // GetMaxSlots returns the maximum slot capacity of the backpack.
@@ -162,8 +164,12 @@ func (c *SOCache) GetItems() []*Item {
 	defer c.mu.RUnlock()
 
 	list := make([]*Item, 0, len(c.items))
-	for _, item := range c.items {
-		list = append(list, item)
+	for id, packed := range c.items {
+		if full, ok := c.fullItems[id]; ok {
+			list = append(list, full)
+		} else {
+			list = append(list, packed.ToItem(c.schema))
+		}
 	}
 
 	return list
@@ -174,9 +180,16 @@ func (c *SOCache) GetItem(id uint64) (*Item, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	item, ok := c.items[id]
+	if full, ok := c.fullItems[id]; ok {
+		return full, true
+	}
 
-	return item, ok
+	packed, ok := c.items[id]
+	if !ok {
+		return nil, false
+	}
+
+	return packed.ToItem(c.schema), true
 }
 
 // GetItemByOriginalID returns the [Item] matching the specified original ID.
@@ -184,93 +197,46 @@ func (c *SOCache) GetItemByOriginalID(originalID uint64) (*Item, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	for _, item := range c.items {
-		if item.OriginalID == originalID {
-			return item, true
+	for id, packed := range c.items {
+		if packed.OriginalID == originalID {
+			if full, ok := c.fullItems[id]; ok {
+				return full, true
+			}
+
+			return packed.ToItem(c.schema), true
 		}
 	}
 
 	return nil, false
 }
 
-// GetMetal returns up to count tradable metal item IDs matching the specified defIndex.
-func (c *SOCache) GetMetal(defIndex uint32, count int) []uint64 {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	var ids []uint64
-
-	for _, item := range c.items {
-		if item.DefIndex == defIndex && item.IsTradable {
-			ids = append(ids, item.ID)
-			if len(ids) == count {
-				return ids
-			}
-		}
-	}
-
-	return ids
-}
-
-// ForEachItem iterates over all items in the cache, calling fn for each item.
+// ForEachItem iterates over all items in the cache, calling the provided function for each item.
 func (c *SOCache) ForEachItem(fn func(item *Item) bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	for _, item := range c.items {
+	for id, packed := range c.items {
+		var item *Item
+		if full, ok := c.fullItems[id]; ok {
+			item = full
+		} else {
+			item = packed.ToItem(c.schema)
+		}
+
 		if !fn(item) {
 			break
 		}
 	}
 }
 
-// FindCraftableItems returns up to count tradable and craftable item IDs matching the defIndex.
-func (c *SOCache) FindCraftableItems(defIndex uint32, count int) []uint64 {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	var ids []uint64
-
-	for id, item := range c.items {
-		if item.DefIndex == defIndex && item.IsTradable {
-			ids = append(ids, id)
-			if count > 0 && len(ids) == count {
-				return ids
-			}
-		}
-	}
-
-	return ids
-}
-
-// FindWeaponsByClass returns all tradable weapons usable by the specified character class.
-func (c *SOCache) FindWeaponsByClass(class string) []*Item {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	var result []*Item
-
-	for _, item := range c.items {
-		sch := item.GetSchema(c.schema)
-		if sch != nil && sch.CraftClass == "weapon" && item.IsTradable {
-			if slices.Contains(sch.UsedByClasses, class) {
-				result = append(result, item)
-			}
-		}
-	}
-
-	return result
-}
-
-// GetMetalCount returns the count of tradable metal items matching the defIndex.
-func (c *SOCache) GetMetalCount(defIndex uint32) int {
+// GetStockDirect counts items matching targetSKU directly without closure allocations.
+func (c *SOCache) GetStockDirect(targetSKU string) int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	count := 0
-
 	for _, item := range c.items {
-		if item.DefIndex == defIndex && item.IsTradable {
+		if item.ToSKU(c.schema) == targetSKU {
 			count++
 		}
 	}
@@ -278,20 +244,62 @@ func (c *SOCache) GetMetalCount(defIndex uint32) int {
 	return count
 }
 
-// GetAssetIDsBySKU returns up to limit item IDs matching the target SKU.
-func (c *SOCache) GetAssetIDsBySKU(targetSKU string, limit int) []uint64 {
+// GetAssetIDsDirect collects available asset IDs matching targetSKU directly with exact 1-time slice capacity allocation.
+func (c *SOCache) GetAssetIDsDirect(targetSKU string, locked generic.Set[uint64]) []uint64 {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	var result []uint64
-
-	for _, item := range c.items {
-		if item.SKU == targetSKU && item.IsTradable {
-			result = append(result, item.ID)
+	for id, item := range c.items {
+		if item.IsTradable() && item.ToSKU(c.schema) == targetSKU && (locked == nil || !locked.Has(id)) {
+			result = append(result, id)
 		}
 	}
 
 	return result
+}
+
+// FindCraftableItemsDirect finds craftable items directly without closure allocations.
+func (c *SOCache) FindCraftableItemsDirect(defIndex uint32, count int, locked generic.Set[uint64]) []uint64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	targetDef := uint16(defIndex)
+
+	capacity := count
+	if capacity <= 0 {
+		capacity = 16
+	}
+
+	result := make([]uint64, 0, capacity)
+
+	for id, item := range c.items {
+		if item.DefIndex == targetDef && item.IsCraftable() && (locked == nil || !locked.Has(id)) {
+			result = append(result, id)
+			if count > 0 && len(result) == count {
+				break
+			}
+		}
+	}
+
+	return result
+}
+
+// GetMetalCountDirect counts metal items directly without closure allocations.
+func (c *SOCache) GetMetalCountDirect(defIndex uint32) int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	targetDef := uint16(defIndex)
+
+	count := 0
+	for _, item := range c.items {
+		if item.DefIndex == targetDef && item.IsTradable() {
+			count++
+		}
+	}
+
+	return count
 }
 
 // IsLoaded returns whether the cache is loaded.
@@ -454,8 +462,16 @@ func (c *SOCache) processObject(typeID int32, data []byte, isBulk bool, events *
 			item.SKU = item.GetSKU(c.schema)
 		}
 
+		packed := PackGCItem(item)
+
 		_, exists := c.items[item.ID]
-		c.items[item.ID] = item
+		c.items[item.ID] = packed
+
+		if item.CustomName != "" || item.CustomDesc != "" || len(item.Spells) > 0 || len(item.Parts) > 0 {
+			c.fullItems[item.ID] = item
+		} else {
+			delete(c.fullItems, item.ID)
+		}
 
 		if !isBulk && events != nil {
 			if exists {
@@ -516,6 +532,7 @@ func (c *SOCache) processDestroy(typeID int32, data []byte, events *[]bus.Event)
 
 	itemID := econItem.GetId()
 	delete(c.items, itemID)
+	delete(c.fullItems, itemID)
 
 	if events != nil {
 		*events = append(*events, &ItemRemovedEvent{ItemID: itemID})
@@ -672,17 +689,18 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 			item.Australium = getFloat(val) != 0
 		case AttrFestivized:
 			item.Festivized = getFloat(val) != 0
-		case AttrCustomTextureLow: // custom_texture_lo
+		case AttrCustomTextureLow:
 			decalLo = getUint(val)
 			item.HasCustomDecal = true
-		case AttrCustomTextureHigh: // custom_texture_hi
+		case AttrCustomTextureHigh:
 			decalHi = getUint(val)
 			item.HasCustomDecal = true
 		}
 	}
 
+	// Lazy map allocation: only allocate PartValues map if Strange Parts are present
 	if part1ID != 0 || part2ID != 0 || part3ID != 0 {
-		item.PartValues = make(map[uint32]uint32)
+		item.PartValues = make(map[uint32]uint32, 3)
 		if part1ID != 0 {
 			item.PartValues[part1ID] = part1Val
 		}
@@ -767,8 +785,6 @@ func (c *SOCache) protoToItem(p *pb.CSOEconItem) *Item {
 	return item
 }
 
-// cleanGCString removes C-style null terminators and non-printable control
-// characters from raw Game Coordinator attribute bytes.
 func cleanGCString(b []byte) string {
 	if len(b) == 0 {
 		return ""

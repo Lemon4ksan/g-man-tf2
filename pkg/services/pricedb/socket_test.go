@@ -37,7 +37,7 @@ func TestSocketManager_New_NilClient(t *testing.T) {
 	t.Parallel()
 
 	sm := NewSocketManager("", nil, log.Discard)
-	assert.NotNil(t, sm.client)
+	assert.NotNil(t, sm.r)
 	assert.Equal(t, "ws://ws.pricedb.io/", sm.url)
 }
 

@@ -179,7 +179,7 @@ func (c *Client) CreateBuyOrder(ctx context.Context, itemID, value, amount int) 
 		Amount: amount,
 	}
 
-	return request.PostTo[DetailsResponse](ctx, c.getClient(), "/item/buyorder", req)
+	return request.PostTo[DetailsResponse](ctx, c.r, "/item/buyorder", req)
 }
 
 // UpdateBuyOrder updates an existing buy order price and/or quantity.
@@ -195,7 +195,7 @@ func (c *Client) UpdateBuyOrder(ctx context.Context, itemID, value, amount int) 
 		Amount: amount,
 	}
 
-	resp, err := request.PostTo[string](ctx, c.getClient(), "/item/buyorder/update", req)
+	resp, err := request.PostTo[string](ctx, c.r, "/item/buyorder/update", req)
 	if err != nil {
 		return "", err
 	}
@@ -212,7 +212,7 @@ func (c *Client) RemoveBuyOrder(ctx context.Context, itemID int) (*DetailsRespon
 		ItemID: itemID,
 	}
 
-	return request.PostTo[DetailsResponse](ctx, c.getClient(), "/item/buyorder/remove", req)
+	return request.PostTo[DetailsResponse](ctx, c.r, "/item/buyorder/remove", req)
 }
 
 // GetUserBuyOrdersForItem returns user's active buy orders for a specific item ID.
@@ -220,7 +220,7 @@ func (c *Client) RemoveBuyOrder(ctx context.Context, itemID int) (*DetailsRespon
 // Route: GET /user/buyorder/{item}
 // Permission: Connected + API
 func (c *Client) GetUserBuyOrdersForItem(ctx context.Context, item string) (*UserBuyOrderResponse, error) {
-	return request.GetTo[UserBuyOrderResponse](ctx, c.getClient(), "/user/buyorder/{item}", mod.WithVar("item", item))
+	return request.GetTo[UserBuyOrderResponse](ctx, c.r, "/user/buyorder/{item}", mod.WithVar("item", item))
 }
 
 // GetUserBuyOrdersQuery holds filtering arguments for GetUserBuyOrders.
@@ -236,5 +236,5 @@ type GetUserBuyOrdersQuery struct {
 // Route: GET /user/getBuyorder
 // Permission: Connected + API
 func (c *Client) GetUserBuyOrders(ctx context.Context, query GetUserBuyOrdersQuery) (*UserAllBuyOrdersResponse, error) {
-	return request.GetTo[UserAllBuyOrdersResponse](ctx, c.getClient(), "/user/getBuyorder", mod.WithQuery(query))
+	return request.GetTo[UserAllBuyOrdersResponse](ctx, c.r, "/user/getBuyorder", mod.WithQuery(query))
 }

@@ -47,7 +47,7 @@ type BackpackProvider interface {
 }
 
 // StockLimitMiddleware checks if an incoming trade exceeds total capacity or specific SKU boundaries.
-// It reads [StockConfig] limits and cancels the trade with [reason.DeclineOverstocked] if boundaries are violated.
+// Pre-allocates map counts to eliminate heap resizes.
 func StockLimitMiddleware(bp BackpackProvider, cfg StockConfig, logger log.Logger) engine.Middleware {
 	return func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
@@ -70,10 +70,9 @@ func StockLimitMiddleware(bp BackpackProvider, cfg StockConfig, logger log.Logge
 				return nil
 			}
 
-			incomingPerSKU := make(map[string]int)
+			incomingPerSKU := make(map[string]int, len(ctx.Offer.ItemsToReceive))
 			for _, it := range ctx.Offer.ItemsToReceive {
-				sku := it.SKU
-				incomingPerSKU[sku]++
+				incomingPerSKU[it.SKU]++
 			}
 
 			for sku, count := range incomingPerSKU {
@@ -128,20 +127,25 @@ type ReputationChecker interface {
 }
 
 // PricerMiddleware enriches the trade context with current item pricing models retrieved from a [PriceProvider].
-// It resolves prices, updates watches, and halts evaluation with [tf2reason.ReviewUnpricedItem] if any item is unpriced.
+// Pre-allocates SKU map and slice buffers to prevent dynamic map rehashes.
 func PricerMiddleware(mgr PriceProvider, schemaProvider func() *schema.Schema, logger log.Logger) engine.Middleware {
 	return func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
 			ctx.Set("schema", schemaProvider())
 
-			skus := make(map[string]bool)
-			for _, item := range append(ctx.Offer.ItemsToGive, ctx.Offer.ItemsToReceive...) {
-				pricingSKU := GetPricingSKU(item.SKU)
-				skus[pricingSKU] = true
+			totalItems := len(ctx.Offer.ItemsToGive) + len(ctx.Offer.ItemsToReceive)
+			skus := make(map[string]bool, totalItems)
+
+			for _, item := range ctx.Offer.ItemsToGive {
+				skus[GetPricingSKU(item.SKU)] = true
 			}
 
-			skuList := make([]string, 0)
-			priceMap := make(map[string]*pricedb.Price)
+			for _, item := range ctx.Offer.ItemsToReceive {
+				skus[GetPricingSKU(item.SKU)] = true
+			}
+
+			skuList := make([]string, 0, len(skus))
+			priceMap := make(map[string]*pricedb.Price, len(skus))
 
 			for sku := range skus {
 				if p, ok := mgr.GetPrice(sku); ok {
@@ -165,50 +169,78 @@ func PricerMiddleware(mgr PriceProvider, schemaProvider func() *schema.Schema, l
 
 			// Fallback for painted items: if a painted item is not in priceMap,
 			// try to resolve the base SKU and map the base item's price to the painted SKU.
-			for _, item := range append(ctx.Offer.ItemsToGive, ctx.Offer.ItemsToReceive...) {
-				pricingSKU := GetPricingSKU(item.SKU)
-				if _, ok := priceMap[pricingSKU]; !ok {
-					if itObj, err := sku.FromString(pricingSKU); err == nil && itObj.Paint != 0 {
-						itObj.Paint = 0
+			for _, item := range ctx.Offer.ItemsToGive {
+				enrichPaintedFallback(item.SKU, priceMap, mgr, logger)
+			}
 
-						baseSKU := sku.FromObject(itObj)
-						if basePrice, ok := mgr.GetPrice(baseSKU); ok {
-							priceMap[pricingSKU] = &pricedb.Price{
-								SKU:    pricingSKU,
-								Name:   basePrice.Name + " (Painted)",
-								Buy:    basePrice.Buy,
-								Sell:   basePrice.Sell,
-								Source: basePrice.Source,
-								Time:   basePrice.Time,
-							}
-							logger.Info("Using base item price as fallback for painted item",
-								log.String("painted_sku", pricingSKU),
-								log.String("base_sku", baseSKU),
-							)
-						}
-					}
-				}
+			for _, item := range ctx.Offer.ItemsToReceive {
+				enrichPaintedFallback(item.SKU, priceMap, mgr, logger)
 			}
 
 			ctx.Set("prices", priceMap)
 
-			for _, item := range append(ctx.Offer.ItemsToGive, ctx.Offer.ItemsToReceive...) {
-				pricingSKU := GetPricingSKU(item.SKU)
-				if _, ok := priceMap[pricingSKU]; !ok {
-					if isUniqueWeapon(item.SKU, schemaProvider()) {
-						continue
-					}
+			for _, item := range ctx.Offer.ItemsToGive {
+				if err := verifyItemPriced(item, priceMap, schemaProvider, logger, ctx); err != nil {
+					return err
+				}
+			}
 
-					logger.Warn("Item in trade is not priced", log.String("sku", item.SKU))
-					ctx.Review(tf2reason.ReviewUnpricedItem)
-
-					return errors.New("unpriced item in trade")
+			for _, item := range ctx.Offer.ItemsToReceive {
+				if err := verifyItemPriced(item, priceMap, schemaProvider, logger, ctx); err != nil {
+					return err
 				}
 			}
 
 			return next(ctx)
 		}
 	}
+}
+
+func enrichPaintedFallback(itemSKU string, priceMap map[string]*pricedb.Price, mgr PriceProvider, logger log.Logger) {
+	pricingSKU := GetPricingSKU(itemSKU)
+	if _, ok := priceMap[pricingSKU]; !ok {
+		if itObj, err := sku.FromString(pricingSKU); err == nil && itObj.Paint != 0 {
+			itObj.Paint = 0
+
+			baseSKU := sku.FromObject(itObj)
+			if basePrice, ok := mgr.GetPrice(baseSKU); ok {
+				priceMap[pricingSKU] = &pricedb.Price{
+					SKU:    pricingSKU,
+					Name:   basePrice.Name + " (Painted)",
+					Buy:    basePrice.Buy,
+					Sell:   basePrice.Sell,
+					Source: basePrice.Source,
+					Time:   basePrice.Time,
+				}
+				logger.Info("Using base item price as fallback for painted item",
+					log.String("painted_sku", pricingSKU),
+					log.String("base_sku", baseSKU),
+				)
+			}
+		}
+	}
+}
+
+func verifyItemPriced(
+	item *trading.Item,
+	priceMap map[string]*pricedb.Price,
+	schemaProvider func() *schema.Schema,
+	logger log.Logger,
+	ctx *engine.TradeContext,
+) error {
+	pricingSKU := GetPricingSKU(item.SKU)
+	if _, ok := priceMap[pricingSKU]; !ok {
+		if isUniqueWeapon(item.SKU, schemaProvider()) {
+			return nil
+		}
+
+		logger.Warn("Item in trade is not priced", log.String("sku", item.SKU))
+		ctx.Review(tf2reason.ReviewUnpricedItem)
+
+		return errors.New("unpriced item in trade")
+	}
+
+	return nil
 }
 
 // EscrowMiddleware checks whether either trade partner is subject to Steam trade hold restrictions.
@@ -484,8 +516,6 @@ type MetalChangeManager interface {
 }
 
 // SmartCounterMiddleware calculates transaction value balances and automatically adjusts mismatches.
-// If overpaid, it appends change metal from local inventory using [crafting.MetalManager].
-// If underpaid, it scans partner inventory using [trading.PartnerInventoryProvider] to request missing change.
 func SmartCounterMiddleware(
 	cfgManager *ConfigManager,
 	metalMgr MetalChangeManager,
@@ -587,19 +617,19 @@ func SmartCounterMiddleware(
 }
 
 // FindPartnerCurrency searches partner items to assemble a combination of currencies covering the specified scrap debt.
-// Returns false if the partner's inventory cannot satisfy the required scrap value.
+// Pre-allocates candidate slices with capacity hints matching items count to eliminate heap slice growths.
 func FindPartnerCurrency(
 	items []*trading.Item,
 	needed, keyPrice currency.Scrap,
 	sch *schema.Schema,
 ) ([]*trading.Item, bool) {
-	var (
-		keys      []*trading.Item
-		refined   []*trading.Item
-		reclaimed []*trading.Item
-		scrap     []*trading.Item
-		weapons   []*trading.Item
-	)
+	n := len(items)
+
+	keys := make([]*trading.Item, 0, n)
+	refined := make([]*trading.Item, 0, n)
+	reclaimed := make([]*trading.Item, 0, n)
+	scrap := make([]*trading.Item, 0, n)
+	weapons := make([]*trading.Item, 0, n)
 
 	for _, it := range items {
 		switch it.SKU {
@@ -618,8 +648,7 @@ func FindPartnerCurrency(
 		}
 	}
 
-	var result []*trading.Item
-
+	result := make([]*trading.Item, 0, 16)
 	remaining := needed
 
 	if keyPrice > 0 {
@@ -658,7 +687,7 @@ func FindPartnerCurrency(
 }
 
 func mapIDsToItems(bp BackpackProvider, ids []uint64) []*trading.Item {
-	var items []*trading.Item
+	items := make([]*trading.Item, 0, len(ids))
 	for _, id := range ids {
 		if it, ok := bp.GetItem(id); ok {
 			items = append(items, it.ToEconItem())
@@ -678,8 +707,6 @@ func isUnusual(target string) bool {
 }
 
 // GetPricingSKU normalizes the specified SKU string by stripping transient flags such as Festivized, Spells, and Strange Parts.
-// Paint is kept to support manual pricing overrides and fallback naming for painted items.
-// Returns the unmodified SKU string if parsing fails.
 func GetPricingSKU(skuStr string) string {
 	it, err := sku.FromString(skuStr)
 	if err != nil {
@@ -694,9 +721,6 @@ func GetPricingSKU(skuStr string) string {
 	return sku.FromObject(it)
 }
 
-// calculateValueDiff calculates the difference in value between what we receive and what we give.
-// Result > 0: We were overpaid (need change).
-// Result < 0: We were underpaid (we should reject or request more).
 func calculateValueDiff(ctx *engine.TradeContext, useSeparateKeyRates bool) (currency.Scrap, error) {
 	pricesRaw, ok := ctx.Get("prices").Value()
 	if !ok {
@@ -796,7 +820,6 @@ func calculateValueDiff(ctx *engine.TradeContext, useSeparateKeyRates bool) (cur
 	return diffScrap, nil
 }
 
-// isUniqueWeapon returns true if the SKU represents a standard craftable Unique weapon.
 func isUniqueWeapon(skuStr string, s *schema.Schema) bool {
 	if s == nil {
 		return false
@@ -834,7 +857,6 @@ func isUniqueWeapon(skuStr string, s *schema.Schema) bool {
 }
 
 // IsJunk returns true if the given [trading.Item] is a low-value commodity (such as standard supply crates).
-// Returns true if the item is nil or has an empty SKU.
 func IsJunk(it *trading.Item) bool {
 	if it == nil || it.SKU == "" {
 		return true
@@ -854,7 +876,6 @@ func IsJunk(it *trading.Item) bool {
 }
 
 // HasSpells checks whether the [trading.Item] contains any active Halloween spells in its description or attributes.
-// Returns false if the item is nil.
 func HasSpells(it *trading.Item) bool {
 	if it == nil {
 		return false

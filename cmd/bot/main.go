@@ -96,12 +96,12 @@ func NewBot(cfg Config, store storage.Provider, logger log.Logger) (*Bot, error)
 	logger = logger.With(log.String("module", "bot"))
 
 	// Setup standard HTTP clients and TF2 API services
-	restClient := aoni.NewClient(&http.Client{Timeout: 30 * time.Second})
-	bptfClient := bptf.New(restClient, cfg.BptfAPIKey, cfg.BptfUserToken)
-	pdbClient := pricedb.NewClient(restClient)
-	critClient := crit.NewClient(restClient, cfg.CritAPIKey)
+	r := aoni.NewClient(&http.Client{Timeout: 30 * time.Second})
+	bptfClient := bptf.New(r, cfg.BptfAPIKey, cfg.BptfUserToken)
+	pdbClient := pricedb.NewClient(r)
+	critClient := crit.NewClient(r, cfg.CritAPIKey)
 
-	pdbManager := pricedb.NewManager(pdbClient, logger)
+	pdbManager := pricedb.NewManager(pdbClient, r, logger)
 	bansManager := rep.NewBansManager(bptfClient, cfg.MptfAPIKey)
 	bptfChecker := bptf.NewBackpackTFChecker(bptfClient)
 

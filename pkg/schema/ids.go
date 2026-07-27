@@ -6,6 +6,7 @@ package schema
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 )
@@ -529,16 +530,50 @@ var SpellDefinitions = map[string]sku.Spell{
 	"Halloween: Sentry Quad-Pumpkins": {Attribute: 1007, Value: 1},
 }
 
-// IdentifySpell searches for a spell matching the provided name.
-// Strips common prefixes and returns false if the spell is not recognized.
-func IdentifySpell(name string) (sku.Spell, bool) {
-	lowerName := strings.ToLower(name)
+var (
+	normalizedSpellMap map[string]sku.Spell
+	spellMapOnce       sync.Once
+)
 
+func initSpellMap() {
+	normalizedSpellMap = make(map[string]sku.Spell, len(SpellDefinitions)*8)
 	prefixes := []string{"halloween: ", "weapon spell: ", "footprints spell: ", "vocal spell: "}
 
-	if s, ok := SpellDefinitions[name]; ok {
+	for k, s := range SpellDefinitions {
+		kLower := strings.ToLower(k)
+		normalizedSpellMap[k] = s
+		normalizedSpellMap[kLower] = s
+
+		shortName := kLower
+		for _, p := range prefixes {
+			shortName = strings.TrimPrefix(shortName, p)
+		}
+
+		normalizedSpellMap[shortName] = s
+
+		noEvent := strings.TrimSuffix(shortName, " (spell only active during event)")
+		normalizedSpellMap[noEvent] = s
+
+		if veryShort, _, ok := strings.Cut(shortName, " ("); ok {
+			normalizedSpellMap[veryShort] = s
+		}
+	}
+}
+
+// IdentifySpell searches for a spell matching the provided name using a pre-computed zero-alloc map.
+func IdentifySpell(name string) (sku.Spell, bool) {
+	spellMapOnce.Do(initSpellMap)
+
+	if s, ok := normalizedSpellMap[name]; ok {
 		return s, true
 	}
+
+	lowerName := strings.ToLower(name)
+	if s, ok := normalizedSpellMap[lowerName]; ok {
+		return s, true
+	}
+
+	prefixes := []string{"halloween: ", "weapon spell: ", "footprints spell: ", "vocal spell: "}
 
 	shortName := lowerName
 	for _, p := range prefixes {
@@ -547,27 +582,12 @@ func IdentifySpell(name string) (sku.Spell, bool) {
 
 	shortName = strings.TrimSuffix(shortName, " (spell only active during event)")
 
-	if s, ok := SpellDefinitions[shortName]; ok {
+	if s, ok := normalizedSpellMap[shortName]; ok {
 		return s, true
 	}
 
 	if veryShortName, _, ok := strings.Cut(shortName, " ("); ok {
-		if s, ok := SpellDefinitions[veryShortName]; ok {
-			return s, true
-		}
-	}
-
-	for k, s := range SpellDefinitions {
-		kLower := strings.ToLower(k)
-		for _, p := range prefixes {
-			kLower = strings.TrimPrefix(kLower, p)
-		}
-
-		if kLower == shortName {
-			return s, true
-		}
-
-		if vsk, _, ok := strings.Cut(kLower, " ("); ok && vsk == shortName {
+		if s, ok := normalizedSpellMap[veryShortName]; ok {
 			return s, true
 		}
 	}

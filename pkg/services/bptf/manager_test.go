@@ -125,8 +125,8 @@ func TestListingManager(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := New(aoni.NewClient(nil), "", "")
-		client.rest = client.rest.With(option.WithBaseURL(server.URL))
+		client := New(aoni.NewClient(nil), "", "").
+			With(option.WithBaseURL(server.URL))
 
 		mgr := NewListingManager(client, nil, log.Discard)
 
@@ -196,8 +196,8 @@ func TestListingManager(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := New(aoni.NewClient(nil), "", "")
-		client.rest = client.rest.With(option.WithBaseURL(server.URL))
+		client := New(aoni.NewClient(nil), "", "").
+			With(option.WithBaseURL(server.URL))
 
 		mgr := NewListingManager(client, nil, log.Discard)
 		for i := range 150 {

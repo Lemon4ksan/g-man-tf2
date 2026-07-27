@@ -10,9 +10,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,7 +24,6 @@ import (
 	"github.com/andygrunwald/vdf"
 	json "github.com/goccy/go-json"
 	"github.com/lemon4ksan/aoni"
-	"github.com/lemon4ksan/aoni/codec/decode"
 	"github.com/lemon4ksan/aoni/option"
 	"github.com/lemon4ksan/aoni/request"
 	"github.com/lemon4ksan/g-man/pkg/steam"
@@ -29,8 +31,8 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/steam/service"
 	"github.com/lemon4ksan/miyako/generic"
 	"github.com/lemon4ksan/miyako/log"
-	"github.com/mitchellh/mapstructure"
 
+	"github.com/lemon4ksan/g-man-tf2/internal/stringpool"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
 )
 
@@ -76,8 +78,40 @@ func From(c *steam.Client) *Manager {
 	return steam.GetModule[*Manager](c)
 }
 
+// OverviewResult represents the strongly typed result from IEconItems_440/GetSchemaOverview.
+type OverviewResult struct {
+	Status                               int                   `json:"status"`
+	ItemsGameURL                         string                `json:"items_game_url"`
+	Items                                []*Item               `json:"items,omitempty"`
+	Qualities                            map[string]int        `json:"qualities"`
+	QualityNames                         map[string]string     `json:"qualityNames"`
+	OriginNames                          []*OriginName         `json:"originNames"`
+	Attributes                           []*AttributeSchema    `json:"attributes"`
+	AttributeControlledAttachedParticles []*ParticleEffect     `json:"attribute_controlled_attached_particles"`
+	ItemSets                             []*ItemSet            `json:"item_sets"`
+	ItemLevels                           []*ItemLevel          `json:"item_levels"`
+	KillEaterScoreTypes                  []*KillEaterScoreType `json:"kill_eater_score_types"`
+	StringLookups                        []*StringLookup       `json:"string_lookups"`
+}
+
+// OverviewResponse wraps the Steam WebAPI response for schema overview.
+type OverviewResponse struct {
+	Result OverviewResult `json:"result"`
+}
+
+// ItemsResult represents the result payload for IEconItems_440/GetSchemaItems.
+type ItemsResult struct {
+	Status int     `json:"status"`
+	Next   int     `json:"next"`
+	Items  []*Item `json:"items"`
+}
+
+// ItemsResponse wraps the Steam WebAPI response for schema items.
+type ItemsResponse struct {
+	Result ItemsResult `json:"result"`
+}
+
 // Manager manages background updates and local caching of the TF2 item schema.
-// Use [NewManager] to create an instance and configure it with [Config].
 type Manager struct {
 	module.Base
 
@@ -109,7 +143,6 @@ func NewManager(cfg Config) *Manager {
 func (m *Manager) Name() string { return ModuleName }
 
 // Init initializes the module dependencies within the [module.InitContext].
-// Returns an error if context resolution fails.
 func (m *Manager) Init(init module.InitContext) error {
 	if err := m.Base.Init(init); err != nil {
 		return err
@@ -124,6 +157,8 @@ func (m *Manager) Init(init module.InitContext) error {
 		m.pricedb = pricedb.NewClient(unlimitedClient)
 	} else {
 		unlimitedClient := aoni.NewClient(nil, option.WithMaxResponseSize(0))
+
+		m.rest = unlimitedClient
 		m.pricedb = pricedb.NewClient(unlimitedClient)
 	}
 
@@ -131,7 +166,6 @@ func (m *Manager) Init(init module.InitContext) error {
 }
 
 // StartAuthed starts background polling, updates, and events listening routines.
-// Returns an error if the context is cancelled during initialization.
 func (m *Manager) StartAuthed(ctx context.Context, _ module.AuthContext) error {
 	m.Logger.Info("Starting TF2 Schema loading...")
 
@@ -164,7 +198,7 @@ func (m *Manager) StartAuthed(ctx context.Context, _ module.AuthContext) error {
 	} else {
 		m.Logger.InfoContext(ctx, "Schema loaded from cache",
 			log.Time("time", m.schema.Time),
-			log.Int("items", len(m.schema.Raw.Schema.Items)),
+			log.Int("items", m.schema.ItemCount()),
 		)
 	}
 
@@ -231,7 +265,6 @@ func (m *Manager) handleUpdateRequested(req *UpdateRequestedEvent) {
 }
 
 // Get returns the current active [Schema] instance.
-// Returns nil if the schema has not finished loading.
 func (m *Manager) Get() *Schema {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -239,8 +272,7 @@ func (m *Manager) Get() *Schema {
 	return m.schema
 }
 
-// Refresh manually triggers a full schema update from PriceDB and GitHub sources.
-// Returns an error if the fetch fails or the context is cancelled.
+// Refresh manually triggers a full schema update.
 func (m *Manager) Refresh(ctx context.Context) error {
 	return m.doRefresh(ctx, m.config.ItemsGameMirrorURL)
 }
@@ -298,25 +330,31 @@ func (m *Manager) refreshPriceDB(ctx context.Context) error {
 		return fmt.Errorf("pricedb schema fetch failed: %w", err)
 	}
 
-	raw, ok := resp["raw"].(map[string]any)
+	rawMap, ok := resp["raw"].(map[string]any)
 	if !ok {
 		return errors.New("invalid PriceDB response: missing 'raw'")
 	}
 
-	rawSchema, ok := raw["schema"].(map[string]any)
+	rawSchemaMap, ok := rawMap["schema"].(map[string]any)
 	if !ok {
 		return errors.New("invalid PriceDB response: missing 'raw.schema'")
 	}
 
-	items, _ := rawSchema["items"].([]any)
-	itemsGameURL, _ := rawSchema["items_game_url"].(string)
+	schemaJSON, _ := json.Marshal(rawSchemaMap)
 
-	pkMap, _ := rawSchema["paintkits"].(map[string]any)
+	var overviewResult OverviewResult
+	if err := json.Unmarshal(schemaJSON, &overviewResult); err != nil {
+		return fmt.Errorf("failed to parse overview from PriceDB: %w", err)
+	}
+
+	itemsGameURL, _ := rawSchemaMap["items_game_url"].(string)
+
+	pkMap, _ := rawSchemaMap["paintkits"].(map[string]any)
 
 	paintKits := make(map[string]string, len(pkMap))
 	for k, v := range pkMap {
 		if s, ok := v.(string); ok {
-			paintKits[k] = s
+			paintKits[k] = stringpool.Intern(s)
 		}
 	}
 
@@ -327,53 +365,35 @@ func (m *Manager) refreshPriceDB(ctx context.Context) error {
 		return fmt.Errorf("failed to fetch items_game.txt: %w", err)
 	}
 
-	existingDefindexes := make(map[int]bool, len(items))
-	for _, it := range items {
-		if item, ok := it.(map[string]any); ok {
-			if di, ok := item["defindex"].(float64); ok {
-				existingDefindexes[int(di)] = true
+	extraItems := m.parseItemsGameItems(ctx, itemsGameURL)
+	if len(extraItems) > 0 {
+		existingDefindexes := make(map[int]bool, len(overviewResult.Items))
+		for _, item := range overviewResult.Items {
+			if item != nil {
+				existingDefindexes[item.Defindex] = true
 			}
 		}
-	}
 
-	extraItems := m.parseItemsGameItems(ctx, itemsGameURL)
-	mergedCount := 0
-
-	if len(extraItems) == 0 {
-		m.Logger.WarnContext(ctx, "No extra items parsed from items_game.txt")
-	}
-
-	for _, extra := range extraItems {
-		if item, ok := extra.(map[string]any); ok {
-			if di, ok := item["defindex"].(float64); ok && !existingDefindexes[int(di)] {
-				items = append(items, extra)
+		mergedCount := 0
+		for _, extra := range extraItems {
+			if !existingDefindexes[extra.Defindex] {
+				overviewResult.Items = append(overviewResult.Items, extra)
 				mergedCount++
 			}
 		}
+
+		if mergedCount > 0 {
+			m.Logger.InfoContext(ctx, "Enriched schema with items from items_game.txt", log.Int("added", mergedCount))
+		}
 	}
 
-	if mergedCount > 0 {
-		m.Logger.InfoContext(ctx, "Enriched schema with items from items_game.txt", log.Int("added", mergedCount))
-	}
-
-	overview, err := m.getSchemaOverview(ctx)
-	if err != nil {
-		m.Logger.WarnContext(
-			ctx,
-			"Failed to fetch schema overview from Steam, using PriceDB raw schema instead",
-			log.Err(err),
-		)
-
-		overview = map[string]any{"result": rawSchema}
-	}
-
-	if err := m.buildSchema(overview, items, paintKits, itemsGame); err != nil {
+	if err := m.buildSchemaDirect(&overviewResult, paintKits, itemsGame); err != nil {
 		return err
 	}
 
 	m.mu.Lock()
 	if v, ok := resp["version"].(string); ok && v != "" {
-		m.schema.Version = v
+		m.schema.Version = stringpool.Intern(v)
 	}
 
 	if t, ok := resp["time"].(float64); ok && t > 0 {
@@ -388,7 +408,7 @@ func (m *Manager) refreshPriceDB(ctx context.Context) error {
 
 	m.Logger.InfoContext(ctx, "TF2 Schema updated successfully via PriceDB",
 		log.String("version", m.schema.Version),
-		log.Int("items", len(m.schema.Raw.Schema.Items)),
+		log.Int("items", m.schema.ItemCount()),
 	)
 	m.Bus.Publish(&UpdatedEvent{Timestamp: time.Now()})
 
@@ -405,29 +425,25 @@ func (m *Manager) refreshFromGame(ctx context.Context, itemsGameURL string) erro
 		itemsGame = map[string]any{}
 	}
 
-	items, err := m.getSchemaItems(ctx)
+	items, err := m.getSchemaItemsDirect(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to fetch schema items: %w", err)
 	}
 
-	existingDefindexes := make(map[int]bool, len(items))
-	for _, it := range items {
-		if item, ok := it.(map[string]any); ok {
-			if di, ok := item["defindex"].(float64); ok {
-				existingDefindexes[int(di)] = true
+	extraItems := m.parseItemsGameItems(ctx, itemsGameURL)
+	if len(extraItems) > 0 {
+		existingDefindexes := make(map[int]bool, len(items))
+		for _, item := range items {
+			if item != nil {
+				existingDefindexes[item.Defindex] = true
 			}
 		}
-	}
 
-	extraItems := m.parseItemsGameItems(ctx, itemsGameURL)
-	if len(extraItems) == 0 {
-		m.Logger.WarnContext(ctx, "No extra items parsed from items_game.txt")
-	}
-
-	for _, extra := range extraItems {
-		if item, ok := extra.(map[string]any); ok {
-			if di, ok := item["defindex"].(float64); ok && !existingDefindexes[int(di)] {
+		mergedCount := 0
+		for _, extra := range extraItems {
+			if !existingDefindexes[extra.Defindex] {
 				items = append(items, extra)
+				mergedCount++
 			}
 		}
 	}
@@ -437,17 +453,16 @@ func (m *Manager) refreshFromGame(ctx context.Context, itemsGameURL string) erro
 		paintKits = make(map[string]string)
 	}
 
-	overview, err := m.getSchemaOverview(ctx)
+	overviewResp, err := m.getSchemaOverviewDirect(ctx)
 	if err != nil {
 		m.Logger.WarnContext(ctx, "Schema overview unavailable, using minimal overview", log.Err(err))
 
-		overview = map[string]any{"result": map[string]any{
-			"qualities":     map[string]any{},
-			"quality_names": map[string]any{},
-		}}
+		overviewResp = &OverviewResponse{}
 	}
 
-	if err := m.buildSchema(overview, items, paintKits, itemsGame); err != nil {
+	overviewResp.Result.Items = items
+
+	if err := m.buildSchemaDirect(&overviewResp.Result, paintKits, itemsGame); err != nil {
 		return err
 	}
 
@@ -456,7 +471,7 @@ func (m *Manager) refreshFromGame(ctx context.Context, itemsGameURL string) erro
 	}
 
 	m.Logger.InfoContext(ctx, "TF2 Schema updated via items_game.txt",
-		log.Int("items", len(m.schema.Raw.Schema.Items)),
+		log.Int("items", m.schema.ItemCount()),
 		log.Int("paintkits", len(paintKits)),
 	)
 	m.Bus.Publish(&UpdatedEvent{Timestamp: time.Now()})
@@ -464,22 +479,44 @@ func (m *Manager) refreshFromGame(ctx context.Context, itemsGameURL string) erro
 	return nil
 }
 
+func downloadRawURL(ctx context.Context, rawURL string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("User-Agent", "G-man Bot/1.0")
+
+	client := &http.Client{Timeout: 60 * time.Second}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("http status %d", resp.StatusCode)
+	}
+
+	return io.ReadAll(resp.Body)
+}
+
 func (m *Manager) parseTfEnglish(ctx context.Context) map[string]string {
 	url := "https://raw.githubusercontent.com/SteamDatabase/GameTracking-TF2/master/tf/resource/tf_english.txt"
 
 	m.Logger.InfoContext(ctx, "Fetching tf_english.txt for localization...")
 
-	resp, err := request.GetTo[[]byte](ctx, m.rest, url, decode.WithRaw())
+	data, err := downloadRawURL(ctx, url)
 	if err != nil {
 		m.Logger.WarnContext(ctx, "Failed to fetch tf_english.txt", log.Err(err))
-
 		return nil
 	}
 
 	m.Logger.InfoContext(ctx, "tf_english.txt downloaded, parsing...")
 
 	result := make(map[string]string)
-	scanner := bufio.NewScanner(bytes.NewReader(*resp))
+	scanner := bufio.NewScanner(bytes.NewReader(data))
 	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
 
 	inTokens := false
@@ -529,7 +566,7 @@ func (m *Manager) parseTfEnglish(ctx context.Context) map[string]string {
 		val := strings.Trim(parts[1], "\"")
 
 		if key != "" && val != "" {
-			result[key] = val
+			result[key] = stringpool.Intern(val)
 		}
 	}
 
@@ -538,10 +575,10 @@ func (m *Manager) parseTfEnglish(ctx context.Context) map[string]string {
 	return result
 }
 
-func (m *Manager) parseItemsGameItems(ctx context.Context, url string) []any {
+func (m *Manager) parseItemsGameItems(ctx context.Context, url string) []*Item {
 	url = generic.Coalesce(url, m.config.ItemsGameMirrorURL)
 
-	resp, err := request.GetTo[[]byte](ctx, m.rest, url, decode.WithRaw())
+	data, err := downloadRawURL(ctx, url)
 	if err != nil {
 		m.Logger.WarnContext(ctx, "Failed to download items_game.txt for item parsing", log.Err(err))
 		return nil
@@ -561,7 +598,7 @@ func (m *Manager) parseItemsGameItems(ctx context.Context, url string) []any {
 
 	var found []gameItem
 
-	scanner := bufio.NewScanner(bytes.NewReader(*resp))
+	scanner := bufio.NewScanner(bytes.NewReader(data))
 	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
 
 	inItemsSection := false
@@ -655,7 +692,7 @@ func (m *Manager) parseItemsGameItems(ctx context.Context, url string) []any {
 		}
 	}
 
-	var result []any
+	var result []*Item
 	for _, gi := range found {
 		displayName := gi.name
 
@@ -692,15 +729,13 @@ func (m *Manager) parseItemsGameItems(ctx context.Context, url string) []any {
 			}
 		}
 
-		item := map[string]any{
-			"defindex":    float64(gi.defindex),
-			"item_name":   displayName,
-			"item_class":  gi.itemClass,
-			"item_slot":   gi.itemSlot,
-			"proper_name": gi.properName,
-		}
-		if gi.craftClass != "" {
-			item["craft_class"] = gi.craftClass
+		item := &Item{
+			Defindex:   gi.defindex,
+			ItemName:   stringpool.Intern(displayName),
+			ItemClass:  stringpool.Intern(gi.itemClass),
+			ItemSlot:   stringpool.Intern(gi.itemSlot),
+			ProperName: gi.properName,
+			CraftClass: stringpool.Intern(gi.craftClass),
 		}
 
 		result = append(result, item)
@@ -747,118 +782,73 @@ func (m *Manager) refreshLoop(ctx context.Context) {
 	}
 }
 
-func (m *Manager) buildSchema(
-	overview map[string]any,
-	items []any,
+func (m *Manager) buildSchemaDirect(
+	overview *OverviewResult,
 	paintKits map[string]string,
 	itemsGame map[string]any,
 ) error {
 	raw := &Raw{
 		ItemsGame: itemsGame,
 	}
+
+	raw.Schema.Items = overview.Items
+	raw.Schema.Attributes = overview.Attributes
+	raw.Schema.Qualities = overview.Qualities
+	raw.Schema.QualityNames = overview.QualityNames
+	raw.Schema.OriginNames = overview.OriginNames
+	raw.Schema.ItemSets = overview.ItemSets
+	raw.Schema.AttributeControlledAttachedParticles = overview.AttributeControlledAttachedParticles
+	raw.Schema.ItemLevels = overview.ItemLevels
+	raw.Schema.KillEaterScoreTypes = overview.KillEaterScoreTypes
+	raw.Schema.StringLookups = overview.StringLookups
 	raw.Schema.PaintKits = paintKits
 
-	var schemaData any = overview
-	if result, ok := overview["result"]; ok {
-		schemaData = result
-	}
+	itemsByDefIndex := make(map[int]*Item, len(overview.Items))
 
-	overviewBytes, err := json.Marshal(schemaData)
-	if err != nil {
-		return fmt.Errorf("failed to marshal schema overview: %w", err)
-	}
+	for _, item := range overview.Items {
+		if item != nil && item.Defindex > 0 {
+			item.InternStrings()
 
-	if err := json.Unmarshal(overviewBytes, &raw.Schema); err != nil {
-		return fmt.Errorf("failed to parse schema overview: %w", err)
-	}
-
-	version := ""
-	if res, ok := overview["result"].(map[string]any); ok {
-		if url, ok := res["items_game_url"].(string); ok {
-			version = url
-		}
-	}
-
-	strPool := make(map[string]string, 1024)
-	intern := func(s string) string {
-		if s == "" {
-			return ""
-		}
-		if val, ok := strPool[s]; ok {
-			return val
-		}
-		strPool[s] = s
-		return s
-	}
-
-	for _, item := range raw.Schema.Items {
-		if item == nil {
-			continue
-		}
-		item.ItemClass = intern(item.ItemClass)
-		item.CraftClass = intern(item.CraftClass)
-		item.ItemName = intern(item.ItemName)
-		item.ImageURL = intern(item.ImageURL)
-		item.ImageURLLarge = intern(item.ImageURLLarge)
-
-		for i, class := range item.UsedByClasses {
-			item.UsedByClasses[i] = intern(class)
-		}
-	}
-
-	existingDefs := make(map[int]bool, len(raw.Schema.Items))
-	for _, it := range raw.Schema.Items {
-		if it != nil {
-			existingDefs[it.Defindex] = true
-		}
-	}
-
-	decodeItem := func(input any, target *Item) error {
-		cfg := &mapstructure.DecoderConfig{
-			TagName:          "json",
-			WeaklyTypedInput: true,
-			Result:           target,
-		}
-		dec, err := mapstructure.NewDecoder(cfg)
-		if err != nil {
-			return err
-		}
-		return dec.Decode(input)
-	}
-
-	for _, it := range items {
-		var item Item
-		if err := decodeItem(it, &item); err == nil && item.Defindex > 0 {
-			if !existingDefs[item.Defindex] {
-				item.ItemClass = intern(item.ItemClass)
-				item.CraftClass = intern(item.CraftClass)
-				item.ItemName = intern(item.ItemName)
-				item.ImageURL = intern(item.ImageURL)
-				item.ImageURLLarge = intern(item.ImageURLLarge)
-
-				for i, class := range item.UsedByClasses {
-					item.UsedByClasses[i] = intern(class)
+			if existing, found := itemsByDefIndex[item.Defindex]; found {
+				if existing.ItemName == "" && item.ItemName != "" {
+					existing.ItemName = item.ItemName
 				}
 
-				raw.Schema.Items = append(raw.Schema.Items, &item)
-				existingDefs[item.Defindex] = true
+				if existing.ItemClass == "" && item.ItemClass != "" {
+					existing.ItemClass = item.ItemClass
+				}
+
+				if existing.CraftClass == "" && item.CraftClass != "" {
+					existing.CraftClass = item.CraftClass
+				}
+
+				if existing.ItemQuality == 0 && item.ItemQuality != 0 {
+					existing.ItemQuality = item.ItemQuality
+				}
+			} else {
+				itemsByDefIndex[item.Defindex] = item
 			}
 		}
 	}
 
-	strPool = nil
+	raw.Schema.Items = make([]*Item, 0, len(itemsByDefIndex))
+	for _, itemPtr := range itemsByDefIndex {
+		raw.Schema.Items = append(raw.Schema.Items, itemPtr)
+	}
 
 	if m.config.LiteMode {
 		m.pruneItemsGame(raw)
 	}
 
 	newSchema := New(raw)
-	newSchema.Version = version
+	newSchema.Version = overview.ItemsGameURL
 	newSchema.Time = time.Now()
 
 	m.mu.Lock()
 	m.schema = newSchema
 	m.mu.Unlock()
+
+	debug.FreeOSMemory()
 
 	return nil
 }
@@ -887,26 +877,29 @@ func (m *Manager) pruneItemsGame(raw *Raw) {
 	m.Logger.Debug("LiteMode: pruned items_game data to save memory")
 }
 
-func (m *Manager) getSchemaOverview(ctx context.Context) (map[string]any, error) {
+func (m *Manager) getSchemaOverviewDirect(ctx context.Context) (*OverviewResponse, error) {
 	params := struct {
 		Language string `url:"language"`
 	}{"English"}
 
-	resp, err := service.WebAPI[map[string]any](ctx, m.service, "GET", "IEconItems_440", "GetSchemaOverview", 1, params)
+	resp, err := service.WebAPI[OverviewResponse](
+		ctx,
+		m.service,
+		"GET",
+		"IEconItems_440",
+		"GetSchemaOverview",
+		1,
+		params,
+	)
 	if err != nil {
-		if m.isForbiddenError(err) {
-			m.Logger.Warn("WebAPI returned 403. Attempting to fetch Overview from community mirror...")
-			return m.fetchFromMirror(ctx)
-		}
-
 		return nil, fmt.Errorf("overview fetch failed: %w", err)
 	}
 
-	return *resp, nil
+	return resp, nil
 }
 
-func (m *Manager) getSchemaItems(ctx context.Context) ([]any, error) {
-	var allItems []any
+func (m *Manager) getSchemaItemsDirect(ctx context.Context) ([]*Item, error) {
+	var allItems []*Item
 
 	next := 0
 
@@ -916,45 +909,35 @@ func (m *Manager) getSchemaItems(ctx context.Context) ([]any, error) {
 			Start    int    `url:"start"`
 		}{"English", next}
 
-		resp, err := service.WebAPI[map[string]any](
+		resp, err := service.WebAPI[ItemsResponse](
 			ctx, m.service, "GET", "IEconItems_440", "GetSchemaItems", 1, params,
 		)
 		if err != nil {
-			if m.isForbiddenError(err) {
-				return m.fetchItemsFromMirror(ctx)
-			}
-
 			return nil, err
 		}
 
-		result, ok := (*resp)["result"].(map[string]any)
-		if !ok {
-			break
-		}
-
-		if items, ok := result["items"].([]any); ok {
-			allItems = append(allItems, items...)
+		if resp != nil && len(resp.Result.Items) > 0 {
+			allItems = append(allItems, resp.Result.Items...)
 			m.Logger.Debug("Items progress", log.Int("count", len(allItems)))
 		}
 
-		nextVal, hasNext := result["next"].(float64)
-		if !hasNext || nextVal <= 0 {
+		if resp == nil || resp.Result.Next <= 0 {
 			break
 		}
 
-		next = int(nextVal)
+		next = resp.Result.Next
 	}
 
 	return allItems, nil
 }
 
 func (m *Manager) getPaintKits(ctx context.Context) (map[string]string, error) {
-	resp, err := request.GetTo[[]byte](ctx, m.rest, m.config.PaintKitURL, decode.WithRaw())
+	data, err := downloadRawURL(ctx, m.config.PaintKitURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch paint kits: %w", err)
 	}
 
-	parsed, err := vdf.NewParser(bytes.NewReader(*resp)).Parse()
+	parsed, err := vdf.NewParser(bytes.NewReader(data)).Parse()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse VDF: %w", err)
 	}
@@ -995,7 +978,7 @@ func (m *Manager) getPaintKits(ctx context.Context) (map[string]string, error) {
 		}
 
 		if !seen[name] {
-			paintKits[def] = name
+			paintKits[def] = stringpool.Intern(name)
 			seen[name] = true
 		}
 	}
@@ -1011,7 +994,7 @@ var (
 func (m *Manager) getItemsGame(ctx context.Context, url string) (map[string]any, error) {
 	url = generic.Coalesce(url, m.config.ItemsGameMirrorURL)
 
-	resp, err := request.GetTo[[]byte](ctx, m.rest, url, decode.WithRaw())
+	data, err := downloadRawURL(ctx, url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch items_game.txt: %w", err)
 	}
@@ -1020,7 +1003,7 @@ func (m *Manager) getItemsGame(ctx context.Context, url string) (map[string]any,
 	recipesMap := make(map[string]any)
 	recipeBuf := new(strings.Builder)
 
-	scanner := bufio.NewScanner(bytes.NewReader(*resp))
+	scanner := bufio.NewScanner(bytes.NewReader(data))
 	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
 
 	var (
@@ -1033,7 +1016,6 @@ func (m *Manager) getItemsGame(ctx context.Context, url string) (map[string]any,
 		line := scanner.Text()
 		trimmed := strings.TrimSpace(line)
 
-		// Detect sections at bracketCount == 1 (inside items_game root)
 		if bracketCount == 1 {
 			trimmedQ := strings.TrimSpace(line)
 
@@ -1115,7 +1097,6 @@ func (m *Manager) getItemsGame(ctx context.Context, url string) (map[string]any,
 			continue
 		}
 
-		// Capture recipe defindex at bracketCount == 2, inside recipes section
 		if inRecipesSection && bracketCount == 2 && recipeBracketDepth == 0 {
 			if match := rxDefindex.FindStringSubmatch(line); len(match) == 2 {
 				recipeDefindex = match[1]
@@ -1158,44 +1139,6 @@ func (m *Manager) getItemsGame(ctx context.Context, url string) (map[string]any,
 	}, nil
 }
 
-func (m *Manager) isForbiddenError(err error) bool {
-	var apiErr *service.SteamAPIError
-	if errors.As(err, &apiErr) {
-		return true
-	}
-
-	restErr := &aoni.APIError{}
-	if errors.As(err, &restErr) {
-		return true
-	}
-
-	return strings.Contains(err.Error(), "403")
-}
-
-func (m *Manager) fetchFromMirror(ctx context.Context) (map[string]any, error) {
-	url := m.config.SchemaMirrorURL
-
-	if url == "" {
-		return nil, errors.New("mirror URL for schemanot configured")
-	}
-
-	resp, err := request.GetTo[map[string]any](ctx, m.rest, url)
-	if err != nil {
-		return nil, fmt.Errorf("mirror fetch failed: %w", err)
-	}
-
-	return *resp, nil
-}
-
-func (m *Manager) fetchItemsFromMirror(ctx context.Context) ([]any, error) {
-	resp, err := request.GetTo[[]any](ctx, m.rest, m.config.ItemsMirrorURL)
-	if err != nil {
-		return nil, fmt.Errorf("mirror items fetch failed: %w", err)
-	}
-
-	return *resp, nil
-}
-
 func (m *Manager) saveToCache() error {
 	if m.config.CachePath == "" {
 		return nil
@@ -1205,13 +1148,13 @@ func (m *Manager) saveToCache() error {
 	s := m.schema
 	m.mu.RUnlock()
 
-	if s == nil || s.Raw == nil {
+	if s == nil {
 		return nil
 	}
 
-	data, err := json.Marshal(s.Raw)
+	data, err := json.Marshal(s.ToJSON())
 	if err != nil {
-		return fmt.Errorf("failed to marshal schema for cache: %w", err)
+		return err
 	}
 
 	return writeFile(m.config.CachePath+".json", data)
@@ -1224,20 +1167,16 @@ func (m *Manager) loadFromCache() error {
 
 	data, err := readFile(m.config.CachePath + ".json")
 	if err != nil {
-		// Фолбэк на старый путь, если был .gob
-		data, err = readFile(m.config.CachePath + ".gob")
-		if err != nil {
-			return err
-		}
+		return err
 	}
 
 	var raw Raw
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return fmt.Errorf("failed to unmarshal cached schema JSON: %w", err)
+		return err
 	}
 
 	if len(raw.Schema.Items) == 0 {
-		return errors.New("cached schema contains 0 items (corrupted cache)")
+		return errors.New("cached schema is empty")
 	}
 
 	loadedSchema := New(&raw)

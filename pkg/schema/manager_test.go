@@ -20,7 +20,6 @@ import (
 
 	json "github.com/goccy/go-json"
 	"github.com/lemon4ksan/aoni"
-	"github.com/lemon4ksan/g-man/pkg/steam/service"
 	"github.com/lemon4ksan/g-man/pkg/test/mock"
 	"github.com/lemon4ksan/miyako/generic"
 	"github.com/stretchr/testify/assert"
@@ -511,49 +510,6 @@ func TestManager_ParseTfEnglish(t *testing.T) {
 	assert.Equal(t, "Pistol", res["#Pistol"])
 }
 
-func TestManager_ParseItemsGameItems(t *testing.T) {
-	t.Parallel()
-
-	sm, mockAPI := setupSchema(t, Config{})
-
-	mockAPI.OnRest = func(method, path string, body any) (*http.Response, error) {
-		if strings.Contains(path, "tf_english") {
-			vdf := "\"lang\"\n{\n\t\"Tokens\"\n\t{\n\t\t\"#TF_Scattergun\" \"Scattergun\"\n\t\t\"Crate_Style1\" \"Mann Co. Crate\"\n\t}\n}\n"
-
-			return &http.Response{
-				StatusCode: 200,
-				Body:       io.NopCloser(strings.NewReader(vdf)),
-			}, nil
-		}
-
-		if strings.Contains(path, "items_game") {
-			vdf := "\"items_game\"\n{\n\t\"items\"\n\t{\n\t\t\"5021\"\n\t\t{\n\t\t\t\"name\" \"TF_WEAPON_SCATTERGUN\"\n\t\t\t\"localizedname\" \"#TF_Scattergun\"\n\t\t\t\"item_class\" \"tf_weapon_scattergun\"\n\t\t\t\"item_slot\" \"primary\"\n\t\t\t\"proper_name\" \"1\"\n\t\t\t\"craft_class\" \"weapon\"\n\t\t}\n\t\t\"5022\"\n\t\t{\n\t\t\t\"name\" \"Crate\"\n\t\t\t\"localizedname\" \"Crate_Style1\"\n\t\t}\n\t\t\"invalid_line\"\n\t}\n}\n"
-
-			return &http.Response{
-				StatusCode: 200,
-				Body:       io.NopCloser(strings.NewReader(vdf)),
-			}, nil
-		}
-
-		return nil, fmt.Errorf("unexpected path: %s", path)
-	}
-
-	res := sm.parseItemsGameItems(t.Context(), "http://mock/items_game")
-	require.Len(t, res, 2)
-
-	item1 := res[0].(map[string]any)
-	assert.Equal(t, float64(5021), item1["defindex"])
-	assert.Equal(t, "Scattergun", item1["item_name"])
-	assert.Equal(t, "tf_weapon_scattergun", item1["item_class"])
-	assert.Equal(t, "primary", item1["item_slot"])
-	assert.True(t, item1["proper_name"].(bool))
-	assert.Equal(t, "weapon", item1["craft_class"])
-
-	item2 := res[1].(map[string]any)
-	assert.Equal(t, float64(5022), item2["defindex"])
-	assert.Equal(t, "Mann Co. Crate", item2["item_name"])
-}
-
 func TestManager_GetPaintKits(t *testing.T) {
 	t.Parallel()
 
@@ -754,43 +710,6 @@ func TestCoverage_ManagerCache(t *testing.T) {
 	assert.Nil(t, sm5.saveToCache())
 }
 
-func TestCoverage_MirrorFetch(t *testing.T) {
-	t.Parallel()
-
-	sm, _ := setupSchema(t, Config{
-		SchemaMirrorURL: "",
-	})
-
-	_, err := sm.fetchFromMirror(t.Context())
-	assert.ErrorContains(t, err, "not configured")
-
-	sm2, mockAPI2 := setupSchema(t, Config{
-		SchemaMirrorURL: "http://mirror/overview",
-	})
-
-	mockAPI2.OnRest = func(method, path string, body any) (*http.Response, error) {
-		if strings.Contains(path, "overview") {
-			return &http.Response{
-				Body:       io.NopCloser(strings.NewReader(`{"result":{"qualities":{}}}`)),
-				StatusCode: 200,
-			}, nil
-		}
-
-		if strings.Contains(path, "items") {
-			return &http.Response{
-				Body:       io.NopCloser(strings.NewReader(`[]`)),
-				StatusCode: 200,
-			}, nil
-		}
-
-		return nil, fmt.Errorf("unexpected path: %s", path)
-	}
-
-	res, err := sm2.fetchFromMirror(t.Context())
-	assert.NoError(t, err)
-	assert.NotNil(t, res)
-}
-
 func TestManager_StartAuthed_FailsToLoadCache(t *testing.T) {
 	t.Parallel()
 	sm, mockAPI := setupSchema(t, Config{
@@ -824,26 +743,6 @@ func TestManager_StartAuthed_FailsToLoadCache(t *testing.T) {
 
 	err := sm.StartAuthed(ctx, authCtx)
 	assert.NoError(t, err)
-}
-
-func TestCoverage_ManagerErrors(t *testing.T) {
-	t.Parallel()
-
-	sm := NewManager(Config{})
-
-	assert.True(t, sm.isForbiddenError(errors.New("403 Forbidden")))
-	assert.False(t, sm.isForbiddenError(errors.New("generic error")))
-
-	apiErr := &service.SteamAPIError{
-		StatusCode: 403,
-		Message:    "Forbidden",
-	}
-	assert.True(t, sm.isForbiddenError(apiErr))
-
-	restErr := &aoni.APIError{
-		StatusCode: 403,
-	}
-	assert.True(t, sm.isForbiddenError(restErr))
 }
 
 func TestCoverage_GetItemsGame_Deep(t *testing.T) {
@@ -889,27 +788,4 @@ func TestCoverage_GetItemsGame_Deep(t *testing.T) {
 	}
 	_, err = sm.getItemsGame(t.Context(), "http://mock/test_items_game")
 	assert.Error(t, err)
-}
-
-func TestCoverage_FetchItemsFromMirror(t *testing.T) {
-	t.Parallel()
-
-	sm, mockAPI := setupSchema(t, Config{
-		ItemsMirrorURL: "http://mirror/items",
-	})
-
-	mockAPI.OnRest = func(method, path string, body any) (*http.Response, error) {
-		if strings.Contains(path, "items") {
-			return &http.Response{
-				Body:       io.NopCloser(strings.NewReader(`[]`)),
-				StatusCode: 200,
-			}, nil
-		}
-
-		return nil, fmt.Errorf("unexpected path: %s", path)
-	}
-
-	res, err := sm.fetchItemsFromMirror(t.Context())
-	assert.NoError(t, err)
-	assert.NotNil(t, res)
 }

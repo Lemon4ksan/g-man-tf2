@@ -28,12 +28,12 @@ type communityFixturePayload struct {
 		Amount     string `json:"amount"`
 	} `json:"assets"`
 	Descriptions []struct {
-		ClassID        string         `json:"classid"`
-		InstanceID     string         `json:"instanceid"`
-		MarketHashName string         `json:"market_hash_name"`
-		Name           string         `json:"name"`
-		Tradable       int            `json:"tradable"`
-		AppData        map[string]any `json:"app_data"`
+		ClassID        string             `json:"classid"`
+		InstanceID     string             `json:"instanceid"`
+		MarketHashName string             `json:"market_hash_name"`
+		Name           string             `json:"name"`
+		Tradable       int                `json:"tradable"`
+		AppData        *inventory.AppData `json:"app_data"`
 		Descriptions   []struct {
 			Value string `json:"value"`
 			Color string `json:"color,omitempty"`
@@ -42,12 +42,12 @@ type communityFixturePayload struct {
 }
 
 func loadFixturePayload(t testing.TB) (communityFixturePayload, map[string]struct {
-	ClassID        string         `json:"classid"`
-	InstanceID     string         `json:"instanceid"`
-	MarketHashName string         `json:"market_hash_name"`
-	Name           string         `json:"name"`
-	Tradable       int            `json:"tradable"`
-	AppData        map[string]any `json:"app_data"`
+	ClassID        string             `json:"classid"`
+	InstanceID     string             `json:"instanceid"`
+	MarketHashName string             `json:"market_hash_name"`
+	Name           string             `json:"name"`
+	Tradable       int                `json:"tradable"`
+	AppData        *inventory.AppData `json:"app_data"`
 	Descriptions   []struct {
 		Value string `json:"value"`
 		Color string `json:"color,omitempty"`
@@ -69,12 +69,12 @@ func loadFixturePayload(t testing.TB) (communityFixturePayload, map[string]struc
 	}
 
 	descMap := make(map[string]struct {
-		ClassID        string         `json:"classid"`
-		InstanceID     string         `json:"instanceid"`
-		MarketHashName string         `json:"market_hash_name"`
-		Name           string         `json:"name"`
-		Tradable       int            `json:"tradable"`
-		AppData        map[string]any `json:"app_data"`
+		ClassID        string             `json:"classid"`
+		InstanceID     string             `json:"instanceid"`
+		MarketHashName string             `json:"market_hash_name"`
+		Name           string             `json:"name"`
+		Tradable       int                `json:"tradable"`
+		AppData        *inventory.AppData `json:"app_data"`
 		Descriptions   []struct {
 			Value string `json:"value"`
 			Color string `json:"color,omitempty"`
@@ -138,7 +138,7 @@ func TestFullGlitchedInventoryParsing_76561197991477148(t *testing.T) {
 			},
 		}
 
-		item := mapCEconToTF2(econ, s)
+		item := MapCEconToTF2(econ, s)
 		parsedItems++
 
 		// Verify SKU generation stability across all 2,406 items
@@ -261,7 +261,7 @@ func TestSKURoundtripIdempotency_FullInventory(t *testing.T) {
 			},
 		}
 
-		item := mapCEconToTF2(econ, s)
+		item := MapCEconToTF2(econ, s)
 		origSKU := item.ToSKU()
 
 		// 1. Validate SKU format
@@ -525,7 +525,7 @@ func BenchmarkFullInventoryParsing_Parallel(b *testing.B) {
 				},
 			}
 
-			item := mapCEconToTF2(econ, s)
+			item := MapCEconToTF2(econ, s)
 			_ = item.ToSKU()
 		}
 	})

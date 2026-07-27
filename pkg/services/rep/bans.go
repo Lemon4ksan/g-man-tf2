@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/request"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 
@@ -20,7 +19,7 @@ import (
 type BansManager struct {
 	bptfClient *bptf.Client
 	mptfAPIKey string
-	rest       *aoni.Client
+	rest       request.Requester
 }
 
 // NewBansManager creates a new bans manager.
@@ -28,7 +27,7 @@ func NewBansManager(bptfClient *bptf.Client, mptfAPIKey string) *BansManager {
 	return &BansManager{
 		bptfClient: bptfClient,
 		mptfAPIKey: mptfAPIKey,
-		rest:       bptfClient.REST(),
+		rest:       bptfClient.R(),
 	}
 }
 

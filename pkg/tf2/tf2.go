@@ -328,22 +328,10 @@ func (t *TF2) GetCurrentAchievements(ctx context.Context) (map[uint32]bool, erro
 	}
 
 	baseIDs := map[uint32]uint32{
-		266: 1001,
-		267: 1033,
-		268: 1101,
-		269: 1133,
-		313: 1201,
-		314: 1233,
-		333: 1301,
-		348: 1333,
-		359: 1401,
-		360: 1433,
-		386: 1501,
-		405: 1533,
-		408: 1601,
-		684: 1633,
-		687: 1701,
-		748: 1733,
+		266: 1001, 267: 1033, 268: 1101, 269: 1133,
+		313: 1201, 314: 1233, 333: 1301, 348: 1333,
+		359: 1401, 360: 1433, 386: 1501, 405: 1533,
+		408: 1601, 684: 1633, 687: 1701, 748: 1733,
 		757: 1801,
 	}
 
@@ -510,7 +498,6 @@ func (t *TF2) messageLoop(ctx context.Context, sub *bus.Subscription) {
 					t.routePacket(ctx, e.Packet)
 				}
 			case *schema.ReadyEvent:
-				t.Logger.Info("TF2 Schema is ready, updating SOCache schema")
 				t.cache.UpdateSchema(t.schema.Get())
 			case *schema.UpdatedEvent:
 				t.Logger.Info("TF2 Schema is updated, updating SOCache schema")

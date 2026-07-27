@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/lemon4ksan/aoni"
+	"github.com/lemon4ksan/aoni/fast"
 	"github.com/lemon4ksan/aoni/mod"
 	"github.com/lemon4ksan/aoni/option"
 	"github.com/lemon4ksan/aoni/request"
@@ -25,28 +26,33 @@ const (
 
 // Client is a thread-safe HTTP client for interacting with PriceDB.
 type Client struct {
-	rest  *aoni.Client
-	sku   *aoni.Client
-	spell *aoni.Client
+	r     request.Requester
+	sku   request.Requester
+	spell request.Requester
 }
 
-// NewClient creates a new PriceDB API client.
-// If httpClient is nil, a default robust client is created.
-func NewClient(client *aoni.Client) *Client {
-	if client == nil {
-		client = aoni.NewClient(nil)
+// NewClient creates a new PriceDB API client backed by fast.Client by default.
+func NewClient(doer aoni.RequestDoer) *Client {
+	if doer == nil {
+		doer = fast.NewClient()
 	}
 
 	return &Client{
-		rest:  client.With(option.WithBaseURL(BaseURL), option.WithUserAgent("G-man Bot/1.0")),
-		sku:   client.With(option.WithBaseURL(SKUURL), option.WithUserAgent("G-man Bot/1.0")),
-		spell: client.With(option.WithBaseURL(SpellURL), option.WithUserAgent("G-man Bot/1.0")),
+		r: request.AsRequester(
+			aoni.Configure(doer, option.WithBaseURL(BaseURL), option.WithUserAgent("G-man Bot/1.0")),
+		),
+		sku: request.AsRequester(
+			aoni.Configure(doer, option.WithBaseURL(SKUURL), option.WithUserAgent("G-man Bot/1.0")),
+		),
+		spell: request.AsRequester(
+			aoni.Configure(doer, option.WithBaseURL(SpellURL), option.WithUserAgent("G-man Bot/1.0")),
+		),
 	}
 }
 
 // GetItem fetches the latest price for a specific item SKU.
 func (c *Client) GetItem(ctx context.Context, sku string) (*Price, error) {
-	return request.GetTo[Price](ctx, c.rest, "item/{sku}", mod.WithVar("sku", sku))
+	return request.GetTo[Price](ctx, c.r, "item/{sku}", mod.WithVar("sku", sku))
 }
 
 // GetItemsBulk fetches the latest prices for an array of SKUs in a single request.
@@ -78,7 +84,7 @@ func (c *Client) GetItemsBulk(ctx context.Context, skus []string) ([]*Price, err
 	}, batches, func(chunkCtx context.Context, batch []string) ([]*Price, error) {
 		req := bulkRequest{SKUs: batch}
 
-		resp, err := request.PostTo[[]*Price](chunkCtx, c.rest, "items-bulk", req)
+		resp, err := request.PostTo[[]*Price](chunkCtx, c.r, "items-bulk", req)
 		if err != nil {
 			return nil, err
 		}
@@ -108,7 +114,7 @@ func (c *Client) Search(ctx context.Context, query string, limit int) (*SearchRe
 		Limit int    `url:"limit,omitempty"`
 	}{query, limit}
 
-	return request.GetTo[SearchResult](ctx, c.rest, "search", mod.WithQuery(req))
+	return request.GetTo[SearchResult](ctx, c.r, "search", mod.WithQuery(req))
 }
 
 // GetHistory returns the price history for a specific SKU.
@@ -121,7 +127,7 @@ func (c *Client) GetHistory(ctx context.Context, sku string, start, end int64) (
 
 	resp, err := request.GetTo[[]*Price](
 		ctx,
-		c.rest,
+		c.r,
 		"item-history/{sku}",
 		mod.WithQuery(req),
 		mod.WithVar("sku", sku),
@@ -135,13 +141,13 @@ func (c *Client) GetHistory(ctx context.Context, sku string, start, end int64) (
 
 // GetStats returns statistics (min, max, avg) for an item's price history.
 func (c *Client) GetStats(ctx context.Context, sku string) (*ItemStats, error) {
-	return request.GetTo[ItemStats](ctx, c.rest, "item-stats/{sku}", mod.WithVar("sku", sku))
+	return request.GetTo[ItemStats](ctx, c.r, "item-stats/{sku}", mod.WithVar("sku", sku))
 }
 
 // Compare compares two items side by side, returning the price differences.
 func (c *Client) Compare(ctx context.Context, sku1, sku2 string) (*CompareResult, error) {
 	return request.GetTo[CompareResult](
-		ctx, c.rest, "compare/{sku1}/{sku2}",
+		ctx, c.r, "compare/{sku1}/{sku2}",
 		mod.WithVar("sku1", sku1), mod.WithVar("sku2", sku2),
 	)
 }
@@ -149,13 +155,13 @@ func (c *Client) Compare(ctx context.Context, sku1, sku2 string) (*CompareResult
 // TriggerPriceCheck requests PriceDB to update the price for a specific SKU.
 // This hits the Autobot integration endpoint.
 func (c *Client) TriggerPriceCheck(ctx context.Context, sku string) error {
-	_, err := request.PostTo[request.NoResponse](ctx, c.rest, "autob/items/{sku}", nil, mod.WithVar("sku", sku))
+	_, err := request.PostTo[request.NoResponse](ctx, c.r, "autob/items/{sku}", nil, mod.WithVar("sku", sku))
 	return err
 }
 
 // HealthCheck returns the current system statistics and health of the API.
 func (c *Client) HealthCheck(ctx context.Context) (*CacheStats, error) {
-	return request.GetTo[CacheStats](ctx, c.rest, "cache-stats")
+	return request.GetTo[CacheStats](ctx, c.r, "cache-stats")
 }
 
 // ResolveName looks up an item by name using the SKU Service.
@@ -190,7 +196,7 @@ func (c *Client) GetSchema(ctx context.Context) (map[string]any, error) {
 
 // GetHealth returns the health status message from the PriceDB API.
 func (c *Client) GetHealth(ctx context.Context) (string, error) {
-	resp, err := request.GetTo[string](ctx, c.rest, "")
+	resp, err := request.GetTo[string](ctx, c.r, "")
 	if err != nil {
 		return "", err
 	}
@@ -200,7 +206,7 @@ func (c *Client) GetHealth(ctx context.Context) (string, error) {
 
 // GetItems returns a list of all unique items (name and SKU) in the database.
 func (c *Client) GetItems(ctx context.Context) ([]*ItemBrief, error) {
-	resp, err := request.GetTo[[]*ItemBrief](ctx, c.rest, "items")
+	resp, err := request.GetTo[[]*ItemBrief](ctx, c.r, "items")
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +216,7 @@ func (c *Client) GetItems(ctx context.Context) ([]*ItemBrief, error) {
 
 // GetLatestPrices returns the 10 most recent price entries from the database.
 func (c *Client) GetLatestPrices(ctx context.Context) ([]*Price, error) {
-	resp, err := request.GetTo[[]*Price](ctx, c.rest, "latest-prices")
+	resp, err := request.GetTo[[]*Price](ctx, c.r, "latest-prices")
 	if err != nil {
 		return nil, err
 	}
@@ -225,13 +231,13 @@ func (c *Client) GetPrices(ctx context.Context, limit, offset int) (*PriceHistor
 		Offset int `url:"offset,omitempty"`
 	}{Limit: limit, Offset: offset}
 
-	return request.GetTo[PriceHistoryResponse](ctx, c.rest, "prices", mod.WithQuery(req))
+	return request.GetTo[PriceHistoryResponse](ctx, c.r, "prices", mod.WithQuery(req))
 }
 
 // GetSnapshot returns the most recent price for each SKU as of the given unix timestamp.
 func (c *Client) GetSnapshot(ctx context.Context, timestamp int64) ([]*Price, error) {
 	resp, err := request.GetTo[[]*Price](
-		ctx, c.rest, "snapshot/{timestamp}",
+		ctx, c.r, "snapshot/{timestamp}",
 		mod.WithVar("timestamp", timestamp),
 	)
 	if err != nil {
@@ -251,7 +257,7 @@ func (c *Client) GetGraph(ctx context.Context, sku string, header bool, height i
 
 	resp, err := request.GetTo[string](
 		ctx,
-		c.rest,
+		c.r,
 		"graph/{sku}",
 		mod.WithQuery(req),
 		mod.WithVar("sku", sku),
@@ -265,12 +271,12 @@ func (c *Client) GetGraph(ctx context.Context, sku string, header bool, height i
 
 // GetAutobItems fetches the full pricelist in TF2Autobot-compatible format.
 func (c *Client) GetAutobItems(ctx context.Context) (*AutobItemsResponse, error) {
-	return request.GetTo[AutobItemsResponse](ctx, c.rest, "autob/items")
+	return request.GetTo[AutobItemsResponse](ctx, c.r, "autob/items")
 }
 
 // GetAutobItem fetches the latest price for a single SKU in TF2Autobot-compatible format.
 func (c *Client) GetAutobItem(ctx context.Context, sku string) (*Price, error) {
-	return request.GetTo[Price](ctx, c.rest, "autob/items/{sku}", mod.WithVar("sku", sku))
+	return request.GetTo[Price](ctx, c.r, "autob/items/{sku}", mod.WithVar("sku", sku))
 }
 
 // GetImageBySKU returns the raw image data for a SKU from the SKU service.

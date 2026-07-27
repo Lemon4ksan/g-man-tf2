@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package mannco provides a client for interacting with the Mannco.store API.
+// Package mannco provides the TF2 Mannco.store API client.
 package mannco
 
 import (
@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/lemon4ksan/aoni"
+	"github.com/lemon4ksan/aoni/fast"
 	"github.com/lemon4ksan/aoni/option"
 	"github.com/lemon4ksan/aoni/request"
 )
@@ -66,31 +67,60 @@ const (
 // Client is a thread-safe client for the Mannco.store API.
 // It wraps aoni.Client and synchronizes token updates.
 type Client struct {
-	mu   sync.Mutex
-	rest *aoni.Client
+	mu    sync.Mutex
+	token string
+	r     request.Requester
 }
 
 // NewClient initializes a new client with the predefined Mannco.store host,
-// standard User-Agent, and BaseResponse envelope configurations.
-func NewClient(rest *aoni.Client) *Client {
+// standard User-Agent, and BaseResponse envelope configurations, backed by fast.Client by default.
+func NewClient(rest aoni.RequestDoer) *Client {
+	c := &Client{}
+
 	if rest == nil {
-		rest = aoni.NewClient(nil)
+		rest = fast.NewClient()
 	}
 
 	opts := []aoni.ClientOption{
 		option.WithUserAgent("G-man Bot/1.0"),
+		option.WithHeaderFunc("Authorization", c.Token),
 		option.WithBaseURL(BaseURL),
 		option.WithBaseResponse(func() aoni.BaseResponse { return new(BaseResponse) }),
 	}
 
-	return &Client{rest: rest.With(opts...)}
+	c.r = request.AsRequester(aoni.Configure(rest, opts...))
+
+	return c
 }
 
-// getClient retrieves the underlying aoni.Client pointer thread-safely.
-func (c *Client) getClient() *aoni.Client {
+// With applies the given options to the client, returning a new client with the updated configuration.
+func (c *Client) With(opts ...aoni.ClientOption) *Client {
+	if len(opts) == 0 {
+		return c
+	}
+
+	return &Client{
+		r: request.AsRequester(aoni.Configure(c.r, opts...)),
+	}
+}
+
+// Token returns the current token used for authentication.
+// Use [Client.FetchAuthToken] to obtain a new token.
+func (c *Client) Token() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.rest
+
+	if c.token == "" {
+		return ""
+	}
+
+	return "Bearer " + c.token
+}
+
+func (c *Client) setToken(token string) {
+	c.mu.Lock()
+	c.token = token
+	c.mu.Unlock()
 }
 
 // Login authenticates the client using a Mannco API key.
@@ -108,14 +138,12 @@ func (c *Client) Login(ctx context.Context, apiKey string) error {
 		JWT string `json:"jwt"`
 	}
 
-	r, err := request.PostTo[resp](ctx, c.getClient(), "user/login", body)
+	r, err := request.PostTo[resp](ctx, c.r, "user/login", body)
 	if err != nil {
 		return err
 	}
 
-	c.mu.Lock()
-	c.rest = c.rest.With(option.WithBearer(r.JWT))
-	c.mu.Unlock()
+	c.setToken(r.JWT)
 
 	return nil
 }

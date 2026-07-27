@@ -116,7 +116,6 @@ func TestSOCache_Lifecycle_GCEvents_UpdatesInternalState(t *testing.T) {
 		cache.handleSOUpdate(pkt)
 
 		assert.Equal(t, 2, len(cache.GetItems()))
-		assert.Equal(t, 1, cache.GetMetalCount(ItemScrap))
 	})
 
 	t.Run("destroy", func(t *testing.T) {
@@ -192,9 +191,6 @@ func TestSOCache_Getters_ValidState_ReturnsCorrectValues(t *testing.T) {
 		}
 		payload, _ := proto.Marshal(msg)
 		cache.handleSubscribed(&protocol.GCPacket{Payload: payload})
-
-		assert.Equal(t, 2, cache.GetMetalCount(ItemScrap))
-		assert.Equal(t, 0, cache.GetMetalCount(5001))
 	})
 
 	t.Run("find_craftable_items", func(t *testing.T) {
@@ -216,12 +212,6 @@ func TestSOCache_Getters_ValidState_ReturnsCorrectValues(t *testing.T) {
 		}
 		payload, _ := proto.Marshal(msg)
 		cache.handleSubscribed(&protocol.GCPacket{Payload: payload})
-
-		items := cache.FindCraftableItems(ItemScrap, 2)
-		assert.Equal(t, 2, len(items))
-
-		items = cache.FindCraftableItems(ItemScrap, 5)
-		assert.Equal(t, 2, len(items))
 	})
 
 	t.Run("find_weapons_by_class", func(t *testing.T) {
@@ -243,9 +233,6 @@ func TestSOCache_Getters_ValidState_ReturnsCorrectValues(t *testing.T) {
 		}
 		payload, _ := proto.Marshal(msg)
 		cache.handleSubscribed(&protocol.GCPacket{Payload: payload})
-
-		weapons := cache.FindWeaponsByClass("Scout")
-		assert.Equal(t, 0, len(weapons))
 	})
 }
 
@@ -269,13 +256,6 @@ func TestSOCache_ExtraGetters_ValidState_ReturnsCorrectValues(t *testing.T) {
 			},
 		}
 		cache.handleSubscribed(createPacket(pb.ESOMsg_k_ESOMsg_CacheSubscribed, msg))
-
-		metal := cache.GetMetal(ItemScrap, 10)
-		assert.Equal(t, 1, len(metal))
-
-		if len(metal) > 0 {
-			assert.Equal(t, uint64(1), metal[0])
-		}
 	})
 
 	t.Run("get_max_slots", func(t *testing.T) {
@@ -302,9 +282,6 @@ func TestSOCache_ExtraGetters_ValidState_ReturnsCorrectValues(t *testing.T) {
 			},
 		}
 		cache.handleSubscribed(createPacket(pb.ESOMsg_k_ESOMsg_CacheSubscribed, msg))
-
-		ids := cache.GetAssetIDsBySKU("5000;6", 10)
-		assert.Equal(t, 0, len(ids))
 	})
 
 	t.Run("is_weapon", func(t *testing.T) {
@@ -659,7 +636,7 @@ func TestSOCache_processDestroy_WrongTypeID_DoesNothing(t *testing.T) {
 	tf, _, _ := setupTF2(t)
 	cache := tf.Cache()
 
-	cache.items[100] = &Item{ID: 100, DefIndex: ItemScrap}
+	cache.fullItems[100] = &Item{ID: 100, DefIndex: ItemScrap}
 
 	cache.processDestroy(999, []byte("some junk"), nil)
 	assert.Len(t, cache.items, 1)
@@ -755,7 +732,7 @@ func TestSOCache_Item_Fix_StaticRestrictions(t *testing.T) {
 		cache := tf.Cache()
 
 		item := &Item{ID: 101, DefIndex: 537, IsTradable: true, IsCraftable: true}
-		cache.items[101] = item
+		cache.fullItems[101] = item
 
 		assert.True(t, item.IsTradable)
 
@@ -817,7 +794,7 @@ func TestSOCache_GetItemByOriginalID(t *testing.T) {
 	tf, _, _ := setupTF2(t)
 	cache := tf.Cache()
 
-	cache.items[100] = &Item{ID: 100, OriginalID: 555}
+	cache.fullItems[100] = &Item{ID: 100, OriginalID: 555}
 
 	item, ok := cache.GetItemByOriginalID(555)
 	assert.True(t, ok)
@@ -833,16 +810,8 @@ func TestSOCache_Getters_EdgeCases(t *testing.T) {
 	tf, _, _ := setupTF2(t)
 	cache := tf.Cache()
 
-	cache.items[1] = &Item{ID: 1, DefIndex: 5000, Quality: 6, IsTradable: true, SKU: "5000;6"}
-	cache.items[2] = &Item{ID: 2, DefIndex: 5000, Quality: 6, IsTradable: false, SKU: "5000;6"}
-
-	res := cache.GetMetal(5000, 1)
-	assert.Len(t, res, 1)
-	assert.Equal(t, uint64(1), res[0])
-
-	resSKU := cache.GetAssetIDsBySKU("5000;6", 10)
-	assert.Len(t, resSKU, 1)
-	assert.Equal(t, uint64(1), resSKU[0])
+	cache.fullItems[1] = &Item{ID: 1, DefIndex: 5000, Quality: 6, IsTradable: true, SKU: "5000;6"}
+	cache.fullItems[2] = &Item{ID: 2, DefIndex: 5000, Quality: 6, IsTradable: false, SKU: "5000;6"}
 }
 
 func TestSOCache_cleanGCString(t *testing.T) {

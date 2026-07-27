@@ -27,14 +27,14 @@ func TestMapCEconToTF2(t *testing.T) {
 			},
 			Description: inventory.Description{
 				Tradable: 1,
-				AppData: map[string]any{
-					"def_index": "13",
-					"quality":   "6",
+				AppData: &inventory.AppData{
+					DefIndex: 13,
+					Quality:  6,
 				},
 			},
 		}
 
-		item := mapCEconToTF2(econ, s)
+		item := MapCEconToTF2(econ, s)
 		assert.Equal(t, uint64(100), item.ID)
 		assert.Equal(t, 13, item.Defindex)
 		assert.Equal(t, 6, item.Quality)
@@ -49,7 +49,7 @@ func TestMapCEconToTF2(t *testing.T) {
 				Amount:  "not_a_number",
 			},
 		}
-		item := mapCEconToTF2(econ, s)
+		item := MapCEconToTF2(econ, s)
 		assert.Equal(t, 1, item.Quantity)
 	})
 
@@ -57,12 +57,12 @@ func TestMapCEconToTF2(t *testing.T) {
 		econ := inventory.CEconItem{
 			Asset: inventory.Asset{AssetID: "102"},
 			Description: inventory.Description{
-				AppData: map[string]any{
-					"original_id": float64(54321),
+				AppData: &inventory.AppData{
+					OriginalID: 54321,
 				},
 			},
 		}
-		item := mapCEconToTF2(econ, s)
+		item := MapCEconToTF2(econ, s)
 		assert.Equal(t, uint64(54321), item.OriginalID)
 	})
 
@@ -70,12 +70,12 @@ func TestMapCEconToTF2(t *testing.T) {
 		econ := inventory.CEconItem{
 			Asset: inventory.Asset{AssetID: "103"},
 			Description: inventory.Description{
-				AppData: map[string]any{
-					"original_id": "12345",
+				AppData: &inventory.AppData{
+					OriginalID: 12345,
 				},
 			},
 		}
-		item := mapCEconToTF2(econ, s)
+		item := MapCEconToTF2(econ, s)
 		assert.Equal(t, uint64(12345), item.OriginalID)
 	})
 
@@ -87,7 +87,7 @@ func TestMapCEconToTF2(t *testing.T) {
 				MarketHashName: "Paint Can",
 			},
 		}
-		item := mapCEconToTF2(econ, s)
+		item := MapCEconToTF2(econ, s)
 		assert.Equal(t, 13, item.Defindex)
 	})
 
@@ -111,26 +111,9 @@ func TestMapCEconToTF2(t *testing.T) {
 				},
 			},
 		}
-		item := mapCEconToTF2(econ, s)
+		item := MapCEconToTF2(econ, s)
 		assert.True(t, item.FlagCannotCraft)
 		assert.NotEmpty(t, item.Attributes)
-	})
-
-	t.Run("unparseable_appdata_strings", func(t *testing.T) {
-		econ := inventory.CEconItem{
-			Asset: inventory.Asset{AssetID: "106"},
-			Description: inventory.Description{
-				AppData: map[string]any{
-					"def_index":   "not_a_number",
-					"quality":     "not_a_number",
-					"original_id": "not_a_number",
-				},
-			},
-		}
-		item := mapCEconToTF2(econ, s)
-		assert.Equal(t, 0, item.Defindex)
-		assert.Equal(t, 0, item.Quality)
-		assert.Equal(t, uint64(0), item.OriginalID)
 	})
 }
 
@@ -288,14 +271,14 @@ func TestModels_CEconToTF2_EdgeCases(t *testing.T) {
 			Asset: inventory.Asset{AssetID: "100"},
 			Description: inventory.Description{
 				MarketHashName: "Australium Scattergun",
-				AppData: map[string]any{
-					"def_index": "13",
-					"quality":   "11",
+				AppData: &inventory.AppData{
+					DefIndex: 13,
+					Quality:  11,
 				},
 			},
 		}
 
-		item := mapCEconToTF2(econ, s)
+		item := MapCEconToTF2(econ, s)
 
 		hasAustralium := false
 		for _, attr := range item.Attributes {
@@ -313,14 +296,14 @@ func TestModels_CEconToTF2_EdgeCases(t *testing.T) {
 			Asset: inventory.Asset{AssetID: "100"},
 			Description: inventory.Description{
 				Name: "Festivized Scattergun",
-				AppData: map[string]any{
-					"def_index": "13",
-					"quality":   "6",
+				AppData: &inventory.AppData{
+					DefIndex: 13,
+					Quality:  6,
 				},
 			},
 		}
 
-		item := mapCEconToTF2(econ, s)
+		item := MapCEconToTF2(econ, s)
 
 		hasFestive := false
 		for _, attr := range item.Attributes {
@@ -343,9 +326,9 @@ func TestModels_CEconToTF2_EdgeCases(t *testing.T) {
 		econ := inventory.CEconItem{
 			Asset: inventory.Asset{AssetID: "100"},
 			Description: inventory.Description{
-				AppData: map[string]any{
-					"def_index": "13",
-					"quality":   "11",
+				AppData: &inventory.AppData{
+					DefIndex: 13,
+					Quality:  11,
 				},
 				Descriptions: []struct {
 					Value string `json:"value"`
@@ -357,7 +340,7 @@ func TestModels_CEconToTF2_EdgeCases(t *testing.T) {
 			},
 		}
 
-		item := mapCEconToTF2(econ, sCustom)
+		item := MapCEconToTF2(econ, sCustom)
 		hasSpell := false
 
 		hasPart := false
@@ -424,9 +407,9 @@ func TestMapCEconToTF2_GlitchedInventory(t *testing.T) {
 			Description: inventory.Description{
 				Tradable:       1,
 				MarketHashName: "Strange Festivized Professional Killstreak Holy Mackerel",
-				AppData: map[string]any{
-					"def_index": "221",
-					"quality":   "11",
+				AppData: &inventory.AppData{
+					DefIndex: 221,
+					Quality:  11,
 				},
 				Descriptions: []struct {
 					Value string `json:"value"`
@@ -442,7 +425,7 @@ func TestMapCEconToTF2_GlitchedInventory(t *testing.T) {
 			},
 		}
 
-		item := mapCEconToTF2(econ, s)
+		item := MapCEconToTF2(econ, s)
 		assert.Equal(t, uint64(5244338466), item.ID)
 		assert.Equal(t, 221, item.Defindex)
 		assert.Equal(t, 11, item.Quality)
@@ -473,9 +456,9 @@ func TestMapCEconToTF2_GlitchedInventory(t *testing.T) {
 			Description: inventory.Description{
 				Tradable:       1,
 				MarketHashName: "Professional Killstreak Three-Rune Blade",
-				AppData: map[string]any{
-					"def_index": "457",
-					"quality":   "6",
+				AppData: &inventory.AppData{
+					DefIndex: 457,
+					Quality:  6,
 				},
 				Descriptions: []struct {
 					Value string `json:"value"`
@@ -490,7 +473,7 @@ func TestMapCEconToTF2_GlitchedInventory(t *testing.T) {
 			},
 		}
 
-		item := mapCEconToTF2(econ, s)
+		item := MapCEconToTF2(econ, s)
 		assert.Equal(t, 457, item.Defindex)
 
 		hasKS3 := false
@@ -532,9 +515,9 @@ func TestStrangeIsotopeFlameThrower_SKURoundtrip(t *testing.T) {
 		Description: inventory.Description{
 			Tradable:       1,
 			MarketHashName: "Strange Isotope Festivized Professional Killstreak Team Serviced Flame Thrower (Field-Tested)",
-			AppData: map[string]any{
-				"def_index": "208",
-				"quality":   "11",
+			AppData: &inventory.AppData{
+				DefIndex: 208,
+				Quality:  11,
 			},
 			Descriptions: []struct {
 				Value string `json:"value"`
@@ -549,7 +532,7 @@ func TestStrangeIsotopeFlameThrower_SKURoundtrip(t *testing.T) {
 		},
 	}
 
-	tfItem := mapCEconToTF2(econ, s)
+	tfItem := MapCEconToTF2(econ, s)
 	assert.Equal(t, 208, tfItem.Defindex)
 	assert.Equal(t, 11, tfItem.Quality)
 }

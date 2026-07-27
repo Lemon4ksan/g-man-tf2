@@ -114,7 +114,7 @@ type TradeStatusResponse struct {
 // Route: GET /deposit/{game}
 // Permission: Connected + API
 func (c *Client) GetDepositInfo(ctx context.Context, game int) (*GetDepositInfoResponse, error) {
-	return request.GetTo[GetDepositInfoResponse](ctx, c.getClient(), "/deposit/{game}", mod.WithVar("game", game))
+	return request.GetTo[GetDepositInfoResponse](ctx, c.r, "/deposit/{game}", mod.WithVar("game", game))
 }
 
 // CreateDepositTrade initiates a trade offer to deposit items onto the site.
@@ -126,7 +126,7 @@ func (c *Client) CreateDepositTrade(
 	ctx context.Context,
 	req CreateDepositTradeReq,
 ) (*CreateDepositTradeResponse, error) {
-	return request.PostTo[CreateDepositTradeResponse](ctx, c.getClient(), "/deposit/trade", req)
+	return request.PostTo[CreateDepositTradeResponse](ctx, c.r, "/deposit/trade", req)
 }
 
 // GetInstantSellInfo returns enriched inventory data with instant-sell price values.
@@ -136,7 +136,7 @@ func (c *Client) CreateDepositTrade(
 // Permission: Connected + API
 func (c *Client) GetInstantSellInfo(ctx context.Context, game int) (*GetDepositInfoResponse, error) {
 	return request.GetTo[GetDepositInfoResponse](
-		ctx, c.getClient(), "/deposit/instantSell/{game}",
+		ctx, c.r, "/deposit/instantSell/{game}",
 		mod.WithVar("game", game),
 	)
 }
@@ -150,7 +150,7 @@ func (c *Client) CreateInstantSellTrade(
 	ctx context.Context,
 	req CreateInstantSellTradeReq,
 ) (*CreateDepositTradeResponse, error) {
-	return request.PostTo[CreateDepositTradeResponse](ctx, c.getClient(), "/deposit/trade/instant", req)
+	return request.PostTo[CreateDepositTradeResponse](ctx, c.r, "/deposit/trade/instant", req)
 }
 
 // GetDepositTradeStatus returns the current status and bot metadata of a deposit trade row.
@@ -159,7 +159,7 @@ func (c *Client) CreateInstantSellTrade(
 // Permission: Connected + API
 func (c *Client) GetDepositTradeStatus(ctx context.Context, tradeID int) (*TradeStatusResponse, error) {
 	return request.GetTo[TradeStatusResponse](
-		ctx, c.getClient(), "/deposit/tradeStatus/{tradeid}",
+		ctx, c.r, "/deposit/tradeStatus/{tradeid}",
 		mod.WithVar("tradeid", tradeID),
 	)
 }

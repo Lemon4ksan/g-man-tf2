@@ -5,25 +5,54 @@
 package schema
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"os"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	json "github.com/goccy/go-json"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 
+	"github.com/lemon4ksan/g-man-tf2/internal/stringpool"
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 )
 
-var debugLog = func(v ...any) {
-	if os.Getenv("DEBUG_SCHEMA") == "true" {
+var enableDebugSchema = os.Getenv("DEBUG_SCHEMA") == "true"
+
+func debugLog(v ...any) {
+	if enableDebugSchema {
 		log.Println(v...)
 	}
 }
+
+var (
+	wearNamesStatic = [...]string{"Factory New", "Minimal Wear", "Field-Tested", "Well-Worn", "Battle Scarred"}
+
+	staticWearsTable = [...]struct {
+		str string
+		val int
+	}{
+		{"(factory new)", WearFactoryNew},
+		{"(minimal wear)", WearMinimalWear},
+		{"(field-tested)", WearFieldTested},
+		{"(well-worn)", WearWellWorn},
+		{"(battle scarred)", WearBattleScarred},
+	}
+
+	staticKillstreaksTable = [...]struct {
+		phrase string
+		value  int
+	}{
+		{"professional killstreak", 3},
+		{"specialized killstreak", 2},
+		{"killstreak", 1},
+	}
+)
 
 // Raw represents the raw schema and VDF configuration payload returned by APIs.
 type Raw struct {
@@ -58,13 +87,15 @@ type Raw struct {
 }
 
 // Item represents a single TF2 item definition in the schema.
+// Memory-optimized: unused fields (e.g. model_player, image_inventory, item_description)
+// are intentionally omitted to save megabytes of heap allocations.
 type Item struct {
 	// Capabilities defines the customization actions permitted on this item.
-	Capabilities *Capabilities `json:"capabilities"`
+	Capabilities *Capabilities `json:"capabilities,omitempty"`
 	// UsedByClasses lists character classes that can equip this item.
-	UsedByClasses []string `json:"used_by_classes"`
+	UsedByClasses []string `json:"used_by_classes,omitempty"`
 	// Attributes contains static attributes defined on this item.
-	Attributes []ItemAttribute `json:"attributes"`
+	Attributes []ItemAttribute `json:"attributes,omitempty"`
 	// Name represents the unique internal string identifier.
 	Name string `json:"name"`
 	// ItemName represents the localized display name.
@@ -72,39 +103,57 @@ type Item struct {
 	// ItemClass represents the internal item class name.
 	ItemClass string `json:"item_class"`
 	// CraftClass represents the craft class name (e.g. "weapon", "hat").
-	CraftClass string `json:"craft_class"`
+	CraftClass string `json:"craft_class,omitempty"`
 	// ImageURL represents the URL of the small (128x128) backpack icon.
-	ImageURL string `json:"image_url"`
+	ImageURL string `json:"image_url,omitempty"`
 	// ImageURLLarge represents the URL of the large (512x512) backpack image.
-	ImageURLLarge string `json:"image_url_large"`
-	// ItemClass specifies the item class for equipping.
+	ImageURLLarge string `json:"image_url_large,omitempty"`
+	// ItemSlot specifies the item slot for equipping.
 	ItemSlot string `json:"item_slot,omitempty"`
 	// Defindex represents the unique item definition index.
 	Defindex int `json:"defindex"`
 	// ItemQuality represents the default quality ID of the item.
 	ItemQuality int `json:"item_quality"`
+	// MinIlevel represents the minimum item level.
+	MinIlevel int `json:"min_ilevel,omitempty"`
+	// MaxIlevel represents the maximum item level.
+	MaxIlevel int `json:"max_ilevel,omitempty"`
 	// Flags represents item flags bitmask (trade/craft restrictions).
 	Flags int `json:"flags,omitempty"`
 	// Origin represents the item origin/provenance ID.
 	Origin int `json:"origin,omitempty"`
 	// LoadoutSlot represents the default loadout slot position.
 	LoadoutSlot int `json:"loadoutslot,omitempty"`
-	// StyleCount represents the number of available styles.
-	StyleCount int `json:"styles,omitempty"`
-	// UsedByClassesRaw is the raw class usability bitmask (if present).
-	UsedByClassesRaw int `json:"used_by_classes_mask,omitempty"`
 	// ProperName indicates whether "The" should prepend the item name.
 	ProperName bool `json:"proper_name"`
 }
 
+// InternStrings applies string interning to all string fields in the item
+// to deduplicate string headers across thousands of schema entries.
+func (it *Item) InternStrings() {
+	if it == nil {
+		return
+	}
+
+	it.Name = stringpool.Intern(it.Name)
+	it.ItemName = stringpool.Intern(it.ItemName)
+	it.ItemClass = stringpool.Intern(it.ItemClass)
+	it.CraftClass = stringpool.Intern(it.CraftClass)
+	it.ImageURL = stringpool.Intern(it.ImageURL)
+	it.ImageURLLarge = stringpool.Intern(it.ImageURLLarge)
+	it.ItemSlot = stringpool.Intern(it.ItemSlot)
+
+	for i, cls := range it.UsedByClasses {
+		it.UsedByClasses[i] = stringpool.Intern(cls)
+	}
+}
+
 // IsTradableByFlags checks if the item is tradable based on its flags bitmask.
-// Returns true if the CannotTrade flag is NOT set.
 func (it *Item) IsTradableByFlags() bool {
 	return it.Flags&FlagCannotTrade == 0
 }
 
 // IsCraftableByFlags checks if the item is craftable based on its flags bitmask.
-// Returns true if the CannotBeUsedInCrafting flag is NOT set.
 func (it *Item) IsCraftableByFlags() bool {
 	return it.Flags&FlagCannotBeUsedInCrafting == 0
 }
@@ -115,7 +164,6 @@ func (it *Item) HasFlag(flag int) bool {
 }
 
 // GetLoadoutSlot returns the loadout slot position for this item.
-// Returns LoadoutInvalid if not set.
 func (it *Item) GetLoadoutSlot() int {
 	if it.LoadoutSlot != 0 {
 		return it.LoadoutSlot
@@ -146,42 +194,28 @@ func (it *Item) IsTool() bool {
 
 // Capabilities defines customization options and trade/craft permissions for an item.
 type Capabilities struct {
-	// Paintable indicates whether paint can be applied to the item.
-	Paintable bool `json:"paintable"`
-	// Nameable indicates whether a name tag can be applied to the item.
-	Nameable bool `json:"nameable"`
-	// CanCraft indicates whether purchased copies of the item remain craftable.
-	CanCraft bool `json:"can_craft_if_purchased"`
-	// Decodable indicates whether the item can be unlocked with a key (crate).
-	Decodable bool `json:"decodable"`
-	// CanCustomizeTexture indicates whether the item's texture can be customized (War Paints).
+	Nameable            bool `json:"nameable"`
+	Paintable           bool `json:"paintable"`
+	CanCraft            bool `json:"can_craft_if_purchased"`
+	Decodable           bool `json:"decodable"`
 	CanCustomizeTexture bool `json:"can_customize_texture"`
-	// Usable indicates whether the item can be used/consumed.
-	Usable bool `json:"usable"`
-	// CanGiftWrap indicates whether the item can be gift wrapped.
-	CanGiftWrap bool `json:"can_gift_wrap"`
-	// CanCollect indicates whether the item can be collected into a craft set.
-	CanCollect bool `json:"can_collect"`
-	// CanCraftCount indicates whether the item tracks craft count.
-	CanCraftCount bool `json:"can_craft_count"`
-	// CanCraftMark indicates whether a crafted-by mark can be applied.
-	CanCraftMark bool `json:"can_craft_mark"`
-	// CanBeRestored indicates whether the item can be restored from Trade Up.
-	CanBeRestored bool `json:"can_be_restored"`
-	// CanUseStrangeParts indicates whether strange parts can be applied.
-	CanUseStrangeParts bool `json:"can_use_strange_parts"`
-	// CanStrangify indicates whether a strangifier can be applied.
-	CanStrangify bool `json:"can_strangify"`
-	// CanKillstreakify indicates whether a killstreak kit can be applied.
-	CanKillstreakify bool `json:"can_killstreakify"`
-	// CanConsume indicates whether the item is consumable.
-	CanConsume bool `json:"can_consume"`
-	// PaintableTeamColors indicates whether team-specific paint can be applied.
+	Usable              bool `json:"usable"`
+	UsableGC            bool `json:"usable_gc"`
+	UsableOutOfGame     bool `json:"usable_out_of_game"`
+	CanGiftWrap         bool `json:"can_gift_wrap"`
+	CanCollect          bool `json:"can_collect"`
+	CanCraftCount       bool `json:"can_craft_count"`
+	CanCraftMark        bool `json:"can_craft_mark"`
+	CanBeRestored       bool `json:"can_be_restored"`
+	StrangeParts        bool `json:"strange_parts"`
+	CanUseStrangeParts  bool `json:"can_use_strange_parts"`
+	CanStrangify        bool `json:"can_strangify"`
+	CanKillstreakify    bool `json:"can_killstreakify"`
+	CanConsume          bool `json:"can_consume"`
 	PaintableTeamColors bool `json:"paintable_team_colors"`
 }
 
 // HasCapability checks if the item has a specific capability flag.
-// Returns false if Capabilities is nil.
 func (c *Capabilities) HasCapability(cap string) bool {
 	if c == nil {
 		return false
@@ -202,8 +236,8 @@ func (c *Capabilities) HasCapability(cap string) bool {
 		return c.CanGiftWrap
 	case "can_collect":
 		return c.CanCollect
-	case "can_use_strange_parts":
-		return c.CanUseStrangeParts
+	case "can_use_strange_parts", "strange_parts":
+		return c.CanUseStrangeParts || c.StrangeParts
 	case "can_strangify":
 		return c.CanStrangify
 	case "can_killstreakify":
@@ -226,14 +260,12 @@ func (c *Capabilities) CanApplyTool(toolType string) bool {
 	switch toolType {
 	case "paint":
 		return c.Paintable || c.PaintableTeamColors
-	case "nametag":
-		return c.Nameable
-	case "desctag":
+	case "nametag", "desctag":
 		return c.Nameable
 	case "strangifier":
 		return c.CanStrangify
 	case "strange-part":
-		return c.CanUseStrangeParts
+		return c.CanUseStrangeParts || c.StrangeParts
 	case "killstreak":
 		return c.CanKillstreakify
 	case "gift-wrap":
@@ -245,14 +277,10 @@ func (c *Capabilities) CanApplyTool(toolType string) bool {
 
 // ItemAttribute represents a static attribute or modifier applied to an item.
 type ItemAttribute struct {
-	// Name represents the attribute name.
-	Name string `json:"name"`
-	// Class represents the internal attribute class.
-	Class string `json:"class"`
-	// Value represents the floating-point interpretation of the value.
-	Value float64 `json:"value"`
-	// ValueString represents the string value if the attribute value is a string.
-	ValueString string `json:"value_string,omitempty"`
+	Name        string  `json:"name"`
+	Class       string  `json:"class"`
+	Value       float64 `json:"value"`
+	ValueString string  `json:"value_string,omitempty"`
 }
 
 // UnmarshalJSON custom unmarshaler to handle dynamic "value" types without allocations.
@@ -284,59 +312,40 @@ func (a *ItemAttribute) UnmarshalJSON(data []byte) error {
 
 // AttributeSchema defines the structure and parsing rules for a specific attribute ID.
 type AttributeSchema struct {
-	// Defindex represents the attribute definition index.
-	Defindex int `json:"defindex"`
-	// Name represents the unique internal name of the attribute.
-	Name string `json:"name"`
-	// AttributeClass represents the internal class of the attribute.
-	AttributeClass string `json:"attribute_class"`
-	// Description represents the localized description template string.
-	Description string `json:"description_string"`
-	// DescriptionFmt represents the format type of the value substitution.
-	DescriptionFmt string `json:"description_format"`
-	// EffectType represents the type of effect (e.g. positive, negative).
-	EffectType string `json:"effect_type"`
-	// Hidden indicates whether the attribute is visible in the client UI.
-	Hidden bool `json:"hidden"`
-	// StoredAsInteger indicates whether the float value represents an integer.
-	StoredAsInteger bool `json:"stored_as_integer"`
+	Defindex        int    `json:"defindex"`
+	Name            string `json:"name"`
+	AttributeClass  string `json:"attribute_class"`
+	Description     string `json:"description_string"`
+	DescriptionFmt  string `json:"description_format"`
+	EffectType      string `json:"effect_type"`
+	Hidden          bool   `json:"hidden"`
+	StoredAsInteger bool   `json:"stored_as_integer"`
 }
 
 // ParticleEffect represents an Unusual or Killstreak particle effect.
 type ParticleEffect struct {
-	// ID represents the unique effect ID.
-	ID int `json:"id"`
-	// System represents the particle system name used by the game engine.
-	System string `json:"system"`
-	// AttachToRootbone indicates whether the effect is attached to the player's root bone.
-	AttachToRootbone bool `json:"attach_to_rootbone"`
-	// Name represents the localized name of the effect.
-	Name string `json:"name"`
+	ID               int    `json:"id"`
+	System           string `json:"system"`
+	AttachToRootbone bool   `json:"attach_to_rootbone"`
+	Name             string `json:"name"`
 }
 
-// KillEaterScoreType defines a tracked statistic category (e.g. Strange Part counters).
+// KillEaterScoreType defines a tracked statistic category.
 type KillEaterScoreType struct {
-	// Type represents the numeric tracking event ID.
-	Type int `json:"type"`
-	// TypeName represents the localized display name of the counter.
-	TypeName string `json:"type_name"`
-	// LevelData represents the level threshold configuration.
+	Type      int    `json:"type"`
+	TypeName  string `json:"type_name"`
 	LevelData string `json:"level_data"`
 }
 
 // ItemSet represents a collection of items that grant bonuses when equipped together.
 type ItemSet struct {
-	// ItemSet represents the internal item set identifier.
-	ItemSet string `json:"item_set"`
-	// Name represents the localized display name of the set.
-	Name string `json:"name"`
-	// Items contains the list of internal item names belonging to the set.
-	Items []string `json:"items"`
-	// Attributes contains the set bonus attributes applied when equipped.
+	ItemSet    string          `json:"item_set"`
+	Name       string          `json:"name"`
+	Items      []string        `json:"items"`
 	Attributes []ItemAttribute `json:"attributes"`
 }
 
-// RecipeCategory represents the category of a crafting recipe
+// RecipeCategory represents the category of a crafting recipe.
 type RecipeCategory int
 
 // Possible recipe categories
@@ -349,135 +358,73 @@ const (
 
 // RecipeDefinition represents a crafting recipe from the TF2 schema.
 type RecipeDefinition struct {
-	// DefIndex is the unique recipe definition index.
-	DefIndex int `json:"defindex"`
-	// Name is the internal recipe name.
-	Name string `json:"name"`
-	// Disabled indicates if the recipe is currently disabled.
-	Disabled bool `json:"disabled"`
-	// RequiresAllSameClass requires all input items to be the same class.
-	RequiresAllSameClass bool `json:"require_all_same_class"`
-	// RequiresAllSameSlot requires all input items to be the same slot.
-	RequiresAllSameSlot bool `json:"require_all_same_slot"`
-	// PremiumAccountOnly requires a premium account to use.
-	PremiumAccountOnly bool `json:"premium_account_only"`
-	// Category is the recipe category.
-	Category RecipeCategory `json:"category"`
-	// InputItems lists the input item criteria (defindexes and counts).
-	InputItems []RecipeInputItem `json:"input_items"`
-	// OutputItems lists the output item criteria.
-	OutputItems []RecipeOutputItem `json:"output_items"`
+	DefIndex             int                `json:"defindex"`
+	Name                 string             `json:"name"`
+	Disabled             bool               `json:"disabled"`
+	RequiresAllSameClass bool               `json:"require_all_same_class"`
+	RequiresAllSameSlot  bool               `json:"require_all_same_slot"`
+	PremiumAccountOnly   bool               `json:"premium_account_only"`
+	Category             RecipeCategory     `json:"category"`
+	InputItems           []RecipeInputItem  `json:"input_items"`
+	OutputItems          []RecipeOutputItem `json:"output_items"`
 }
 
 // RecipeInputItem represents an input ingredient for a crafting recipe.
 type RecipeInputItem struct {
-	// DefIndex is the item definition index required (-1 for name-based lookup).
-	DefIndex int `json:"defindex"`
-	// Name is the item name for name-based conditions (e.g. "The Sandvich").
-	Name string `json:"name,omitempty"`
-	// Count is the number of this item required.
-	Count int `json:"count"`
-	// Slot is the loadout slot filter (-1 for any).
-	Slot int `json:"slot"`
-	// Class is the class filter (empty for any).
-	Class string `json:"class"`
-	// LootlistName is the lootlist for dynamic recipes (e.g. "all_particle_hats").
+	DefIndex     int    `json:"defindex"`
+	Name         string `json:"name,omitempty"`
+	Count        int    `json:"count"`
+	Slot         int    `json:"slot"`
+	Class        string `json:"class"`
 	LootlistName string `json:"lootlist_name,omitempty"`
-	// Quality is the quality filter for dynamic recipes.
-	Quality string `json:"quality,omitempty"`
+	Quality      string `json:"quality,omitempty"`
 }
 
 // RecipeOutputItem represents an output result from a crafting recipe.
 type RecipeOutputItem struct {
-	// DefIndex is the item definition index of the output (-1 for name-based lookup).
-	DefIndex int `json:"defindex"`
-	// Name is the item name for name-based conditions.
-	Name string `json:"name,omitempty"`
-	// Count is the number of items produced.
-	Count int `json:"count"`
-	// LootlistName is the lootlist for dynamic recipe outputs.
+	DefIndex     int    `json:"defindex"`
+	Name         string `json:"name,omitempty"`
+	Count        int    `json:"count"`
 	LootlistName string `json:"lootlist_name,omitempty"`
-}
-
-// GetRecipe returns the recipe definition for the given defindex, or nil if not found.
-func (s *Schema) GetRecipe(defindex int) *RecipeDefinition {
-	if s == nil || s.recipes == nil {
-		return nil
-	}
-
-	r, ok := s.recipes[defindex]
-	if !ok {
-		return nil
-	}
-
-	return r
-}
-
-// GetAllRecipes returns all recipe definitions.
-func (s *Schema) GetAllRecipes() []*RecipeDefinition {
-	if s == nil {
-		return nil
-	}
-
-	recipes := make([]*RecipeDefinition, 0, len(s.recipes))
-	for _, r := range s.recipes {
-		recipes = append(recipes, r)
-	}
-
-	return recipes
 }
 
 // OriginName maps a numeric origin ID to its localized display name.
 type OriginName struct {
-	// Origin represents the item origin ID.
-	Origin int `json:"origin"`
-	// Name represents the display name of the origin.
-	Name string `json:"name"`
+	Origin int    `json:"origin"`
+	Name   string `json:"name"`
 }
 
-// ItemLevel defines name progression and thresholds for ranked items (e.g. Strange weapons).
+// ItemLevel defines name progression and thresholds for ranked items.
 type ItemLevel struct {
-	// Name represents the level progression template name.
-	Name string `json:"name"`
-	// Levels contains the list of rank thresholds and their display names.
+	Name   string `json:"name"`
 	Levels []struct {
-		// Level represents the target level index.
-		Level int `json:"level"`
-		// RequiredScore represents the count required to reach this rank.
-		RequiredScore int `json:"required_score"`
-		// Name represents the display name of the rank.
-		Name string `json:"name"`
+		Level         int    `json:"level"`
+		RequiredScore int    `json:"required_score"`
+		Name          string `json:"name"`
 	} `json:"levels"`
 }
 
 // StringLookup represents a static lookup table used to map indexes to strings.
 type StringLookup struct {
-	// TableName represents the lookup table name.
 	TableName string `json:"table_name"`
-	// Strings contains the mapped index-string pairs.
-	Strings []struct {
-		// Index represents the key index.
-		Index int `json:"index"`
-		// String represents the corresponding value string.
+	Strings   []struct {
+		Index  int    `json:"index"`
 		String string `json:"string"`
 	} `json:"strings"`
 }
 
 // Schema represents the indexed TF2 item schema.
-// It provides O(1) lookups for item definitions, qualities, effects, and SKU translation operations.
-// Use [New] to build indices from a [Raw] schema payload.
 type Schema struct {
-	// Version represents the schema version identifier.
 	Version string
-	// Raw represents the raw unindexed schema payload.
-	Raw *Raw
-	// Time represents the timestamp when the schema was indexed.
-	Time time.Time
+	Raw     *Raw
+	Time    time.Time
 
 	itemsByDef  map[int]*Item
 	itemsByName map[string]*Item
 
-	attrsByDef map[int]*AttributeSchema
+	itemList           []*Item
+	killEaterTypesByID map[int]string
+	attrsByDef         map[int]*AttributeSchema
 
 	qualByID   map[int]string
 	qualByName map[string]int
@@ -498,6 +445,8 @@ type Schema struct {
 	spellsByName map[string]sku.Spell
 	spellsByID   map[string]string
 
+	strangePartsCache map[string]string
+
 	craftableWeapons             []*Item
 	craftableWeaponsForTrading   []string
 	uncraftableWeaponsForTrading []string
@@ -517,7 +466,7 @@ func New(raw *Raw) *Schema {
 		for typeID, typeName := range StrangePartsMap {
 			raw.Schema.KillEaterScoreTypes = append(raw.Schema.KillEaterScoreTypes, &KillEaterScoreType{
 				Type:     typeID,
-				TypeName: typeName,
+				TypeName: stringpool.Intern(typeName),
 			})
 		}
 	}
@@ -533,6 +482,13 @@ func (s *Schema) buildIndices() {
 	numAttrs := len(s.Raw.Schema.Attributes)
 	numQual := len(s.Raw.Schema.Qualities)
 
+	s.itemList = s.Raw.Schema.Items
+
+	s.killEaterTypesByID = make(map[int]string, len(s.Raw.Schema.KillEaterScoreTypes))
+	for _, p := range s.Raw.Schema.KillEaterScoreTypes {
+		s.killEaterTypesByID[p.Type] = stringpool.Intern(p.TypeName)
+	}
+
 	s.itemsByDef = make(map[int]*Item, numItems)
 	s.itemsByName = make(map[string]*Item, numItems)
 	s.itemsByNameStripped = make(map[string]*Item, numItems)
@@ -547,7 +503,13 @@ func (s *Schema) buildIndices() {
 	s.paintByName = make(map[string]int, 32)
 
 	for _, item := range s.Raw.Schema.Items {
+		item.InternStrings()
+
 		lowName := strings.ToLower(item.ItemName)
+		if lowName == "" {
+			lowName = strings.ToLower(item.Name)
+		}
+
 		s.itemsByDef[item.Defindex] = item
 
 		if item.ItemQuality == 0 || (item.ItemName == "Name Tag" && item.Defindex == 2093) {
@@ -565,49 +527,43 @@ func (s *Schema) buildIndices() {
 	}
 
 	for _, attr := range s.Raw.Schema.Attributes {
+		attr.Name = stringpool.Intern(attr.Name)
+		attr.AttributeClass = stringpool.Intern(attr.AttributeClass)
 		s.attrsByDef[attr.Defindex] = attr
 	}
 
 	for qType, id := range s.Raw.Schema.Qualities {
 		if name, ok := s.Raw.Schema.QualityNames[qType]; ok {
-			s.qualByID[id] = name
-			s.qualByName[strings.ToLower(name)] = id
+			internedName := stringpool.Intern(name)
+			s.qualByID[id] = internedName
+			s.qualByName[strings.ToLower(internedName)] = id
 		}
 	}
 
 	if len(s.qualByName) == 0 {
 		fallbackQualities := map[int]string{
-			0:  "Normal",
-			1:  "Genuine",
-			3:  "Vintage",
-			5:  "Unusual",
-			6:  "Unique",
-			7:  "Community",
-			8:  "Valve",
-			9:  "Self-Made",
-			10: "Customized",
-			11: "Strange",
-			12: "Completed",
-			13: "Haunted",
-			14: "Collector's",
-			15: "Decorated Weapon",
+			0: "Normal", 1: "Genuine", 3: "Vintage", 5: "Unusual",
+			6: "Unique", 7: "Community", 8: "Valve", 9: "Self-Made",
+			10: "Customized", 11: "Strange", 12: "Completed",
+			13: "Haunted", 14: "Collector's", 15: "Decorated Weapon",
 		}
 		for id, name := range fallbackQualities {
-			s.qualByID[id] = name
-			s.qualByName[strings.ToLower(name)] = id
+			internedName := stringpool.Intern(name)
+			s.qualByID[id] = internedName
+			s.qualByName[strings.ToLower(internedName)] = id
 		}
 	}
 
 	seenEffects := make(map[string]bool)
-
 	for _, eff := range s.Raw.Schema.AttributeControlledAttachedParticles {
 		if eff.Name == "" {
 			continue
 		}
 
 		if !seenEffects[eff.Name] {
-			s.effByID[eff.ID] = eff.Name
-			s.effByName[strings.ToLower(eff.Name)] = eff.ID
+			internedName := stringpool.Intern(eff.Name)
+			s.effByID[eff.ID] = internedName
+			s.effByName[strings.ToLower(internedName)] = eff.ID
 			seenEffects[eff.Name] = true
 
 			switch eff.Name {
@@ -626,8 +582,9 @@ func (s *Schema) buildIndices() {
 
 	for idStr, name := range s.Raw.Schema.PaintKits {
 		if id, err := strconv.Atoi(idStr); err == nil {
-			s.paintKitByID[id] = name
-			s.paintKitByName[strings.ToLower(name)] = id
+			internedName := stringpool.Intern(name)
+			s.paintKitByID[id] = internedName
+			s.paintKitByName[strings.ToLower(internedName)] = id
 		}
 	}
 
@@ -635,9 +592,9 @@ func (s *Schema) buildIndices() {
 		if strings.Contains(it.Name, "Paint Can") && it.Name != "Paint Can" && it.Attributes != nil {
 			if len(it.Attributes) > 0 {
 				decimal := int(it.Attributes[0].Value)
-
-				s.paintByDecimal[decimal] = it.ItemName
-				s.paintByName[strings.ToLower(it.ItemName)] = decimal
+				internedName := stringpool.Intern(it.ItemName)
+				s.paintByDecimal[decimal] = internedName
+				s.paintByName[strings.ToLower(internedName)] = decimal
 			}
 		}
 	}
@@ -703,7 +660,16 @@ func (s *Schema) buildIndices() {
 	}
 
 	s.buildRecipes()
+
 	s.Raw.ItemsGame = nil
+	s.Raw.Schema.Attributes = nil
+	s.Raw.Schema.ItemSets = nil
+	s.Raw.Schema.AttributeControlledAttachedParticles = nil
+	s.Raw.Schema.ItemLevels = nil
+	s.Raw.Schema.KillEaterScoreTypes = nil
+	s.Raw.Schema.StringLookups = nil
+	s.Raw.Schema.Items = nil
+	s.Raw = nil
 }
 
 func (s *Schema) buildSpellIndices() {
@@ -715,12 +681,46 @@ func (s *Schema) buildSpellIndices() {
 		s.spellsByName[lowerName] = spell
 
 		idKey := fmt.Sprintf("%d-%d", spell.Attribute, spell.Value)
-		s.spellsByID[idKey] = name
+		s.spellsByID[idKey] = stringpool.Intern(name)
 
 		if spellObj, ok := IdentifySpell(lowerName); ok {
 			s.spellsByName[lowerName] = spellObj
 		}
 	}
+}
+
+func (s *Schema) buildStrangePartsCache() map[string]string {
+	partsToExclude := map[string]bool{
+		"Ubers": true, "Kill Assists": true, "Sentry Kills": true,
+		"Sodden Victims": true, "Spies Shocked": true, "Heads Taken": true,
+		"Humiliations": true, "Gifts Given": true, "Deaths Feigned": true,
+		"Buildings Sapped": true, "Tickle Fights Won": true, "Opponents Flattened": true,
+		"Food Items Eaten": true, "Banners Deployed": true, "Seconds Cloaked": true,
+		"Health Dispensed to Teammates": true, "Teammates Teleported": true,
+		"KillEaterEvent_UniquePlayerKills": true, "Points Scored": true,
+		"Double Donks": true, "Teammates Whipped": true, "Wrangled Sentry Kills": true,
+		"Carnival Kills": true, "Carnival Underworld Kills": true, "Carnival Games Won": true,
+		"Contracts Completed": true, "Contract Points": true, "Contract Bonus Points": true,
+		"Times Performed": true, "Kills and Assists during Invasion Event": true,
+		"Kills and Assists on 2Fort Invasion": true, "Kills and Assists on Probed": true,
+		"Kills and Assists on Byre": true, "Kills and Assists on Watergate": true,
+		"Souls Collected": true, "Merasmissions Completed": true,
+		"Halloween Transmutes Performed": true, "Power Up Canteens Used": true,
+		"Contract Points Earned": true, "Contract Points Contributed To Friends": true,
+	}
+	m := make(map[string]string)
+
+	if s.Raw != nil {
+		for _, p := range s.Raw.Schema.KillEaterScoreTypes {
+			if partsToExclude[p.TypeName] || p.Type == 0 || p.Type == 97 {
+				continue
+			}
+
+			m[p.TypeName] = fmt.Sprintf("sp%d", p.Type)
+		}
+	}
+
+	return m
 }
 
 func (s *Schema) buildRecipes() {
@@ -755,15 +755,48 @@ func (s *Schema) buildRecipes() {
 	}
 }
 
-// parseRecipeBlock parses a raw VDF recipe block into a RecipeDefinition.
-// Uses a custom line-by-line parser to handle duplicate VDF keys that
-// Go's map-based VDF parsers cannot represent.
+// ItemCount returns the number of items in the schema.
+func (s *Schema) ItemCount() int {
+	if s == nil {
+		return 0
+	}
+
+	return len(s.itemList)
+}
+
+// GetRecipe returns the recipe definition for the given defindex, or nil if not found.
+func (s *Schema) GetRecipe(defindex int) *RecipeDefinition {
+	if s == nil || s.recipes == nil {
+		return nil
+	}
+
+	r, ok := s.recipes[defindex]
+	if !ok {
+		return nil
+	}
+
+	return r
+}
+
+// GetAllRecipes returns all recipe definitions.
+func (s *Schema) GetAllRecipes() []*RecipeDefinition {
+	if s == nil {
+		return nil
+	}
+
+	recipes := make([]*RecipeDefinition, 0, len(s.recipes))
+	for _, r := range s.recipes {
+		recipes = append(recipes, r)
+	}
+
+	return recipes
+}
+
 func parseRecipeBlock(defindex int, block string) *RecipeDefinition {
 	r := &RecipeDefinition{DefIndex: defindex}
 
 	lines := strings.Split(block, "\n")
 
-	// Skip the first { (opening brace of the recipe block itself)
 	startIdx := 0
 	for i, l := range lines {
 		if strings.TrimSpace(l) == "{" {
@@ -877,7 +910,7 @@ func parseRecipeBlock(defindex int, block string) *RecipeDefinition {
 						case "defindex":
 							pendingInput.DefIndex, _ = strconv.Atoi(condValue)
 						case "name":
-							pendingInput.Name = condValue
+							pendingInput.Name = stringpool.Intern(condValue)
 						}
 					}
 
@@ -886,7 +919,7 @@ func parseRecipeBlock(defindex int, block string) *RecipeDefinition {
 						case "defindex":
 							pendingOutput.DefIndex, _ = strconv.Atoi(condValue)
 						case "name":
-							pendingOutput.Name = condValue
+							pendingOutput.Name = stringpool.Intern(condValue)
 						}
 					}
 				}
@@ -916,7 +949,7 @@ func parseRecipeBlock(defindex int, block string) *RecipeDefinition {
 			pendingKey = key
 			switch key {
 			case "name":
-				r.Name = value
+				r.Name = stringpool.Intern(value)
 			case "disabled":
 				r.Disabled = value == "1"
 			case "premium_only":
@@ -935,7 +968,7 @@ func parseRecipeBlock(defindex int, block string) *RecipeDefinition {
 		case "condition":
 			switch key {
 			case "field":
-				condField = value
+				condField = key
 			case "value":
 				condValue = value
 			}
@@ -945,9 +978,9 @@ func parseRecipeBlock(defindex int, block string) *RecipeDefinition {
 			if pendingInput != nil {
 				switch key {
 				case "lootlist_name":
-					pendingInput.LootlistName = value
+					pendingInput.LootlistName = stringpool.Intern(value)
 				case "quality":
-					pendingInput.Quality = value
+					pendingInput.Quality = stringpool.Intern(value)
 				}
 			}
 
@@ -963,9 +996,6 @@ func parseRecipeBlock(defindex int, block string) *RecipeDefinition {
 	return r
 }
 
-// parseRecipeVDFLine parses a VDF key-value line.
-// Returns (key, value) for "key" "value" lines.
-// Returns (key, "") for key-only lines (block keys like "1").
 func parseRecipeVDFLine(line string) (string, string) {
 	if !strings.HasPrefix(line, "\"") {
 		return "", ""
@@ -1131,13 +1161,13 @@ func (s *Schema) PaintDecimalByName(name string) int {
 	return s.paintByName[strings.ToLower(name)]
 }
 
-// ItemByNameWithThe searches for an item, ignoring the "The " prefix in the name.
-func (s *Schema) ItemByNameWithThe(name string) *Item {
-	name = strings.ToLower(name)
-	name = strings.TrimPrefix(name, "the ")
-	name = strings.TrimSpace(name)
+// ItemByNameWithThe searches for an item, ignoring the "The " prefix in the pre-lowercased name.
+func (s *Schema) ItemByNameWithThe(loweredName string) *Item {
+	if strings.HasPrefix(loweredName, "the ") {
+		loweredName = strings.TrimSpace(loweredName[4:])
+	}
 
-	return s.itemsByNameStripped[name]
+	return s.itemsByNameStripped[loweredName]
 }
 
 // ItemBySKU returns the [Item] definition matching the provided SKU string.
@@ -1168,37 +1198,13 @@ func (s *Schema) PaintableItemDefindexes() []int {
 	return s.paintableItemDefindexesCache
 }
 
-// StrangeParts returns a map of strange part names to their SKU suffixes.
+// StrangeParts returns a pre-computed cached map of strange part names to their SKU suffixes.
 func (s *Schema) StrangeParts() map[string]string {
-	partsToExclude := map[string]bool{
-		"Ubers": true, "Kill Assists": true, "Sentry Kills": true,
-		"Sodden Victims": true, "Spies Shocked": true, "Heads Taken": true,
-		"Humiliations": true, "Gifts Given": true, "Deaths Feigned": true,
-		"Buildings Sapped": true, "Tickle Fights Won": true, "Opponents Flattened": true,
-		"Food Items Eaten": true, "Banners Deployed": true, "Seconds Cloaked": true,
-		"Health Dispensed to Teammates": true, "Teammates Teleported": true,
-		"KillEaterEvent_UniquePlayerKills": true, "Points Scored": true,
-		"Double Donks": true, "Teammates Whipped": true, "Wrangled Sentry Kills": true,
-		"Carnival Kills": true, "Carnival Underworld Kills": true, "Carnival Games Won": true,
-		"Contracts Completed": true, "Contract Points": true, "Contract Bonus Points": true,
-		"Times Performed": true, "Kills and Assists during Invasion Event": true,
-		"Kills and Assists on 2Fort Invasion": true, "Kills and Assists on Probed": true,
-		"Kills and Assists on Byre": true, "Kills and Assists on Watergate": true,
-		"Souls Collected": true, "Merasmissions Completed": true,
-		"Halloween Transmutes Performed": true, "Power Up Canteens Used": true,
-		"Contract Points Earned": true, "Contract Points Contributed To Friends": true,
-	}
-	m := make(map[string]string)
-
-	for _, p := range s.Raw.Schema.KillEaterScoreTypes {
-		if partsToExclude[p.TypeName] || p.Type == 0 || p.Type == 97 {
-			continue
-		}
-
-		m[p.TypeName] = fmt.Sprintf("sp%d", p.Type)
+	if s.strangePartsCache != nil {
+		return s.strangePartsCache
 	}
 
-	return m
+	return s.buildStrangePartsCache()
 }
 
 // SpellNameFromSKU returns the display name of the specified [sku.Spell].
@@ -1268,7 +1274,7 @@ func (s *Schema) Qualities() map[string]int {
 	return s.qualByName
 }
 
-// WearByName returns the wear level ID matching the specified string (e.g., "Factory New").
+// WearByName returns the wear level ID matching the specified string.
 func (s *Schema) WearByName(name string) int {
 	name = strings.TrimSpace(name)
 	if !strings.HasPrefix(name, "(") {
@@ -1294,7 +1300,6 @@ func (s *Schema) PaintKits() map[string]int {
 }
 
 // QualityName returns the quality name for the given quality ID.
-// Returns an empty string if the quality ID is not found.
 func (s *Schema) QualityName(qualityID int) string {
 	if s == nil {
 		return ""
@@ -1303,8 +1308,7 @@ func (s *Schema) QualityName(qualityID int) string {
 	return s.qualByID[qualityID]
 }
 
-// QualityID returns the numeric quality ID for the given quality name (case-insensitive).
-// Returns -1 if the quality name is not found.
+// QualityID returns the numeric quality ID for the given quality name.
 func (s *Schema) QualityID(name string) int {
 	if s == nil {
 		return -1
@@ -1318,14 +1322,11 @@ func (s *Schema) QualityID(name string) int {
 }
 
 // IsPaintKitWeapon checks if the item is eligible for War Paint / PaintKit application.
-// Returns true if the item has the can_customize_texture capability.
 func (it *Item) IsPaintKitWeapon() bool {
 	return it.Capabilities != nil && it.Capabilities.CanCustomizeTexture
 }
 
 // ValidatePaintKit checks if a specific paintkit can be applied to this weapon item.
-// Returns true if the weapon supports the given paintkit ID.
-// This is a basic validation — full validation requires the paintkit's supported weapon list.
 func (it *Item) ValidatePaintKit(paintkitID int) bool {
 	if !it.IsPaintKitWeapon() {
 		return false
@@ -1456,21 +1457,51 @@ func (s *Schema) CheckExistence(item *sku.Item) bool {
 	return true
 }
 
-// ItemName constructs the localized display name for the specified [sku.Item].
+var nameBufferPool = sync.Pool{
+	New: func() any {
+		b := new(bytes.Buffer)
+		b.Grow(128)
+		return b
+	},
+}
+
+// ItemName constructs the localized display name for the specified [sku.Item] using zero-allocation buffer pooling.
 func (s *Schema) ItemName(item *sku.Item, proper, usePipeForSkin, scmFormat bool) string {
-	schemaItem := s.ItemByDef(item.Defindex)
-	if schemaItem == nil {
+	if item == nil {
 		return ""
 	}
 
-	var parts []string
+	schemaItem := s.ItemByDef(item.Defindex)
+	if schemaItem == nil {
+		return fmt.Sprintf("Item #%d", item.Defindex)
+	}
+
+	buf := nameBufferPool.Get().(*bytes.Buffer)
+
+	buf.Reset()
+	defer nameBufferPool.Put(buf)
+
+	hasWritten := false
+	appendWord := func(word string) {
+		if word == "" {
+			return
+		}
+
+		if hasWritten {
+			buf.WriteByte(' ')
+		}
+
+		buf.WriteString(word)
+
+		hasWritten = true
+	}
 
 	if !scmFormat && !item.Tradable {
-		parts = append(parts, "Non-Tradable")
+		appendWord("Non-Tradable")
 	}
 
 	if !scmFormat && !item.Craftable {
-		parts = append(parts, "Non-Craftable")
+		appendWord("Non-Craftable")
 	}
 
 	if item.Quality2 != 0 {
@@ -1480,7 +1511,7 @@ func (s *Schema) ItemName(item *sku.Item, proper, usePipeForSkin, scmFormat bool
 				qName += "(e)"
 			}
 
-			parts = append(parts, qName)
+			appendWord(qName)
 		}
 	}
 
@@ -1497,64 +1528,64 @@ func (s *Schema) ItemName(item *sku.Item, proper, usePipeForSkin, scmFormat bool
 	if addPrimaryQuality {
 		qName := s.QualityByID(item.Quality)
 		if qName != "" {
-			parts = append(parts, qName)
+			appendWord(qName)
 		}
 	}
 
 	if !scmFormat && item.Effect != 0 {
 		effName := s.EffectByID(item.Effect)
 		if effName != "" {
-			parts = append(parts, effName)
+			appendWord(effName)
 		}
 	}
 
 	if item.Festivized {
-		parts = append(parts, "Festivized")
+		appendWord("Festivized")
 	}
 
 	if item.Killstreak > 0 {
 		switch item.Killstreak {
 		case 1:
-			parts = append(parts, "Killstreak")
+			appendWord("Killstreak")
 		case 2:
-			parts = append(parts, "Specialized Killstreak")
+			appendWord("Specialized Killstreak")
 		case 3:
-			parts = append(parts, "Professional Killstreak")
+			appendWord("Professional Killstreak")
 		}
 	}
 
 	if item.Target != 0 {
 		targetItem := s.ItemByDef(item.Target)
 		if targetItem != nil {
-			parts = append(parts, targetItem.ItemName)
+			appendWord(targetItem.ItemName)
 		}
 	}
 
 	if item.OutputQuality != 0 && item.OutputQuality != 6 {
 		oqName := s.QualityByID(item.OutputQuality)
 		if oqName != "" {
-			parts = append([]string{oqName}, parts...)
+			appendWord(oqName)
 		}
 	}
 
 	if item.Output != 0 {
 		outItem := s.ItemByDef(item.Output)
 		if outItem != nil {
-			parts = append(parts, outItem.ItemName)
+			appendWord(outItem.ItemName)
 		}
 	}
 
 	if item.Australium {
-		parts = append(parts, "Australium")
+		appendWord("Australium")
 	}
 
 	if item.Paintkit != 0 {
 		skinName := s.SkinByID(item.Paintkit)
 		if skinName != "" {
 			if usePipeForSkin {
-				parts = append(parts, skinName+" |")
+				appendWord(skinName + " |")
 			} else {
-				parts = append(parts, skinName)
+				appendWord(skinName)
 			}
 		}
 	}
@@ -1568,30 +1599,26 @@ func (s *Schema) ItemName(item *sku.Item, proper, usePipeForSkin, scmFormat bool
 		baseName = schemaItem.Name
 	}
 
-	if proper && len(parts) == 0 && schemaItem.ProperName {
+	if proper && !hasWritten && schemaItem.ProperName {
 		baseName = "The " + baseName
 	}
 
-	parts = append(parts, baseName)
+	appendWord(baseName)
 
 	if item.Wear != 0 {
-		wears := []string{"Factory New", "Minimal Wear", "Field-Tested", "Well-Worn", "Battle Scarred"}
 		if item.Wear >= 1 && item.Wear <= 5 {
-			parts = append(parts, "("+wears[item.Wear-1]+")")
+			appendWord("(" + wearNamesStatic[item.Wear-1] + ")")
 		}
 	}
 
 	for _, spell := range item.Spells {
-		parts = append(parts, "(Spell: "+s.SpellNameFromSKU(spell)+")")
+		appendWord("(Spell: " + s.SpellNameFromSKU(spell) + ")")
 	}
 
 	for _, partID := range item.Parts {
 		partName := "Unknown Part"
-		for _, p := range s.Raw.Schema.KillEaterScoreTypes {
-			if p.Type == partID {
-				partName = p.TypeName
-				break
-			}
+		if name, ok := s.killEaterTypesByID[partID]; ok {
+			partName = name
 		}
 
 		val := 0
@@ -1599,13 +1626,12 @@ func (s *Schema) ItemName(item *sku.Item, proper, usePipeForSkin, scmFormat bool
 			val = item.PartValues[partID]
 		}
 
-		parts = append(parts, "("+partName+": "+strconv.Itoa(val)+")")
+		appendWord(fmt.Sprintf("(%s: %d)", partName, val))
 	}
 
 	if item.Crateseries != 0 {
 		if scmFormat {
 			hasSeriesAttr := false
-
 			if schemaItem.Attributes != nil {
 				for _, attr := range schemaItem.Attributes {
 					if attr.Class == "supply_crate_series" {
@@ -1616,35 +1642,23 @@ func (s *Schema) ItemName(item *sku.Item, proper, usePipeForSkin, scmFormat bool
 			}
 
 			if hasSeriesAttr {
-				parts = append(parts, fmt.Sprintf("Series %%23%d", item.Crateseries))
+				appendWord(fmt.Sprintf("Series %%23%d", item.Crateseries))
 			}
 		} else {
-			parts = append(parts, fmt.Sprintf("#%d", item.Crateseries))
+			appendWord(fmt.Sprintf("#%d", item.Crateseries))
 		}
 	} else if item.Craftnumber != 0 {
-		parts = append(parts, fmt.Sprintf("#%d", item.Craftnumber))
+		appendWord(fmt.Sprintf("#%d", item.Craftnumber))
 	}
 
 	if !scmFormat && item.Paint != 0 {
 		paintName := s.PaintNameByDecimal(item.Paint)
 		if paintName != "" {
-			parts = append(parts, fmt.Sprintf("(Paint: %s)", paintName))
+			appendWord(fmt.Sprintf("(Paint: %s)", paintName))
 		}
 	}
 
-	if scmFormat && schemaItem.ItemName == "Chemistry Set" && item.Output == 6522 {
-		if item.Target != 0 {
-			if series, ok := strangifierChemistrySetSeries[item.Target]; ok {
-				parts = append(parts, fmt.Sprintf("Series %%23%d", series))
-			}
-		}
-	}
-
-	if scmFormat && item.Wear != 0 && item.Effect != 0 && item.Quality == QualityDecorated {
-		parts = append([]string{"Unusual"}, parts...)
-	}
-
-	return strings.Join(parts, " ")
+	return buf.String()
 }
 
 // ItemFromName parses a localized display name string into a structured [sku.Item].
@@ -1658,11 +1672,11 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 
 	debugLog("GetItemObjectFromName start:", originalName)
 
-	if strings.Contains(name, "strange part:") ||
-		strings.Contains(name, "strange cosmetic part:") ||
-		strings.Contains(name, "strange filter:") ||
-		strings.Contains(name, "strange count transfer tool") ||
-		strings.Contains(name, "strange bacon grease") {
+	if strings.HasPrefix(name, "strange part:") ||
+		strings.HasPrefix(name, "strange cosmetic part:") ||
+		strings.HasPrefix(name, "strange filter:") ||
+		name == "strange count transfer tool" ||
+		name == "strange bacon grease" {
 		schemaItem := s.ItemByName(originalName)
 		if schemaItem != nil {
 			item.Defindex = schemaItem.Defindex
@@ -1676,26 +1690,21 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 		return item
 	}
 
-	for w, val := range wears {
-		if strings.Contains(name, w) {
-			debugLog("wear before", name, item)
-			name = strings.ReplaceAll(name, w, "")
-			name = strings.TrimSpace(name)
-			item.Wear = val
-			debugLog("wear after", name, item)
-
+	for _, w := range staticWearsTable {
+		if idx := strings.Index(name, w.str); idx != -1 {
+			name = strings.TrimSpace(name[:idx] + name[idx+len(w.str):])
+			item.Wear = w.val
 			break
 		}
 	}
 
 	isExplicitElevatedStrange := false
 
-	if strings.Contains(name, "strange(e)") {
+	if idx := strings.Index(name, "strange(e)"); idx != -1 {
 		debugLog("strange(e) before", name, item)
 		item.Quality2 = QualityStrange
 		isExplicitElevatedStrange = true
-		name = strings.ReplaceAll(name, "strange(e)", "")
-		name = strings.TrimSpace(name)
+		name = strings.TrimSpace(name[:idx] + name[idx+10:])
 		debugLog("strange(e) after", name, item)
 	}
 
@@ -1705,33 +1714,34 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 		debugLog("strange before", name, item)
 
 		hasStrangePrefix = true
-		name = strings.ReplaceAll(name, "strange", "")
-		name = strings.TrimSpace(name)
+		name = strings.TrimSpace(strings.ReplaceAll(name, "strange", ""))
 		debugLog("strange after", name, item)
 	}
 
 	if strings.Contains(name, "craft") {
-		name = strings.ReplaceAll(name, "uncraftable", "non-craftable")
-		if strings.Contains(name, "non-craftable") {
+		if idx := strings.Index(name, "uncraftable"); idx != -1 {
 			debugLog("non-craftable before", name, item)
-			name = strings.ReplaceAll(name, "non-craftable", "")
-			name = strings.TrimSpace(name)
+			name = strings.TrimSpace(name[:idx] + name[idx+11:])
+			item.Craftable = false
+			debugLog("non-craftable after", name, item)
+		} else if idx := strings.Index(name, "non-craftable"); idx != -1 {
+			debugLog("non-craftable before", name, item)
+			name = strings.TrimSpace(name[:idx] + name[idx+13:])
 			item.Craftable = false
 			debugLog("non-craftable after", name, item)
 		}
 	}
 
 	if strings.Contains(name, "trad") {
-		name = strings.ReplaceAll(name, "untradeable", "non-tradable")
-		name = strings.ReplaceAll(name, "untradable", "non-tradable")
+		for _, sub := range []string{"untradeable", "untradable", "non-tradeable", "non-tradable"} {
+			if idx := strings.Index(name, sub); idx != -1 {
+				debugLog("non-tradable before", name, item)
+				name = strings.TrimSpace(name[:idx] + name[idx+len(sub):])
+				item.Tradable = false
+				debugLog("non-tradable after", name, item)
 
-		name = strings.ReplaceAll(name, "non-tradeable", "non-tradable")
-		if strings.Contains(name, "non-tradable") {
-			debugLog("non-tradable before", name, item)
-			name = strings.ReplaceAll(name, "non-tradable", "")
-			name = strings.TrimSpace(name)
-			item.Tradable = false
-			debugLog("non-tradable after", name, item)
+				break
+			}
 		}
 	}
 
@@ -1756,38 +1766,24 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 
 	kitFabricatorDetected := strings.Contains(name, "kit fabricator")
 
-	killstreaks := []struct {
-		phrase string
-		value  int
-	}{
-		{"professional killstreak", 3},
-		{"specialized killstreak", 2},
-		{"killstreak", 1},
-	}
-	for _, ks := range killstreaks {
-		if strings.Contains(name, ks.phrase) {
-			debugLog("killstreak before", name, item)
-			name = strings.Replace(name, ks.phrase, "", 1)
-			name = strings.TrimSpace(name)
+	for _, ks := range staticKillstreaksTable {
+		if idx := strings.Index(name, ks.phrase); idx != -1 {
+			name = strings.TrimSpace(name[:idx] + name[idx+len(ks.phrase):])
 			item.Killstreak = ks.value
-			debugLog("killstreak after", name, item)
-
 			break
 		}
 	}
 
-	if strings.Contains(name, "australium") && !strings.Contains(name, "australium gold") {
+	if idx := strings.Index(name, "australium"); idx != -1 && !strings.Contains(name, "australium gold") {
 		debugLog("australium before", name, item)
-		name = strings.ReplaceAll(name, "australium", "")
-		name = strings.TrimSpace(name)
+		name = strings.TrimSpace(name[:idx] + name[idx+10:])
 		item.Australium = true
 		debugLog("australium after", name, item)
 	}
 
-	if strings.Contains(name, "festivized") && !strings.Contains(name, "festivized formation") {
+	if idx := strings.Index(name, "festivized"); idx != -1 && !strings.Contains(name, "festivized formation") {
 		debugLog("festivized before", name, item)
-		name = strings.ReplaceAll(name, "festivized", "")
-		name = strings.TrimSpace(name)
+		name = strings.TrimSpace(name[:idx] + name[idx+10:])
 		item.Festivized = true
 		debugLog("festivized after", name, item)
 	}
@@ -1802,9 +1798,8 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 
 	qualitySearch := name
 	for _, ex := range exception {
-		if strings.Contains(name, ex) {
-			qualitySearch = strings.ReplaceAll(name, ex, "")
-			qualitySearch = strings.TrimSpace(qualitySearch)
+		if idx := strings.Index(name, ex); idx != -1 {
+			qualitySearch = strings.TrimSpace(name[:idx] + name[idx+len(ex):])
 
 			break
 		}
@@ -1838,8 +1833,7 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 					item.Quality = qID
 				}
 
-				name = strings.Replace(name, qName, "", 1)
-				name = strings.TrimSpace(name)
+				name = strings.TrimSpace(strings.Replace(name, qName, "", 1))
 
 				debugLog("quality after", name, item)
 
@@ -1930,8 +1924,7 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 			}
 
 			debugLog("effect before", name, item)
-			name = strings.ReplaceAll(name, effName, "")
-			name = strings.TrimSpace(name)
+			name = strings.TrimSpace(strings.ReplaceAll(name, effName, ""))
 
 			item.Effect = effID
 			if effID == 4 {
@@ -2040,13 +2033,12 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 		debugLog("paint before loop", name, item)
 		name = strings.ReplaceAll(name, "(paint: ", "")
 		name = strings.ReplaceAll(name, ")", "")
-
 		name = strings.TrimSpace(name)
+
 		for pName, pVal := range s.paintByName {
 			if strings.Contains(name, pName) {
 				debugLog("paint in loop before", name, item)
-				name = strings.ReplaceAll(name, pName, "")
-				name = strings.TrimSpace(name)
+				name = strings.TrimSpace(strings.ReplaceAll(name, pName, ""))
 				item.Paint = pVal
 				debugLog("paint after", name, item)
 
@@ -2057,8 +2049,7 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 
 	if kitFabricatorDetected && item.Killstreak > 1 {
 		debugLog("kit fabricator before", name, item)
-		name = strings.ReplaceAll(name, "kit fabricator", "")
-		name = strings.TrimSpace(name)
+		name = strings.TrimSpace(strings.ReplaceAll(name, "kit fabricator", ""))
 
 		if item.Killstreak > 2 {
 			item.Defindex = 20003
@@ -2124,8 +2115,7 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 
 	if strings.Contains(name, "strangifier chemistry set") {
 		debugLog("strangifier chemistry set before", name, item)
-		name = strings.ReplaceAll(name, "strangifier chemistry set", "")
-		name = strings.TrimSpace(name)
+		name = strings.TrimSpace(strings.ReplaceAll(name, "strangifier chemistry set", ""))
 
 		item.Defindex = 20000
 		item.Quality = QualityUnique
@@ -2136,6 +2126,9 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 			schemaItem := s.ItemByName(name)
 			if schemaItem != nil {
 				item.Target = schemaItem.Defindex
+				if series, ok := strangifierChemistrySetSeries[item.Target]; ok {
+					item.Crateseries = series
+				}
 			}
 		}
 
@@ -2146,8 +2139,7 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 
 	if strings.Contains(name, "strangifier") && !strings.Contains(name, "strangifier chemistry set") {
 		debugLog("strangifier before", name, item)
-		name = strings.ReplaceAll(name, "strangifier", "")
-		name = strings.TrimSpace(name)
+		name = strings.TrimSpace(strings.ReplaceAll(name, "strangifier", ""))
 		item.Defindex = 6522
 
 		schemaItem := s.ItemByName(name)
@@ -2169,8 +2161,7 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 		kitType := item.Killstreak
 		item.Killstreak = 0
 
-		name = strings.ReplaceAll(name, "kit", "")
-		name = strings.TrimSpace(name)
+		name = strings.TrimSpace(strings.ReplaceAll(name, "kit", ""))
 
 		switch kitType {
 		case 1:
@@ -2211,7 +2202,7 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 			item.Quality = QualityDecorated
 		}
 
-		for _, it := range s.Raw.Schema.Items {
+		for _, it := range s.itemList {
 			if it.Name == searchName {
 				item.Defindex = it.Defindex
 				break
@@ -2228,12 +2219,10 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 
 	var number int
 
-	if strings.Contains(name, "#") {
+	if idx := strings.IndexByte(name, '#'); idx != -1 {
 		debugLog("with # before", name, item)
-		parts := strings.SplitN(name, "#", 2)
-		name = strings.TrimSpace(parts[0])
-		number, _ = strconv.Atoi(strings.TrimSpace(parts[1]))
-
+		number, _ = strconv.Atoi(strings.TrimSpace(name[idx+1:]))
+		name = strings.TrimSpace(name[:idx])
 		debugLog("with # after", name, item)
 	}
 
@@ -2291,7 +2280,7 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 	}
 
 	for _, keyName := range retiredKeysNames {
-		if strings.ToLower(name) == keyName {
+		if name == keyName {
 			for _, info := range retiredKeys {
 				if strings.ToLower(info.Name) == keyName {
 					item.Defindex = info.Defindex
@@ -2377,20 +2366,35 @@ func (s *Schema) SKUFromItem(item *sku.Item) string {
 	return sku.FromObject(item)
 }
 
-// ItemFromEconItem converts a generic [trading.Item] into a structured [sku.Item] with all attributes parsed.
+// ItemFromEconItem converts a generic [trading.Item] into a structured [sku.Item].
 func (s *Schema) ItemFromEconItem(item *trading.Item) *sku.Item {
 	if item == nil {
 		return nil
 	}
+
+	defindex := int(item.ClassID)
 
 	nameToParse := item.MarketHashName
 	if nameToParse == "" {
 		nameToParse = item.MarketName
 	}
 
-	skuItem := s.ItemFromName(nameToParse)
-	if skuItem == nil {
-		return nil
+	var skuItem *sku.Item
+	if nameToParse != "" {
+		skuItem = s.ItemFromName(nameToParse)
+	}
+
+	if skuItem == nil || skuItem.Defindex == 0 {
+		if defindex > 0 {
+			skuItem = &sku.Item{
+				Defindex:  defindex,
+				Quality:   QualityUnique,
+				Craftable: true,
+				Tradable:  item.Tradable,
+			}
+		} else {
+			return nil
+		}
 	}
 
 	for _, tag := range item.Tags {
@@ -2401,7 +2405,7 @@ func (s *Schema) ItemFromEconItem(item *trading.Item) *sku.Item {
 		}
 	}
 
-	if skuItem.Quality == QualityDecorated {
+	if skuItem.Quality == QualityDecorated || item.ClassID == 205 {
 		lowerName := strings.ToLower(item.MarketHashName)
 		for pkName, pkID := range s.paintKitByName {
 			if strings.Contains(lowerName, pkName) {
@@ -2557,8 +2561,9 @@ func (s *Schema) NormalizeItem(item *sku.Item) {
 	}
 
 	if schemaItem.ItemClass != "" && strings.Contains(schemaItem.Name, strings.ToUpper(schemaItem.ItemClass)) {
-		for _, it := range s.Raw.Schema.Items {
-			if it.ItemClass != "" && it.ItemClass == schemaItem.ItemClass && strings.HasPrefix(it.Name, "Upgradeable ") {
+		for _, it := range s.itemList {
+			if it.ItemClass != "" && it.ItemClass == schemaItem.ItemClass &&
+				strings.HasPrefix(it.Name, "Upgradeable ") {
 				item.Defindex = it.Defindex
 				break
 			}
@@ -2567,14 +2572,14 @@ func (s *Schema) NormalizeItem(item *sku.Item) {
 
 	isPromo := s.IsPromoItem(schemaItem)
 	if isPromo && item.Quality != QualityGenuine {
-		for _, it := range s.Raw.Schema.Items {
+		for _, it := range s.itemList {
 			if !s.IsPromoItem(it) && it.ItemName == schemaItem.ItemName {
 				item.Defindex = it.Defindex
 				break
 			}
 		}
 	} else if !isPromo && item.Quality == QualityGenuine {
-		for _, it := range s.Raw.Schema.Items {
+		for _, it := range s.itemList {
 			if s.IsPromoItem(it) && it.ItemName == schemaItem.ItemName {
 				item.Defindex = it.Defindex
 				break
@@ -2593,6 +2598,7 @@ func (s *Schema) NormalizeItem(item *sku.Item) {
 			if item.Quality == QualityStrange || item.Quality2 == QualityStrange {
 				item.Quality2 = QualityStrange
 			}
+
 			item.Quality = QualityDecorated
 		} else if item.Quality == QualityStrange || item.Quality2 == QualityStrange {
 			item.Quality = QualityUnusual
@@ -2607,10 +2613,28 @@ func (s *Schema) NormalizeItem(item *sku.Item) {
 
 // ToJSON serializes the [Schema] metadata and raw data to a generic JSON-friendly map.
 func (s *Schema) ToJSON() map[string]any {
+	if s == nil {
+		return nil
+	}
+
+	rawSchema := map[string]any{
+		"items":        s.itemList,
+		"qualities":    s.qualByName,
+		"qualityNames": s.qualByID,
+		"paintkits":    s.paintKitByID,
+		"attribute_controlled_attached_particles": s.unusualEffectsCache,
+	}
+
+	if s.Raw != nil {
+		if len(s.Raw.Schema.OriginNames) > 0 {
+			rawSchema["originNames"] = s.Raw.Schema.OriginNames
+		}
+	}
+
 	return map[string]any{
 		"version": s.Version,
 		"time":    s.Time.Unix(),
-		"raw":     s.Raw,
+		"schema":  rawSchema,
 	}
 }
 
@@ -2620,16 +2644,15 @@ type WeaponOption struct {
 	Name     string
 }
 
-// GetSupportedWeaponsForPaintkit returns the list of base weapons (name and defindex) that can have the specified paintkit applied.
+// GetSupportedWeaponsForPaintkit returns the list of base weapons that can have the specified paintkit applied.
 func (s *Schema) GetSupportedWeaponsForPaintkit(paintkitID int) []WeaponOption {
 	var options []WeaponOption
 
-	// Helper to add if mapped
 	addOption := func(defindex uint32, name string, skinMap map[int]int) {
 		if skinMap[paintkitID] != 0 {
 			options = append(options, WeaponOption{
 				Defindex: defindex,
-				Name:     name,
+				Name:     stringpool.Intern(name),
 			})
 		}
 	}

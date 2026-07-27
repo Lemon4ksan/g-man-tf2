@@ -14,14 +14,16 @@ import (
 	"github.com/lemon4ksan/miyako/bus"
 	"github.com/lemon4ksan/miyako/log"
 	"github.com/lemon4ksan/miyako/yumi"
+
+	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 )
 
 // BehaviorName is the unique name of the behavior.
 const BehaviorName = "pricedb_sync"
 
 // WithPriceManager registers the pricedb manager behavior with the orchestrator.
-func WithPriceManager(orch *behavior.Orchestrator, client *Client) {
-	orch.Register(NewManager(client, orch.Logger()).WithBus(orch.Bus()))
+func WithPriceManager(orch *behavior.Orchestrator, client *Client, dialer aoni.WSDialer) {
+	orch.Register(NewManager(client, dialer, orch.Logger()).WithBus(orch.Bus()))
 }
 
 // PricelistUpdatedEvent is published when a price in the database is set or changed.
@@ -44,7 +46,7 @@ type Manager struct {
 	bus    *bus.Bus
 
 	mu    sync.RWMutex
-	cache map[string]*Price
+	cache map[string]PackedPrice
 
 	watchedSKUs  map[string]struct{}
 	syncInterval time.Duration
@@ -54,21 +56,16 @@ type Manager struct {
 
 // NewManager creates a new price manager for PriceDB.
 // It implements behavior.Behavior interface.
-func NewManager(client *Client, logger log.Logger) *Manager {
+func NewManager(client *Client, dialer aoni.WSDialer, logger log.Logger) *Manager {
 	m := &Manager{
 		client:       client,
 		logger:       logger.With(log.Module(BehaviorName)),
-		cache:        make(map[string]*Price),
+		cache:        make(map[string]PackedPrice),
 		watchedSKUs:  make(map[string]struct{}),
 		syncInterval: 30 * time.Minute,
 	}
 
-	var restClient *aoni.Client
-	if client != nil {
-		restClient = client.rest
-	}
-
-	m.socket = NewSocketManager("", restClient, m.logger)
+	m.socket = NewSocketManager("", dialer, m.logger)
 
 	m.socket.OnPrice(func(p *Price) {
 		m.logger.Debug("Received real-time price update", log.String("sku", p.SKU))
@@ -76,7 +73,7 @@ func NewManager(client *Client, logger log.Logger) *Manager {
 		defer m.mu.Unlock()
 
 		if p.Validate() {
-			m.cache[p.SKU] = p
+			m.cache[p.SKU] = PackPrice(p)
 		}
 	})
 
@@ -132,11 +129,16 @@ func (m *Manager) Run(ctx context.Context) error {
 // GetPrice returns a cached price for the given SKU.
 func (m *Manager) GetPrice(sku string) (*Price, bool) {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
+	packed, ok := m.cache[sku]
+	m.mu.RUnlock()
 
-	p, ok := m.cache[sku]
+	if !ok {
+		return nil, false
+	}
 
-	return p, ok
+	p := packed.ToPrice(sku)
+
+	return &p, true
 }
 
 // Watch adds a SKU to the background update list.
@@ -185,7 +187,6 @@ func (m *Manager) Update(ctx context.Context) error {
 
 	m.logger.Debug("Syncing prices from PriceDB...", log.Int("count", len(skus)))
 
-	// PriceDB bulk API usually handles many SKUs at once.
 	prices, err := m.client.GetItemsBulk(ctx, skus)
 	if err != nil {
 		return err
@@ -193,8 +194,8 @@ func (m *Manager) Update(ctx context.Context) error {
 
 	m.mu.Lock()
 	for _, p := range prices {
-		if p.Validate() {
-			m.cache[p.SKU] = p
+		if p != nil && p.Validate() {
+			m.cache[p.SKU] = PackPrice(p)
 		}
 	}
 
@@ -239,7 +240,7 @@ func (m *Manager) Fetch(ctx context.Context, skus []string) (map[string]*Price, 
 	m.mu.Lock()
 	for _, r := range results {
 		if r.price != nil {
-			m.cache[r.sku] = r.price
+			m.cache[r.sku] = PackPrice(r.price)
 			resultMap[r.sku] = r.price
 		}
 	}
@@ -268,14 +269,29 @@ func (m *Manager) SeedFromBackpack(ctx context.Context, items []string) error {
 	return m.Update(ctx)
 }
 
+// SchemaProvider is an interface for providing localized item names from SKUs.
+type SchemaProvider interface {
+	ItemName(item *sku.Item, tradable, tradableEquipped, tradableNonEquipped bool) string
+}
+
 // GetAllPrices returns a copy of all currently cached prices in a thread-safe way.
-func (m *Manager) GetAllPrices() []*Price {
+// If schema is provided, item names will be dynamically constructed from SKUs on the fly.
+func (m *Manager) GetAllPrices(s SchemaProvider) []*Price {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	prices := make([]*Price, 0, len(m.cache))
-	for _, p := range m.cache {
-		// Deep copy to prevent race conditions on struct modifications
+	for skuStr, packed := range m.cache {
+		p := packed.ToPrice(skuStr)
+
+		// Dynamically construct localized name from SKU using Schema if provided
+		if s != nil {
+			if itemObj, err := sku.FromString(skuStr); err == nil {
+				p.Name = s.ItemName(itemObj, true, false, false)
+				sku.ReleaseItem(itemObj)
+			}
+		}
+
 		prices = append(prices, &Price{
 			Name:   p.Name,
 			SKU:    p.SKU,
@@ -298,31 +314,27 @@ func (m *Manager) SetPrice(sku string, buy, sell Currencies, source string) {
 		hasChanged      bool
 	)
 
-	if p, ok := m.cache[sku]; ok {
-		oldBuy = p.Buy
-		oldSell = p.Sell
+	newPrice := &Price{
+		SKU:    sku,
+		Buy:    buy,
+		Sell:   sell,
+		Source: source,
+		Time:   time.Now().Unix(),
+	}
 
-		if p.Buy.Keys != buy.Keys || p.Buy.Metal != buy.Metal ||
-			p.Sell.Keys != sell.Keys || p.Sell.Metal != sell.Metal ||
-			p.Source != source {
+	if existing, ok := m.cache[sku]; ok {
+		exp := existing.ToPrice(sku)
+		oldBuy = exp.Buy
+		oldSell = exp.Sell
+
+		if exp.Buy.Keys != buy.Keys || exp.Buy.Metal != buy.Metal ||
+			exp.Sell.Keys != sell.Keys || exp.Sell.Metal != sell.Metal {
 			hasChanged = true
-			p.Buy = buy
-			p.Sell = sell
-
-			p.Time = time.Now().Unix()
-			if source != "" {
-				p.Source = source
-			}
+			m.cache[sku] = PackPrice(newPrice)
 		}
 	} else {
 		hasChanged = true
-		m.cache[sku] = &Price{
-			SKU:    sku,
-			Source: string(source),
-			Buy:    buy,
-			Sell:   sell,
-			Time:   time.Now().Unix(),
-		}
+		m.cache[sku] = PackPrice(newPrice)
 	}
 
 	m.mu.Unlock()
@@ -334,7 +346,7 @@ func (m *Manager) SetPrice(sku string, buy, sell Currencies, source string) {
 			Sell:    sell,
 			OldBuy:  oldBuy,
 			OldSell: oldSell,
-			Source:  string(source),
+			Source:  source,
 		})
 	}
 }

@@ -19,24 +19,24 @@ import (
 )
 
 func BenchmarkSKU_FromString_Simple(b *testing.B) {
-	s := "5021;6"
+	skuStr := "5002;6"
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for range b.N {
-		_, _ = sku.FromString(s)
+	for b.Loop() {
+		item, _ := sku.FromString(skuStr)
+		sku.ReleaseItem(item)
 	}
 }
 
 func BenchmarkSKU_FromString_Complex(b *testing.B) {
-	s := "15000;11;u4;australium;festive;kt-3;pk12;w1;p5801378;s-1004-1;sp380"
+	skuStr := "30000;5;u13;australium;kt-3;pk12;w1;p5801378;strange;s-1004-1;sp10"
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for range b.N {
-		_, _ = sku.FromString(s)
+	for b.Loop() {
+		item, _ := sku.FromString(skuStr)
+		sku.ReleaseItem(item)
 	}
 }
 
@@ -56,9 +56,8 @@ func BenchmarkSKU_FromObject_Complex(b *testing.B) {
 	}
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for range b.N {
+	for b.Loop() {
 		_ = sku.FromObject(item)
 	}
 }
@@ -122,7 +121,6 @@ func BenchmarkSchema_Unmarshal_StandardJSON(b *testing.B) {
 	}
 }
 
-// 2. Быстрый goccy/go-json
 func BenchmarkSchema_Unmarshal_GoccyJSON(b *testing.B) {
 	data, err := os.ReadFile("testdata/schema.json")
 	if err != nil {

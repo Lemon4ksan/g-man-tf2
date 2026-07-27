@@ -33,7 +33,7 @@ type PaymentResponse struct {
 // Payout Providers: "payviox" (Card redirect checkout) or "mannco" (Internal account balance payment)
 func (c *Client) InitiatePayment(ctx context.Context, provider string, req PaymentReq) (*PaymentResponse, error) {
 	return request.PostTo[PaymentResponse](
-		ctx, c.getClient(), "/payment/{provider}", req,
+		ctx, c.r, "/payment/{provider}", req,
 		mod.WithVar("provider", provider),
 	)
 }

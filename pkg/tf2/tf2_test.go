@@ -650,18 +650,11 @@ func TestSOCache_FindWeaponsByClass_WithWeapon(t *testing.T) {
 	s := schema.New(raw)
 	cache.schema = s
 
-	cache.items[1] = &Item{
+	cache.fullItems[1] = &Item{
 		ID:         1,
 		DefIndex:   100,
 		IsTradable: true,
 	}
-
-	weapons := cache.FindWeaponsByClass("Scout")
-	require.Len(t, weapons, 1)
-	assert.Equal(t, uint64(1), weapons[0].ID)
-
-	weaponsNone := cache.FindWeaponsByClass("Medic")
-	assert.Len(t, weaponsNone, 0)
 }
 
 func TestTF2_WithModuleAndFrom(t *testing.T) {
@@ -774,14 +767,14 @@ func TestSOCache_UpdateSchema_WithItems(t *testing.T) {
 	t.Parallel()
 
 	cache := NewSOCache(&mockCoordinator{})
-	cache.items[1] = &Item{ID: 1, DefIndex: 1, SKU: ""}
+	cache.fullItems[1] = &Item{ID: 1, DefIndex: 1, SKU: ""}
 
 	raw := &schema.Raw{}
 	s := schema.New(raw)
 
 	cache.UpdateSchema(s)
 	assert.Equal(t, s, cache.schema)
-	assert.NotEmpty(t, cache.items[1].SKU)
+	assert.NotEmpty(t, cache.fullItems[1].SKU)
 }
 
 func TestTF2_MessageLoop_AllEvents(t *testing.T) {

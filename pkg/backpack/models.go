@@ -16,6 +16,7 @@ import (
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
+	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
 )
 
 var (
@@ -68,42 +69,126 @@ type TF2Item struct {
 	CustomDesc string `json:"custom_desc,omitempty"`
 	// Attributes contains the list of dynamic item modifiers.
 	Attributes []TF2Attribute `json:"attributes,omitempty"`
+	// SKU is a pre-cached SKU string.
+	SKU string `json:"sku,omitempty"`
 }
 
-func mapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
+// PackTF2Item converts a community inventory TF2Item struct into a compact 32-byte PackedItem.
+func PackTF2Item(it *TF2Item) tf2.PackedItem {
+	if it == nil {
+		return tf2.PackedItem{}
+	}
+
+	var flags tf2.ItemFlags
+	if !it.FlagCannotTrade {
+		flags |= tf2.FlagTradable
+	}
+
+	if !it.FlagCannotCraft {
+		flags |= tf2.FlagCraftable
+	}
+
+	var (
+		effect       int
+		wear         int
+		isAustralium bool
+		paintkit     int
+		killstreak   int
+		isFestivized bool
+		paint        int
+		quality2     int
+		crateseries  int
+	)
+
+	for _, attr := range it.Attributes {
+		switch attr.Defindex {
+		case schema.AttrUnusualEffect:
+			if val, ok := attr.Value.(float64); ok {
+				effect = int(val)
+			}
+		case schema.AttrWear:
+			if val, ok := attr.Value.(float64); ok {
+				wear = schema.WearToTier(float32(val))
+			}
+		case schema.AttrAustralium:
+			isAustralium = true
+		case schema.AttrPaintkit:
+			if val, ok := attr.Value.(float64); ok {
+				paintkit = int(val)
+			}
+		case schema.AttrKillstreak:
+			if val, ok := attr.Value.(float64); ok {
+				killstreak = int(val)
+			}
+		case schema.AttrFestivized:
+			isFestivized = true
+		case schema.AttrPaintColor, schema.AttrPaintColor2:
+			if val, ok := attr.Value.(float64); ok {
+				paint = int(val)
+			}
+		case schema.AttrCrateSeries:
+			if val, ok := attr.Value.(float64); ok {
+				crateseries = int(val)
+			}
+		case schema.AttrStrangeScore:
+			quality2 = schema.QualityStrange
+		}
+	}
+
+	if isAustralium {
+		flags |= tf2.FlagAustralium
+	}
+
+	if isFestivized {
+		flags |= tf2.FlagFestivized
+	}
+
+	if quality2 == schema.QualityStrange {
+		flags |= tf2.FlagElevatedStrange
+	}
+
+	return tf2.PackedItem{
+		AssetID:     it.ID,
+		OriginalID:  it.OriginalID,
+		Paint:       uint32(paint),
+		DefIndex:    uint16(it.Defindex),
+		Effect:      uint16(effect),
+		Paintkit:    uint16(paintkit),
+		Position:    uint16(it.Inventory & 0xFFFF),
+		Quality:     uint8(it.Quality),
+		Flags:       flags,
+		Killstreak:  uint8(killstreak),
+		Wear:        uint8(wear),
+		CrateSeries: uint8(crateseries),
+	}
+}
+
+// MapCEconToTF2 converts a community inventory CEconItem struct into a TF2Item.
+func MapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 	asset := econ.Asset
 	desc := econ.Description
 
 	item := TF2Item{
-		ID:         mustParseUint64(asset.AssetID),
-		Attributes: []TF2Attribute{},
-		Quantity:   1,
+		ID:       mustParseUint64(asset.AssetID),
+		Quantity: 1,
 	}
 
 	if amount, err := strconv.Atoi(asset.Amount); err == nil {
 		item.Quantity = amount
 	}
 
-	if len(desc.AppData) == 0 && len(desc.Tags) == 0 && len(desc.Descriptions) == 0 && desc.Name == "" {
+	if desc.AppData == nil && len(desc.Tags) == 0 && len(desc.Descriptions) == 0 && desc.Name == "" {
 		return item
 	}
 
 	if desc.AppData != nil {
-		if di, ok := desc.AppData["def_index"]; ok {
-			item.Defindex = parseIntFromAny(di)
-		}
-
-		if q, ok := desc.AppData["quality"]; ok {
-			item.Quality = parseIntFromAny(q)
-		}
-
-		if oi, ok := desc.AppData["original_id"]; ok {
-			item.OriginalID = parseUint64FromAny(oi)
-		}
+		item.Defindex = desc.AppData.DefIndex
+		item.Quality = desc.AppData.Quality
+		item.OriginalID = desc.AppData.OriginalID
 	}
 
 	if item.Defindex == 0 && s != nil &&
-		(len(desc.AppData) > 0 || len(desc.Tags) > 0 || len(desc.Descriptions) > 0 || desc.Name != "") {
+		(desc.AppData != nil || len(desc.Tags) > 0 || len(desc.Descriptions) > 0 || desc.Name != "") {
 		nameToParse := desc.MarketHashName
 		if nameToParse == "" {
 			nameToParse = desc.Name
@@ -282,9 +367,29 @@ func mapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 	}
 
 	hasAustraliumAttr := false
-	if attrData, ok := desc.AppData["attributes"].(map[string]any); ok {
-		if _, exists := attrData["2027"]; exists {
-			hasAustraliumAttr = true
+
+	if desc.AppData != nil {
+		item.Defindex = desc.AppData.DefIndex
+		item.Quality = desc.AppData.Quality
+		item.OriginalID = desc.AppData.OriginalID
+		hasAustraliumAttr = desc.AppData.IsAustralium
+	}
+
+	if item.Defindex == 0 && s != nil &&
+		(desc.AppData != nil || len(desc.Tags) > 0 || len(desc.Descriptions) > 0 || desc.Name != "") {
+		nameToParse := desc.MarketHashName
+		if nameToParse == "" {
+			nameToParse = desc.Name
+		}
+
+		if nameToParse != "" {
+			parsed := s.ItemFromName(nameToParse)
+			if parsed != nil && parsed.Defindex > 0 {
+				item.Defindex = parsed.Defindex
+				if item.Quality == 0 {
+					item.Quality = parsed.Quality
+				}
+			}
 		}
 	}
 
@@ -310,12 +415,17 @@ func mapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 	}
 
 	item.Defindex = s.NormalizeDefindex(item.Defindex)
+	item.SKU = item.ToSKU()
 
 	return item
 }
 
 // ToSKU generates and returns a standard SKU string matching the [TF2Item] state.
 func (it *TF2Item) ToSKU() string {
+	if it.SKU != "" {
+		return it.SKU
+	}
+
 	quality := it.Quality
 	defindex := it.Defindex
 	isCraftable := !it.FlagCannotCraft
@@ -467,38 +577,4 @@ type TF2Attribute struct {
 func mustParseUint64(s string) uint64 {
 	v, _ := strconv.ParseUint(s, 10, 64)
 	return v
-}
-
-func parseIntFromAny(v any) int {
-	switch val := v.(type) {
-	case string:
-		i, _ := strconv.Atoi(val)
-		return i
-	case float64:
-		return int(val)
-	case int:
-		return val
-	case int64:
-		return int(val)
-	}
-
-	return 0
-}
-
-func parseUint64FromAny(v any) uint64 {
-	switch val := v.(type) {
-	case string:
-		u, _ := strconv.ParseUint(val, 10, 64)
-		return u
-	case float64:
-		return uint64(val)
-	case uint64:
-		return val
-	case int64:
-		return uint64(val)
-	case int:
-		return uint64(val)
-	}
-
-	return 0
 }

@@ -25,6 +25,57 @@ func (c Currencies) Valid() bool {
 	return c.Keys >= 0 && c.Metal >= 0
 }
 
+// PackedPrice is a compact, zero-pointer price representation.
+// Occupies 16 bytes in memory instead of 120+ bytes with pointers.
+type PackedPrice struct {
+	BuyKeys   uint16 // 2 bytes
+	SellKeys  uint16 // 2 bytes
+	BuyScrap  uint32 // 4 bytes (Metal buying price in atomic Scrap units)
+	SellScrap uint32 // 4 bytes (Metal selling price in atomic Scrap units)
+	Time      uint32 // 4 bytes (Unix timestamp)
+}
+
+// PackPrice compresses a Price struct into a 16-byte PackedPrice.
+func PackPrice(p *Price) PackedPrice {
+	if p == nil {
+		return PackedPrice{}
+	}
+
+	buyScrap := uint32(0)
+	if p.Buy.Metal > 0 {
+		buyScrap = uint32(p.Buy.Metal*9.0 + 0.5)
+	}
+
+	sellScrap := uint32(0)
+	if p.Sell.Metal > 0 {
+		sellScrap = uint32(p.Sell.Metal*9.0 + 0.5)
+	}
+
+	return PackedPrice{
+		BuyKeys:   uint16(p.Buy.Keys),
+		SellKeys:  uint16(p.Sell.Keys),
+		BuyScrap:  buyScrap,
+		SellScrap: sellScrap,
+		Time:      uint32(p.Time),
+	}
+}
+
+// ToPrice expands the PackedPrice into a high-level Price struct.
+func (p PackedPrice) ToPrice(sku string) Price {
+	return Price{
+		SKU:  sku,
+		Time: int64(p.Time),
+		Buy: Currencies{
+			Keys:  int(p.BuyKeys),
+			Metal: float64(p.BuyScrap) / 9.0,
+		},
+		Sell: Currencies{
+			Keys:  int(p.SellKeys),
+			Metal: float64(p.SellScrap) / 9.0,
+		},
+	}
+}
+
 // Price represents a single price entry for an item.
 type Price struct {
 	Name   string     `json:"name"`
