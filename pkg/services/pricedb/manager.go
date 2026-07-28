@@ -128,10 +128,7 @@ func (m *Manager) Run(ctx context.Context) error {
 
 // GetPrice returns a cached price for the given SKU.
 func (m *Manager) GetPrice(sku string) (*Price, bool) {
-	m.mu.RLock()
-	packed, ok := m.cache[sku]
-	m.mu.RUnlock()
-
+	packed, ok := m.GetPackedPrice(sku)
 	if !ok {
 		return nil, false
 	}
@@ -139,6 +136,15 @@ func (m *Manager) GetPrice(sku string) (*Price, bool) {
 	p := packed.ToPrice(sku)
 
 	return &p, true
+}
+
+// GetPackedPrice returns the 16-byte value-type PackedPrice from cache without heap allocations.
+func (m *Manager) GetPackedPrice(sku string) (PackedPrice, bool) {
+	m.mu.RLock()
+	packed, ok := m.cache[sku]
+	m.mu.RUnlock()
+
+	return packed, ok
 }
 
 // Watch adds a SKU to the background update list.

@@ -64,7 +64,14 @@ func IsValid(skuStr string) bool {
 	return ok
 }
 
+// ToPricingSKU normalizes the specified SKU string by stripping transient flags
+// and modifiers (such as Festivized, Spells, Strange Parts, and Paint)
+// that do not affect the base pricing category.
 func ToPricingSKU(skuStr string) string {
+	if !hasPricingModifiers(skuStr) {
+		return skuStr
+	}
+
 	item, err := FromString(skuStr)
 	if err != nil {
 		return skuStr
@@ -78,6 +85,34 @@ func ToPricingSKU(skuStr string) string {
 	item.Paint = 0
 
 	return FromObject(item)
+}
+
+func hasPricingModifiers(s string) bool {
+	for {
+		idx := strings.IndexByte(s, ';')
+		if idx == -1 || idx+1 >= len(s) {
+			return false
+		}
+
+		s = s[idx+1:]
+
+		switch s[0] {
+		case 'f':
+			if strings.HasPrefix(s, "festive") {
+				return true
+			}
+
+		case 's':
+			if len(s) >= 2 && (s[1] == '-' || s[1] == 'p') {
+				return true
+			}
+
+		case 'p':
+			if len(s) >= 1 && (len(s) == 1 || s[1] != 'k') {
+				return true
+			}
+		}
+	}
 }
 
 func (it *Item) Reset() {

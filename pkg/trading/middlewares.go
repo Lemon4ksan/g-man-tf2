@@ -558,6 +558,7 @@ func isUniqueWeapon(skuStr string, s *schema.Schema) bool {
 	if err != nil {
 		return false
 	}
+	defer sku.ReleaseItem(item)
 
 	if item.Quality != schema.QualityUnique || !item.Craftable || !item.Tradable {
 		return false
