@@ -37,7 +37,8 @@ pkg/
 │   ├── pricedb/      # Pricing and PriceDB Socket.IO connection sync
 │   ├── bptf/         # backpack.tf integrations (listing management, snap scraper)
 │   ├── crit/         # Crit.tf storefront listing synchronizer
-│   ├── mannco/       # mann.co integrations (listing management, snap scraper)
+│   ├── mannco/       # mann.co api integration and ws client 
+│   ├── express/      # express-load integration for community inventories
 │   └── rep/          # Trust, feedback, and user reputation lookup utilities
 ├── trading/          # Onion-style trading middlewares (pricer, limits, counters)
 ├── reason/           # TF2-specific trade rejection reasons
