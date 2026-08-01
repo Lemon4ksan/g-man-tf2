@@ -148,12 +148,12 @@ func (m *ListingManager) DeleteAll(ctx context.Context) error {
 }
 
 // FindListingBySKU looks for a listing matching the given SKU and intent.
-func (m *ListingManager) FindListingBySKU(sku, intent string) *Listing {
+func (m *ListingManager) FindListingBySKU(sku string, intent ListingIntent) *Listing {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	for _, l := range m.listings {
-		if string(l.Intent) == intent && m.matchesSKU(l, sku) {
+		if l.Intent == intent && m.matchesSKU(l, sku) {
 			return l
 		}
 	}

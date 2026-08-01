@@ -616,7 +616,11 @@ func HasSpells(it *trading.Item) bool {
 
 // SpellPredictor defines the subset of pricedb methods needed for Halloween spell price predictions.
 type SpellPredictor interface {
-	PredictSpellPrice(ctx context.Context, spells, item string) (*pricedb.SpellPredictionResponse, error)
+	PredictSpellPrice(
+		ctx context.Context,
+		spells, item string,
+		mods ...aoni.RequestModifier,
+	) (*pricedb.SpellPredictionResponse, error)
 }
 
 // HalloweenSpellMiddleware computes spell price premiums on spelled weapons and injects them into the trade value context.
