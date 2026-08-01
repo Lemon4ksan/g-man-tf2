@@ -426,8 +426,8 @@ func TestModels_UnmarshalJSON(t *testing.T) {
 				err := json.Unmarshal(data, &resp)
 				require.NoError(t, err)
 				assert.False(t, resp.Success)
-				assert.Equal(t, "invalid_api_key", resp.Error.Code)
-				assert.Equal(t, "Invalid API key", resp.Error.Message)
+				assert.Equal(t, express.PublicAPIErrorCode("invalid_api_key"), resp.Error.Code)
+				assert.Equal(t, express.PublicAPIErrorMessage("Invalid API key"), resp.Error.Message)
 				assert.Equal(t, "req_01JERR", resp.Error.RequestID)
 			},
 		},

@@ -59,7 +59,7 @@ func (m *BansManager) CheckBans(ctx context.Context, steamID id.ID) (*BanResult,
 				}
 			}
 
-			if user.Trust.Negative > 0 && user.Trust.Negative > user.Trust.Positive {
+			if user.Trust != nil && user.Trust.Negative > 0 && user.Trust.Negative > user.Trust.Positive {
 				result.Details["trust"] = fmt.Sprintf("negative (%d/%d)", user.Trust.Negative, user.Trust.Positive)
 			}
 		}
