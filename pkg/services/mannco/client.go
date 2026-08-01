@@ -129,7 +129,7 @@ func (c *Client) setToken(token string) {
 //
 // Route: POST /user/login
 // Permission: Connected + API
-func (c *Client) Login(ctx context.Context, apiKey string) error {
+func (c *Client) Login(ctx context.Context, apiKey string, mods ...aoni.RequestModifier) error {
 	body := struct {
 		APIKey string `json:"apiKey"`
 	}{APIKey: apiKey}
@@ -138,7 +138,7 @@ func (c *Client) Login(ctx context.Context, apiKey string) error {
 		JWT string `json:"jwt"`
 	}
 
-	r, err := request.PostTo[resp](ctx, c.r, "user/login", body)
+	r, err := request.PostTo[resp](ctx, c.r, "user/login", body, mods...)
 	if err != nil {
 		return err
 	}

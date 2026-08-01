@@ -7,6 +7,7 @@ package mannco
 import (
 	"context"
 
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/mod"
 	"github.com/lemon4ksan/aoni/request"
 )
@@ -31,9 +32,18 @@ type PaymentResponse struct {
 // Route: POST /payment/{provider}
 // Permission: Connected + API
 // Payout Providers: "payviox" (Card redirect checkout) or "mannco" (Internal account balance payment)
-func (c *Client) InitiatePayment(ctx context.Context, provider string, req PaymentReq) (*PaymentResponse, error) {
+func (c *Client) InitiatePayment(
+	ctx context.Context,
+	provider string,
+	req PaymentReq,
+	mods ...aoni.RequestModifier,
+) (*PaymentResponse, error) {
+	allMods := append([]aoni.RequestModifier{
+		mod.WithVar("provider", provider),
+	}, mods...)
+
 	return request.PostTo[PaymentResponse](
 		ctx, c.r, "/payment/{provider}", req,
-		mod.WithVar("provider", provider),
+		allMods...,
 	)
 }

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/g-man/pkg/steam/community/inventory"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 
@@ -31,7 +32,7 @@ type HistoryStatus struct {
 }
 
 type DupeChecker interface {
-	CheckHistory(ctx context.Context, assetID uint64) (HistoryStatus, error)
+	CheckHistory(ctx context.Context, assetID uint64, mods ...aoni.RequestModifier) (HistoryStatus, error)
 }
 
 type TF2Item struct {

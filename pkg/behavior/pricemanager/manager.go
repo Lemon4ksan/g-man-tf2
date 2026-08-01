@@ -54,7 +54,7 @@ type PriceManager struct {
 	logger log.Logger
 
 	mu    sync.RWMutex
-	index map[string]bptf.PriceEntry
+	index map[string]bptf.V4PricesEntry
 }
 
 func NewPriceManager(c *bptf.Client, l log.Logger, cfg Config) *PriceManager {
@@ -62,7 +62,7 @@ func NewPriceManager(c *bptf.Client, l log.Logger, cfg Config) *PriceManager {
 		config: cfg,
 		bptf:   c,
 		logger: l.With(log.Module(BehaviorName)),
-		index:  make(map[string]bptf.PriceEntry),
+		index:  make(map[string]bptf.V4PricesEntry),
 	}
 }
 
@@ -107,14 +107,14 @@ func (m *PriceManager) Update(ctx context.Context) error {
 		return fmt.Errorf("bptf update failed: %w", err)
 	}
 
-	newIndex := make(map[string]bptf.PriceEntry, len(resp.Items)*2)
+	newIndex := make(map[string]bptf.V4PricesEntry, len(resp.Items)*2)
 
 	for _, itemData := range resp.Items {
-		if len(itemData.Defindexes) == 0 {
+		if len(itemData.Defindex) == 0 {
 			continue
 		}
 
-		defindex, _ := strconv.Atoi(itemData.Defindexes[0])
+		defindex, _ := strconv.Atoi(itemData.Defindex[0])
 		m.indexItemPrices(defindex, itemData.Prices, newIndex)
 	}
 
@@ -133,8 +133,8 @@ func (m *PriceManager) Update(ctx context.Context) error {
 
 func (m *PriceManager) indexItemPrices(
 	defindex int,
-	prices map[string]map[string]map[string]map[string]bptf.PriceEntry,
-	outIndex map[string]bptf.PriceEntry,
+	prices map[string]map[string]map[string]map[string]bptf.V4PricesEntry,
+	outIndex map[string]bptf.V4PricesEntry,
 ) {
 	normDef := schema.NormalizeDefindex(defindex)
 
@@ -146,8 +146,8 @@ func (m *PriceManager) indexItemPrices(
 
 func indexQualityPrices(
 	defindex, qInt int,
-	tradableMap map[string]map[string]map[string]bptf.PriceEntry,
-	outIndex map[string]bptf.PriceEntry,
+	tradableMap map[string]map[string]map[string]bptf.V4PricesEntry,
+	outIndex map[string]bptf.V4PricesEntry,
 ) {
 	for tradable, craftableMap := range tradableMap {
 		isTradable := tradable == "Tradable"
@@ -177,7 +177,7 @@ func indexQualityPrices(
 	}
 }
 
-func (m *PriceManager) GetPrice(sku string) (bptf.PriceEntry, bool) {
+func (m *PriceManager) GetPrice(sku string) (bptf.V4PricesEntry, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -222,7 +222,7 @@ func (m *PriceManager) loadFromCache() error {
 		return err
 	}
 
-	var index map[string]bptf.PriceEntry
+	var index map[string]bptf.V4PricesEntry
 	if err := json.Unmarshal(data, &index); err != nil {
 		return err
 	}

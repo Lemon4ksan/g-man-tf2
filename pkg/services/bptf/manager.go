@@ -17,14 +17,13 @@ import (
 )
 
 // ListingManager manages high-level backpack.tf listings.
-// It handles creating, updating, and mass-deleting listings while maintaining internal state.
 type ListingManager struct {
 	client *Client
 	schema *schema.Manager
 	logger log.Logger
 
 	mu       sync.RWMutex
-	listings map[string]*ListingResponse // id -> listing
+	listings map[string]*Listing
 }
 
 // NewListingManager creates a new high-level listing manager.
@@ -33,7 +32,7 @@ func NewListingManager(client *Client, sm *schema.Manager, logger log.Logger) *L
 		client:   client,
 		schema:   sm,
 		logger:   logger.With(log.Module("bptf_listings")),
-		listings: make(map[string]*ListingResponse),
+		listings: make(map[string]*Listing),
 	}
 }
 
@@ -42,14 +41,14 @@ func (m *ListingManager) Client() *Client {
 	return m.client
 }
 
-// Sync fetches all current listings from backpack.tf and updates the internal state.
+// Sync fetches all current listings from backpack.tf and updates internal state.
 func (m *ListingManager) Sync(ctx context.Context) error {
 	m.logger.Info("syncing listings from backpack.tf")
 
-	var allListings []ListingResponse
+	var allListings []Listing
 
 	skip := 0
-	limit := 500 // Recommended limit for scrolling
+	limit := 500
 
 	for {
 		resp, err := m.client.GetListings(ctx, skip, limit)
@@ -69,8 +68,7 @@ func (m *ListingManager) Sync(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Fully refresh internal state to match backpack.tf
-	m.listings = make(map[string]*ListingResponse)
+	m.listings = make(map[string]*Listing)
 	for i := range allListings {
 		m.listings[allListings[i].ID] = &allListings[i]
 	}
@@ -81,7 +79,7 @@ func (m *ListingManager) Sync(ctx context.Context) error {
 }
 
 // Upsert creates or updates a listing.
-func (m *ListingManager) Upsert(ctx context.Context, listing ListingResolvable) (*ListingResponse, error) {
+func (m *ListingManager) Upsert(ctx context.Context, listing ListingResolvable) (*Listing, error) {
 	resp, err := m.client.CreateListing(ctx, listing)
 	if err != nil {
 		return nil, err
@@ -107,7 +105,7 @@ func (m *ListingManager) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// DeleteAll removes all listings managed by this manager.
+// DeleteAll removes all listings managed by this manager in parallel batches.
 func (m *ListingManager) DeleteAll(ctx context.Context) error {
 	m.mu.RLock()
 
@@ -135,27 +133,27 @@ func (m *ListingManager) DeleteAll(ctx context.Context) error {
 		RPS:     5,
 		Burst:   2,
 	}, batches, func(chunkCtx context.Context, batch []string) error {
-		return m.client.BatchDeleteListings(chunkCtx, batch)
+		_, err := m.client.BatchDeleteListings(chunkCtx)
+		return err
 	})
 	if err != nil {
 		return fmt.Errorf("batch delete failed: %w", err)
 	}
 
 	m.mu.Lock()
-	m.listings = make(map[string]*ListingResponse)
+	m.listings = make(map[string]*Listing)
 	m.mu.Unlock()
 
 	return nil
 }
 
 // FindListingBySKU looks for a listing matching the given SKU and intent.
-// It searches for the SKU in the listing details or by matching the item name.
-func (m *ListingManager) FindListingBySKU(sku, intent string) *ListingResponse {
+func (m *ListingManager) FindListingBySKU(sku, intent string) *Listing {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	for _, l := range m.listings {
-		if l.Intent == intent && m.matchesSKU(l, sku) {
+		if string(l.Intent) == intent && m.matchesSKU(l, sku) {
 			return l
 		}
 	}
@@ -174,50 +172,39 @@ func (m *ListingManager) ItemToSKU(doc ItemDocument) string {
 		return ""
 	}
 
-	// Try parsing full item name using schema ItemFromName first to get all attributes
 	item := s.ItemFromName(doc.Name)
 	if item == nil {
-		// Fallback to manual resolution if parsing failed
 		itemSchema := s.ItemByName(doc.BaseName)
 		if itemSchema == nil {
 			return ""
 		}
 
 		item = &sku.Item{
-			Defindex:  itemSchema.Defindex,
-			Quality:   doc.Quality.ID,
-			Tradable:  doc.Tradable,
-			Craftable: doc.Craftable,
+			Defindex: itemSchema.Defindex,
+			Quality:  doc.Quality.ID,
 		}
 
-		if doc.Particle != nil {
+		if doc.Particle.ID != 0 {
 			item.Effect = doc.Particle.ID
 		}
 
-		if doc.Paint != nil {
+		if doc.Paint.ID != 0 {
 			item.Paint = doc.Paint.ID
 		}
 
-		if doc.ElevatedQuality != nil && doc.ElevatedQuality.ID == 11 {
+		if doc.ElevatedQuality.ID == 11 {
 			item.Quality2 = 11
 		}
-	} else {
-		// Ensure tradability and craftability are set from document
-		item.Tradable = doc.Tradable
-		item.Craftable = doc.Craftable
 	}
 
 	return sku.FromObject(item)
 }
 
-func (m *ListingManager) matchesSKU(l *ListingResponse, sku string) bool {
-	// 1. Try to find SKU tag in details: [sku:defindex;quality;...]
-	// This is the most reliable way if we managed the listing.
+func (m *ListingManager) matchesSKU(l *Listing, sku string) bool {
 	if l.Details != "" && (l.Details == sku || l.Details == "SKU: "+sku) {
 		return true
 	}
 
-	// 2. Full conversion using schema
 	if m.schema == nil {
 		return false
 	}
@@ -225,8 +212,8 @@ func (m *ListingManager) matchesSKU(l *ListingResponse, sku string) bool {
 	return m.ItemToSKU(l.Item) == sku
 }
 
-// AddMockListing inserts a listing directly into the internal cache for unit testing.
-func (m *ListingManager) AddMockListing(l *ListingResponse) {
+// AddMockListing inserts a listing directly into internal cache for testing.
+func (m *ListingManager) AddMockListing(l *Listing) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

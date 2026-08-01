@@ -33,7 +33,11 @@ type MockDupeChecker struct {
 	Err       error
 }
 
-func (m *MockDupeChecker) CheckHistory(ctx context.Context, id uint64) (backpack.HistoryStatus, error) {
+func (m *MockDupeChecker) CheckHistory(
+	ctx context.Context,
+	id uint64,
+	mods ...aoni.RequestModifier,
+) (backpack.HistoryStatus, error) {
 	if m.Err != nil {
 		return backpack.HistoryStatus{}, m.Err
 	}

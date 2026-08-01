@@ -12,6 +12,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 	"github.com/lemon4ksan/g-man/pkg/trading/engine"
@@ -88,7 +89,7 @@ type PriceProvider interface {
 }
 
 type DupeChecker interface {
-	CheckHistory(ctx context.Context, assetID uint64) (backpack.HistoryStatus, error)
+	CheckHistory(ctx context.Context, assetID uint64, mods ...aoni.RequestModifier) (backpack.HistoryStatus, error)
 }
 
 type ReputationChecker interface {

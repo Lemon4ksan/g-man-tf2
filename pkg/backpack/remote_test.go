@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	json "github.com/goccy/go-json"
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/g-man/pkg/steam/community/inventory"
 	"github.com/lemon4ksan/g-man/pkg/steam/transport"
 	"github.com/lemon4ksan/g-man/pkg/test/mock"
@@ -26,7 +27,11 @@ type MockDupeChecker struct {
 	Err       error
 }
 
-func (m *MockDupeChecker) CheckHistory(ctx context.Context, id uint64) (HistoryStatus, error) {
+func (m *MockDupeChecker) CheckHistory(
+	ctx context.Context,
+	id uint64,
+	mods ...aoni.RequestModifier,
+) (HistoryStatus, error) {
 	if m.Err != nil {
 		return HistoryStatus{}, m.Err
 	}

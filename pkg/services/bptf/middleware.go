@@ -22,10 +22,10 @@ func SafetyMiddleware(bptfClient *Client, cache *generic.Cache[string, any], log
 			steamID := ctx.Offer.OtherSteamID
 			cacheKey := "bptf_user_" + steamID.String()
 
-			var user V1User
+			var isBanned bool
 
 			if cachedData, ok := cache.Get(cacheKey); ok {
-				user = cachedData.(V1User)
+				isBanned = cachedData.(bool)
 			} else {
 				resp, err := bptfClient.GetUsersInfo(ctx, []id.ID{steamID})
 				if err != nil {
@@ -38,11 +38,14 @@ func SafetyMiddleware(bptfClient *Client, cache *generic.Cache[string, any], log
 					return next(ctx)
 				}
 
-				user = u
-				cache.Set(cacheKey, user, 2*time.Hour)
+				if u.Bans != nil {
+					isBanned = true
+				}
+
+				cache.Set(cacheKey, isBanned, 2*time.Hour)
 			}
 
-			if user.Bans != nil {
+			if isBanned {
 				ctx.Decline(tf2reason.DeclineBannedBptf)
 				return nil
 			}
@@ -52,7 +55,7 @@ func SafetyMiddleware(bptfClient *Client, cache *generic.Cache[string, any], log
 	}
 }
 
-// ValueTierMiddleware determines the value of the partner's inventory.
+// ValueTierMiddleware determines the value of partner's inventory.
 func ValueTierMiddleware(bptfClient *Client) engine.Middleware {
 	return func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
@@ -61,9 +64,10 @@ func ValueTierMiddleware(bptfClient *Client) engine.Middleware {
 				return next(ctx)
 			}
 
-			ctx.Set("partner_inv_value", val.Value)
+			floatVal, _ := val.Value.(float64)
+			ctx.Set("partner_inv_value", floatVal)
 
-			if val.Value > 500 {
+			if floatVal > 500 {
 				ctx.Set("is_whale", true)
 			}
 

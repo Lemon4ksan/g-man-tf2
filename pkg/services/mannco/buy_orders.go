@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	json "github.com/goccy/go-json"
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/mod"
 	"github.com/lemon4ksan/aoni/request"
 )
@@ -172,14 +173,18 @@ type UserAllBuyOrdersResponse struct {
 //
 // Route: POST /item/buyorder
 // Permission: Connected + API
-func (c *Client) CreateBuyOrder(ctx context.Context, itemID, value, amount int) (*DetailsResponse, error) {
+func (c *Client) CreateBuyOrder(
+	ctx context.Context,
+	itemID, value, amount int,
+	mods ...aoni.RequestModifier,
+) (*DetailsResponse, error) {
 	req := CreateBuyOrderReq{
 		ItemID: itemID,
 		Value:  value,
 		Amount: amount,
 	}
 
-	return request.PostTo[DetailsResponse](ctx, c.r, "/item/buyorder", req)
+	return request.PostTo[DetailsResponse](ctx, c.r, "/item/buyorder", req, mods...)
 }
 
 // UpdateBuyOrder updates an existing buy order price and/or quantity.
@@ -188,14 +193,18 @@ func (c *Client) CreateBuyOrder(ctx context.Context, itemID, value, amount int) 
 //
 // Route: POST /item/buyorder/update
 // Permission: Connected + API
-func (c *Client) UpdateBuyOrder(ctx context.Context, itemID, value, amount int) (string, error) {
+func (c *Client) UpdateBuyOrder(
+	ctx context.Context,
+	itemID, value, amount int,
+	mods ...aoni.RequestModifier,
+) (string, error) {
 	req := UpdateBuyOrderReq{
 		ItemID: itemID,
 		Value:  value,
 		Amount: amount,
 	}
 
-	resp, err := request.PostTo[string](ctx, c.r, "/item/buyorder/update", req)
+	resp, err := request.PostTo[string](ctx, c.r, "/item/buyorder/update", req, mods...)
 	if err != nil {
 		return "", err
 	}
@@ -207,20 +216,32 @@ func (c *Client) UpdateBuyOrder(ctx context.Context, itemID, value, amount int) 
 //
 // Route: POST /item/buyorder/remove
 // Permission: Connected + API
-func (c *Client) RemoveBuyOrder(ctx context.Context, itemID int) (*DetailsResponse, error) {
+func (c *Client) RemoveBuyOrder(
+	ctx context.Context,
+	itemID int,
+	mods ...aoni.RequestModifier,
+) (*DetailsResponse, error) {
 	req := RemoveBuyOrderReq{
 		ItemID: itemID,
 	}
 
-	return request.PostTo[DetailsResponse](ctx, c.r, "/item/buyorder/remove", req)
+	return request.PostTo[DetailsResponse](ctx, c.r, "/item/buyorder/remove", req, mods...)
 }
 
 // GetUserBuyOrdersForItem returns user's active buy orders for a specific item ID.
 //
 // Route: GET /user/buyorder/{item}
 // Permission: Connected + API
-func (c *Client) GetUserBuyOrdersForItem(ctx context.Context, item string) (*UserBuyOrderResponse, error) {
-	return request.GetTo[UserBuyOrderResponse](ctx, c.r, "/user/buyorder/{item}", mod.WithVar("item", item))
+func (c *Client) GetUserBuyOrdersForItem(
+	ctx context.Context,
+	item string,
+	mods ...aoni.RequestModifier,
+) (*UserBuyOrderResponse, error) {
+	allMods := append([]aoni.RequestModifier{
+		mod.WithVar("item", item),
+	}, mods...)
+
+	return request.GetTo[UserBuyOrderResponse](ctx, c.r, "/user/buyorder/{item}", allMods...)
 }
 
 // GetUserBuyOrdersQuery holds filtering arguments for GetUserBuyOrders.
@@ -235,6 +256,14 @@ type GetUserBuyOrdersQuery struct {
 //
 // Route: GET /user/getBuyorder
 // Permission: Connected + API
-func (c *Client) GetUserBuyOrders(ctx context.Context, query GetUserBuyOrdersQuery) (*UserAllBuyOrdersResponse, error) {
-	return request.GetTo[UserAllBuyOrdersResponse](ctx, c.r, "/user/getBuyorder", mod.WithQuery(query))
+func (c *Client) GetUserBuyOrders(
+	ctx context.Context,
+	query GetUserBuyOrdersQuery,
+	mods ...aoni.RequestModifier,
+) (*UserAllBuyOrdersResponse, error) {
+	allMods := append([]aoni.RequestModifier{
+		mod.WithQuery(query),
+	}, mods...)
+
+	return request.GetTo[UserAllBuyOrdersResponse](ctx, c.r, "/user/getBuyorder", allMods...)
 }

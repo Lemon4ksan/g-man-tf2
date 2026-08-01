@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	json "github.com/goccy/go-json"
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/request"
 )
 
@@ -87,16 +88,16 @@ type WithdrawResponse struct {
 //
 // Route: GET /inventory/onSale
 // Permission: Connected + API
-func (c *Client) GetItemsOnSale(ctx context.Context) (*GetInventoryResponse, error) {
-	return request.GetTo[GetInventoryResponse](ctx, c.r, "/inventory/onSale")
+func (c *Client) GetItemsOnSale(ctx context.Context, mods ...aoni.RequestModifier) (*GetInventoryResponse, error) {
+	return request.GetTo[GetInventoryResponse](ctx, c.r, "/inventory/onSale", mods...)
 }
 
 // GetItemsInInventory returns items currently in user inventory (not on sale, state = 0).
 //
 // Route: GET /inventory/onInventory
 // Permission: Connected + API
-func (c *Client) GetItemsInInventory(ctx context.Context) (*GetInventoryResponse, error) {
-	return request.GetTo[GetInventoryResponse](ctx, c.r, "/inventory/onInventory")
+func (c *Client) GetItemsInInventory(ctx context.Context, mods ...aoni.RequestModifier) (*GetInventoryResponse, error) {
+	return request.GetTo[GetInventoryResponse](ctx, c.r, "/inventory/onInventory", mods...)
 }
 
 // SetItemPrice updates pricing for a list of inventory item asset IDs.
@@ -106,13 +107,18 @@ func (c *Client) GetItemsInInventory(ctx context.Context) (*GetInventoryResponse
 //
 // Route: POST /inventory/price
 // Permission: Connected + API
-func (c *Client) SetItemPrice(ctx context.Context, ids []string, price int) (*InventoryMessageResponse, error) {
+func (c *Client) SetItemPrice(
+	ctx context.Context,
+	ids []string,
+	price int,
+	mods ...aoni.RequestModifier,
+) (*InventoryMessageResponse, error) {
 	req := SetPriceReq{
 		IDs:   strings.Join(ids, ","),
 		Price: price,
 	}
 
-	return request.PostTo[InventoryMessageResponse](ctx, c.r, "/inventory/price", req)
+	return request.PostTo[InventoryMessageResponse](ctx, c.r, "/inventory/price", req, mods...)
 }
 
 // WithdrawItems pulls items from Mannco.store inventory to the user's Steam Account.
@@ -120,10 +126,14 @@ func (c *Client) SetItemPrice(ctx context.Context, ids []string, price int) (*In
 //
 // Route: POST /inventory/withdraw
 // Permission: Connected + API
-func (c *Client) WithdrawItems(ctx context.Context, ids []string) (*WithdrawResponse, error) {
+func (c *Client) WithdrawItems(
+	ctx context.Context,
+	ids []string,
+	mods ...aoni.RequestModifier,
+) (*WithdrawResponse, error) {
 	req := WithdrawReq{
 		IDs: strings.Join(ids, ","),
 	}
 
-	return request.PostTo[WithdrawResponse](ctx, c.r, "/inventory/withdraw", req)
+	return request.PostTo[WithdrawResponse](ctx, c.r, "/inventory/withdraw", req, mods...)
 }

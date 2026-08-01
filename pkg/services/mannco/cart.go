@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	json "github.com/goccy/go-json"
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/request"
 )
 
@@ -187,8 +188,8 @@ type UpdateCartResponse struct {
 //
 // Route: GET /cart/get
 // Permission: Connected + API
-func (c *Client) GetCart(ctx context.Context) (*GetCartResponse, error) {
-	return request.GetTo[GetCartResponse](ctx, c.r, "/cart/get")
+func (c *Client) GetCart(ctx context.Context, mods ...aoni.RequestModifier) (*GetCartResponse, error) {
+	return request.GetTo[GetCartResponse](ctx, c.r, "/cart/get", mods...)
 }
 
 // AddToCart inserts a single listing into user's shopping cart by Steam asset ID.
@@ -196,9 +197,13 @@ func (c *Client) GetCart(ctx context.Context) (*GetCartResponse, error) {
 //
 // Route: POST /cart/add
 // Permission: Connected + API
-func (c *Client) AddToCart(ctx context.Context, assetID string) (*GetCartResponse, error) {
+func (c *Client) AddToCart(
+	ctx context.Context,
+	assetID string,
+	mods ...aoni.RequestModifier,
+) (*GetCartResponse, error) {
 	req := AddCartReq{AssetID: assetID}
-	return request.PostTo[GetCartResponse](ctx, c.r, "/cart/add", req)
+	return request.PostTo[GetCartResponse](ctx, c.r, "/cart/add", req, mods...)
 }
 
 // BulkAddToCart searches the cheapest marketplace listings for an item, excluding
@@ -207,23 +212,32 @@ func (c *Client) AddToCart(ctx context.Context, assetID string) (*GetCartRespons
 //
 // Route: POST /cart/bulk
 // Permission: Connected + API
-func (c *Client) BulkAddToCart(ctx context.Context, itemID, count int, sellerUserID string) (*GetCartResponse, error) {
+func (c *Client) BulkAddToCart(
+	ctx context.Context,
+	itemID, count int,
+	sellerUserID string,
+	mods ...aoni.RequestModifier,
+) (*GetCartResponse, error) {
 	req := BulkAddCartReq{
 		ItemID:       itemID,
 		Count:        count,
 		SellerUserID: sellerUserID,
 	}
 
-	return request.PostTo[GetCartResponse](ctx, c.r, "/cart/bulk", req)
+	return request.PostTo[GetCartResponse](ctx, c.r, "/cart/bulk", req, mods...)
 }
 
 // RemoveFromCart deletes an entire cart row (and all its associated asset IDs) from the cart.
 //
 // Route: POST /cart/remove
 // Permission: Connected + API
-func (c *Client) RemoveFromCart(ctx context.Context, cartID int) (*GetCartResponse, error) {
+func (c *Client) RemoveFromCart(
+	ctx context.Context,
+	cartID int,
+	mods ...aoni.RequestModifier,
+) (*GetCartResponse, error) {
 	req := RemoveCartReq{CartID: cartID}
-	return request.PostTo[GetCartResponse](ctx, c.r, "/cart/remove", req)
+	return request.PostTo[GetCartResponse](ctx, c.r, "/cart/remove", req, mods...)
 }
 
 // UpdateCart triggers an integrity scan on the cart. Invalid items (sold, price altered)
@@ -233,6 +247,6 @@ func (c *Client) RemoveFromCart(ctx context.Context, cartID int) (*GetCartRespon
 //
 // Route: POST /cart/update
 // Permission: Connected + API
-func (c *Client) UpdateCart(ctx context.Context) (*UpdateCartResponse, error) {
-	return request.PostTo[UpdateCartResponse](ctx, c.r, "/cart/update", nil)
+func (c *Client) UpdateCart(ctx context.Context, mods ...aoni.RequestModifier) (*UpdateCartResponse, error) {
+	return request.PostTo[UpdateCartResponse](ctx, c.r, "/cart/update", nil, mods...)
 }

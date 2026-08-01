@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	json "github.com/goccy/go-json"
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/mod"
 	"github.com/lemon4ksan/aoni/request"
 )
@@ -113,8 +114,16 @@ type TradeStatusResponse struct {
 //
 // Route: GET /deposit/{game}
 // Permission: Connected + API
-func (c *Client) GetDepositInfo(ctx context.Context, game int) (*GetDepositInfoResponse, error) {
-	return request.GetTo[GetDepositInfoResponse](ctx, c.r, "/deposit/{game}", mod.WithVar("game", game))
+func (c *Client) GetDepositInfo(
+	ctx context.Context,
+	game int,
+	mods ...aoni.RequestModifier,
+) (*GetDepositInfoResponse, error) {
+	allMods := append([]aoni.RequestModifier{
+		mod.WithVar("game", game),
+	}, mods...)
+
+	return request.GetTo[GetDepositInfoResponse](ctx, c.r, "/deposit/{game}", allMods...)
 }
 
 // CreateDepositTrade initiates a trade offer to deposit items onto the site.
@@ -125,8 +134,9 @@ func (c *Client) GetDepositInfo(ctx context.Context, game int) (*GetDepositInfoR
 func (c *Client) CreateDepositTrade(
 	ctx context.Context,
 	req CreateDepositTradeReq,
+	mods ...aoni.RequestModifier,
 ) (*CreateDepositTradeResponse, error) {
-	return request.PostTo[CreateDepositTradeResponse](ctx, c.r, "/deposit/trade", req)
+	return request.PostTo[CreateDepositTradeResponse](ctx, c.r, "/deposit/trade", req, mods...)
 }
 
 // GetInstantSellInfo returns enriched inventory data with instant-sell price values.
@@ -134,10 +144,18 @@ func (c *Client) CreateDepositTrade(
 //
 // Route: GET /deposit/instantSell/{game}
 // Permission: Connected + API
-func (c *Client) GetInstantSellInfo(ctx context.Context, game int) (*GetDepositInfoResponse, error) {
+func (c *Client) GetInstantSellInfo(
+	ctx context.Context,
+	game int,
+	mods ...aoni.RequestModifier,
+) (*GetDepositInfoResponse, error) {
+	allMods := append([]aoni.RequestModifier{
+		mod.WithVar("game", game),
+	}, mods...)
+
 	return request.GetTo[GetDepositInfoResponse](
 		ctx, c.r, "/deposit/instantSell/{game}",
-		mod.WithVar("game", game),
+		allMods...,
 	)
 }
 
@@ -149,17 +167,26 @@ func (c *Client) GetInstantSellInfo(ctx context.Context, game int) (*GetDepositI
 func (c *Client) CreateInstantSellTrade(
 	ctx context.Context,
 	req CreateInstantSellTradeReq,
+	mods ...aoni.RequestModifier,
 ) (*CreateDepositTradeResponse, error) {
-	return request.PostTo[CreateDepositTradeResponse](ctx, c.r, "/deposit/trade/instant", req)
+	return request.PostTo[CreateDepositTradeResponse](ctx, c.r, "/deposit/trade/instant", req, mods...)
 }
 
 // GetDepositTradeStatus returns the current status and bot metadata of a deposit trade row.
 //
 // Route: GET /deposit/tradeStatus/{tradeid}
 // Permission: Connected + API
-func (c *Client) GetDepositTradeStatus(ctx context.Context, tradeID int) (*TradeStatusResponse, error) {
+func (c *Client) GetDepositTradeStatus(
+	ctx context.Context,
+	tradeID int,
+	mods ...aoni.RequestModifier,
+) (*TradeStatusResponse, error) {
+	allMods := append([]aoni.RequestModifier{
+		mod.WithVar("tradeid", tradeID),
+	}, mods...)
+
 	return request.GetTo[TradeStatusResponse](
 		ctx, c.r, "/deposit/tradeStatus/{tradeid}",
-		mod.WithVar("tradeid", tradeID),
+		allMods...,
 	)
 }

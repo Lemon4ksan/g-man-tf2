@@ -12,6 +12,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 	"github.com/lemon4ksan/g-man/pkg/trading/engine"
@@ -553,7 +554,11 @@ type mockDupeChecker struct {
 	mock.Mock
 }
 
-func (m *mockDupeChecker) CheckHistory(ctx context.Context, assetID uint64) (backpack.HistoryStatus, error) {
+func (m *mockDupeChecker) CheckHistory(
+	ctx context.Context,
+	assetID uint64,
+	mods ...aoni.RequestModifier,
+) (backpack.HistoryStatus, error) {
 	args := m.Called(ctx, assetID)
 	return args.Get(0).(backpack.HistoryStatus), args.Error(1)
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	json "github.com/goccy/go-json"
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/mod"
 	"github.com/lemon4ksan/aoni/request"
 )
@@ -244,40 +245,48 @@ type TransactionDetailsResponse struct {
 //
 // Route: GET /user/disconnect
 // Permission: Connected + API
-func (c *Client) Disconnect(ctx context.Context) (*DisconnectResponse, error) {
-	return request.GetTo[DisconnectResponse](ctx, c.r, "/user/disconnect")
+func (c *Client) Disconnect(ctx context.Context, mods ...aoni.RequestModifier) (*DisconnectResponse, error) {
+	return request.GetTo[DisconnectResponse](ctx, c.r, "/user/disconnect", mods...)
 }
 
 // GetUserInfo returns account metadata, balance, name, and 2FA status.
 //
 // Route: GET /user/infos
 // Permission: Connected + API
-func (c *Client) GetUserInfo(ctx context.Context) (*UserInfoResponse, error) {
-	return request.GetTo[UserInfoResponse](ctx, c.r, "/user/infos")
+func (c *Client) GetUserInfo(ctx context.Context, mods ...aoni.RequestModifier) (*UserInfoResponse, error) {
+	return request.GetTo[UserInfoResponse](ctx, c.r, "/user/infos", mods...)
 }
 
 // GetBalance returns current account balance in cents.
 //
 // Route: GET /user/balance
 // Permission: Connected + API
-func (c *Client) GetBalance(ctx context.Context) (*UserBalanceResponse, error) {
-	return request.GetTo[UserBalanceResponse](ctx, c.r, "/user/balance")
+func (c *Client) GetBalance(ctx context.Context, mods ...aoni.RequestModifier) (*UserBalanceResponse, error) {
+	return request.GetTo[UserBalanceResponse](ctx, c.r, "/user/balance", mods...)
 }
 
 // GetNotifications returns unread notification metrics across categories.
 //
 // Route: GET /user/notifications
 // Permission: Connected + API
-func (c *Client) GetNotifications(ctx context.Context) (*NotificationsResponse, error) {
-	return request.GetTo[NotificationsResponse](ctx, c.r, "/user/notifications")
+func (c *Client) GetNotifications(ctx context.Context, mods ...aoni.RequestModifier) (*NotificationsResponse, error) {
+	return request.GetTo[NotificationsResponse](ctx, c.r, "/user/notifications", mods...)
 }
 
 // GetIPSessionList retrieves active and historical user login sessions.
 //
 // Route: GET /user/ipList
 // Permission: Connected + API
-func (c *Client) GetIPSessionList(ctx context.Context, query IPSessionListQuery) (*IPSessionListResponse, error) {
-	return request.GetTo[IPSessionListResponse](ctx, c.r, "/user/ipList", mod.WithQuery(query))
+func (c *Client) GetIPSessionList(
+	ctx context.Context,
+	query IPSessionListQuery,
+	mods ...aoni.RequestModifier,
+) (*IPSessionListResponse, error) {
+	allMods := append([]aoni.RequestModifier{
+		mod.WithQuery(query),
+	}, mods...)
+
+	return request.GetTo[IPSessionListResponse](ctx, c.r, "/user/ipList", allMods...)
 }
 
 // GetPublicStoreProfile returns minimal public profile details of a storefront ID.
@@ -285,43 +294,72 @@ func (c *Client) GetIPSessionList(ctx context.Context, query IPSessionListQuery)
 //
 // Route: GET /user/store/{identifier}
 // Permission: API Only (No session required)
-func (c *Client) GetPublicStoreProfile(ctx context.Context, identifier string) (*PublicStoreProfile, error) {
-	return request.GetTo[PublicStoreProfile](
-		ctx, c.r, "/user/store/{identifier}",
+func (c *Client) GetPublicStoreProfile(
+	ctx context.Context,
+	identifier string,
+	mods ...aoni.RequestModifier,
+) (*PublicStoreProfile, error) {
+	allMods := append([]aoni.RequestModifier{
 		mod.WithVar("identifier", identifier),
-	)
+	}, mods...)
+
+	return request.GetTo[PublicStoreProfile](ctx, c.r, "/user/store/{identifier}", allMods...)
 }
 
 // GetSalesInfos returns summary sales statistics for the user.
 //
 // Route: GET /user/getSalesInfos
 // Permission: Connected + API
-func (c *Client) GetSalesInfos(ctx context.Context) (*SalesInfosResponse, error) {
-	return request.GetTo[SalesInfosResponse](ctx, c.r, "/user/getSalesInfos")
+func (c *Client) GetSalesInfos(ctx context.Context, mods ...aoni.RequestModifier) (*SalesInfosResponse, error) {
+	return request.GetTo[SalesInfosResponse](ctx, c.r, "/user/getSalesInfos", mods...)
 }
 
 // GetSalesChartInfos returns aggregated sales data for plotting charts.
 //
 // Route: GET /user/getSalesChartInfos
 // Permission: Connected + API
-func (c *Client) GetSalesChartInfos(ctx context.Context, query SalesChartQuery) (*SalesChartResponse, error) {
-	return request.GetTo[SalesChartResponse](ctx, c.r, "/user/getSalesChartInfos", mod.WithQuery(query))
+func (c *Client) GetSalesChartInfos(
+	ctx context.Context,
+	query SalesChartQuery,
+	mods ...aoni.RequestModifier,
+) (*SalesChartResponse, error) {
+	allMods := append([]aoni.RequestModifier{
+		mod.WithQuery(query),
+	}, mods...)
+
+	return request.GetTo[SalesChartResponse](ctx, c.r, "/user/getSalesChartInfos", allMods...)
 }
 
 // GetBalanceHistory returns logs of deposits, payments, and balance adjustments.
 //
 // Route: GET /user/getBalanceHistory
 // Permission: Connected + API
-func (c *Client) GetBalanceHistory(ctx context.Context, query BalanceHistoryQuery) (*BalanceHistoryResponse, error) {
-	return request.GetTo[BalanceHistoryResponse](ctx, c.r, "/user/getBalanceHistory", mod.WithQuery(query))
+func (c *Client) GetBalanceHistory(
+	ctx context.Context,
+	query BalanceHistoryQuery,
+	mods ...aoni.RequestModifier,
+) (*BalanceHistoryResponse, error) {
+	allMods := append([]aoni.RequestModifier{
+		mod.WithQuery(query),
+	}, mods...)
+
+	return request.GetTo[BalanceHistoryResponse](ctx, c.r, "/user/getBalanceHistory", allMods...)
 }
 
 // GetPurchaseHistory returns purchase checkout logs.
 //
 // Route: GET /user/getPurchaseHistory
 // Permission: Connected + API
-func (c *Client) GetPurchaseHistory(ctx context.Context, query PurchaseHistoryQuery) (*PurchaseHistoryResponse, error) {
-	return request.GetTo[PurchaseHistoryResponse](ctx, c.r, "/user/getPurchaseHistory", mod.WithQuery(query))
+func (c *Client) GetPurchaseHistory(
+	ctx context.Context,
+	query PurchaseHistoryQuery,
+	mods ...aoni.RequestModifier,
+) (*PurchaseHistoryResponse, error) {
+	allMods := append([]aoni.RequestModifier{
+		mod.WithQuery(query),
+	}, mods...)
+
+	return request.GetTo[PurchaseHistoryResponse](ctx, c.r, "/user/getPurchaseHistory", allMods...)
 }
 
 // GetSalesHistory returns marketplace sales logs.
@@ -329,8 +367,16 @@ func (c *Client) GetPurchaseHistory(ctx context.Context, query PurchaseHistoryQu
 //
 // Route: GET /user/getSalesHistory
 // Permission: Connected + API
-func (c *Client) GetSalesHistory(ctx context.Context, query SalesHistoryQuery) (*SalesHistoryResponse, error) {
-	return request.GetTo[SalesHistoryResponse](ctx, c.r, "/user/getSalesHistory", mod.WithQuery(query))
+func (c *Client) GetSalesHistory(
+	ctx context.Context,
+	query SalesHistoryQuery,
+	mods ...aoni.RequestModifier,
+) (*SalesHistoryResponse, error) {
+	allMods := append([]aoni.RequestModifier{
+		mod.WithQuery(query),
+	}, mods...)
+
+	return request.GetTo[SalesHistoryResponse](ctx, c.r, "/user/getSalesHistory", allMods...)
 }
 
 // GetSalesHistoryForUser returns the sales history of another user.
@@ -342,20 +388,30 @@ func (c *Client) GetSalesHistoryForUser(
 	ctx context.Context,
 	userID string,
 	query SalesHistoryQuery,
+	mods ...aoni.RequestModifier,
 ) (*SalesHistoryResponse, error) {
-	return request.GetTo[SalesHistoryResponse](
-		ctx, c.r, "/user/getSalesHistory/{userid}",
+	allMods := append([]aoni.RequestModifier{
 		mod.WithVar("userid", userID),
 		mod.WithQuery(query),
-	)
+	}, mods...)
+
+	return request.GetTo[SalesHistoryResponse](ctx, c.r, "/user/getSalesHistory/{userid}", allMods...)
 }
 
 // GetCashoutHistory returns cashout checkout transaction logs.
 //
 // Route: GET /user/getCashoutHistory
 // Permission: Connected + API
-func (c *Client) GetCashoutHistory(ctx context.Context, query CashoutHistoryQuery) (*CashoutHistoryResponse, error) {
-	return request.GetTo[CashoutHistoryResponse](ctx, c.r, "/user/getCashoutHistory", mod.WithQuery(query))
+func (c *Client) GetCashoutHistory(
+	ctx context.Context,
+	query CashoutHistoryQuery,
+	mods ...aoni.RequestModifier,
+) (*CashoutHistoryResponse, error) {
+	allMods := append([]aoni.RequestModifier{
+		mod.WithQuery(query),
+	}, mods...)
+
+	return request.GetTo[CashoutHistoryResponse](ctx, c.r, "/user/getCashoutHistory", allMods...)
 }
 
 // GetTransactionHistory returns ledger details.
@@ -365,10 +421,15 @@ func (c *Client) GetCashoutHistory(ctx context.Context, query CashoutHistoryQuer
 func (c *Client) GetTransactionHistory(
 	ctx context.Context,
 	query TransactionHistoryQuery,
+	mods ...aoni.RequestModifier,
 ) (*TransactionHistoryResponse, error) {
+	allMods := append([]aoni.RequestModifier{
+		mod.WithQuery(query),
+	}, mods...)
+
 	return request.GetTo[TransactionHistoryResponse](
 		ctx, c.r, "/user/getTransactionHistory",
-		mod.WithQuery(query),
+		allMods...,
 	)
 }
 
@@ -376,11 +437,19 @@ func (c *Client) GetTransactionHistory(
 //
 // Route: GET /user/getTransactionDetails?transactionId={id}
 // Permission: Connected + API
-func (c *Client) GetTransactionDetails(ctx context.Context, transactionID string) (*TransactionDetailsResponse, error) {
+func (c *Client) GetTransactionDetails(
+	ctx context.Context,
+	transactionID string,
+	mods ...aoni.RequestModifier,
+) (*TransactionDetailsResponse, error) {
 	req := TransactionDetailsQuery{TransactionID: transactionID}
+
+	allMods := append([]aoni.RequestModifier{
+		mod.WithQuery(req),
+	}, mods...)
 
 	return request.GetTo[TransactionDetailsResponse](
 		ctx, c.r, "/user/getTransactionDetails",
-		mod.WithQuery(req),
+		allMods...,
 	)
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	json "github.com/goccy/go-json"
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/mod"
 	"github.com/lemon4ksan/aoni/request"
 )
@@ -50,8 +51,8 @@ type ResendTradeQuery struct {
 //
 // Route: GET /trades/active
 // Permission: Connected + API
-func (c *Client) GetActiveTrades(ctx context.Context) (*GetTradesResponse, error) {
-	return request.GetTo[GetTradesResponse](ctx, c.r, "/trades/active")
+func (c *Client) GetActiveTrades(ctx context.Context, mods ...aoni.RequestModifier) (*GetTradesResponse, error) {
+	return request.GetTo[GetTradesResponse](ctx, c.r, "/trades/active", mods...)
 }
 
 // GetAllTrades returns up to the last 500 historical trades (completed, failed) for the user.
@@ -59,8 +60,8 @@ func (c *Client) GetActiveTrades(ctx context.Context) (*GetTradesResponse, error
 //
 // Route: GET /trades/all
 // Permission: Connected + API
-func (c *Client) GetAllTrades(ctx context.Context) (*GetTradesResponse, error) {
-	return request.GetTo[GetTradesResponse](ctx, c.r, "/trades/all")
+func (c *Client) GetAllTrades(ctx context.Context, mods ...aoni.RequestModifier) (*GetTradesResponse, error) {
+	return request.GetTo[GetTradesResponse](ctx, c.r, "/trades/all", mods...)
 }
 
 // ResendTrade triggers a retry for a failed or pending withdrawal trade.
@@ -68,7 +69,16 @@ func (c *Client) GetAllTrades(ctx context.Context) (*GetTradesResponse, error) {
 //
 // Route: GET /trade/resend?id={tradeId}
 // Permission: Connected + API
-func (c *Client) ResendTrade(ctx context.Context, tradeID int) (*ResendTradeResponse, error) {
+func (c *Client) ResendTrade(
+	ctx context.Context,
+	tradeID int,
+	mods ...aoni.RequestModifier,
+) (*ResendTradeResponse, error) {
 	req := ResendTradeQuery{ID: tradeID}
-	return request.GetTo[ResendTradeResponse](ctx, c.r, "/trade/resend", mod.WithQuery(req))
+
+	allMods := append([]aoni.RequestModifier{
+		mod.WithQuery(req),
+	}, mods...)
+
+	return request.GetTo[ResendTradeResponse](ctx, c.r, "/trade/resend", allMods...)
 }

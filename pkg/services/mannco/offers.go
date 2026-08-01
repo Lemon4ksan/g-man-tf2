@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	json "github.com/goccy/go-json"
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/request"
 )
 
@@ -142,8 +143,8 @@ type OfferActionReq struct {
 //
 // Route: GET /offers/received
 // Permission: Connected + API
-func (c *Client) GetReceivedOffers(ctx context.Context) ([]Offer, error) {
-	resp, err := request.GetTo[GetReceivedOffersResponse](ctx, c.r, "/offers/received")
+func (c *Client) GetReceivedOffers(ctx context.Context, mods ...aoni.RequestModifier) ([]Offer, error) {
+	resp, err := request.GetTo[GetReceivedOffersResponse](ctx, c.r, "/offers/received", mods...)
 	if err != nil {
 		return nil, err
 	}
@@ -155,8 +156,8 @@ func (c *Client) GetReceivedOffers(ctx context.Context) ([]Offer, error) {
 //
 // Route: GET /offers/my
 // Permission: Connected + API
-func (c *Client) GetMyOffers(ctx context.Context) ([]Offer, error) {
-	resp, err := request.GetTo[[]Offer](ctx, c.r, "/offers/my")
+func (c *Client) GetMyOffers(ctx context.Context, mods ...aoni.RequestModifier) ([]Offer, error) {
+	resp, err := request.GetTo[[]Offer](ctx, c.r, "/offers/my", mods...)
 	if err != nil {
 		return nil, err
 	}
@@ -171,38 +172,55 @@ func (c *Client) GetMyOffers(ctx context.Context) ([]Offer, error) {
 //
 // Route: POST /offers/create
 // Permission: Connected + API
-func (c *Client) CreateOffer(ctx context.Context, itemAssetID int64, priceCents int) (*OfferMessageResponse, error) {
+func (c *Client) CreateOffer(
+	ctx context.Context,
+	itemAssetID int64,
+	priceCents int,
+	mods ...aoni.RequestModifier,
+) (*OfferMessageResponse, error) {
 	req := CreateOfferReq{
 		ID:    itemAssetID,
 		Price: priceCents,
 	}
 
-	return request.PostTo[OfferMessageResponse](ctx, c.r, "/offers/create", req)
+	return request.PostTo[OfferMessageResponse](ctx, c.r, "/offers/create", req, mods...)
 }
 
 // AcceptOffer accepts a received offer and completes the checkout transaction (Seller action).
 //
 // Route: POST /offers/accept
 // Permission: Connected + API
-func (c *Client) AcceptOffer(ctx context.Context, offerID int64) (*OfferMessageResponse, error) {
+func (c *Client) AcceptOffer(
+	ctx context.Context,
+	offerID int64,
+	mods ...aoni.RequestModifier,
+) (*OfferMessageResponse, error) {
 	req := OfferActionReq{ID: offerID}
-	return request.PostTo[OfferMessageResponse](ctx, c.r, "/offers/accept", req)
+	return request.PostTo[OfferMessageResponse](ctx, c.r, "/offers/accept", req, mods...)
 }
 
 // DeclineOffer declines an incoming trade offer (Seller action).
 //
 // Route: POST /offers/decline
 // Permission: Connected + API
-func (c *Client) DeclineOffer(ctx context.Context, offerID int64) (*OfferMessageResponse, error) {
+func (c *Client) DeclineOffer(
+	ctx context.Context,
+	offerID int64,
+	mods ...aoni.RequestModifier,
+) (*OfferMessageResponse, error) {
 	req := OfferActionReq{ID: offerID}
-	return request.PostTo[OfferMessageResponse](ctx, c.r, "/offers/decline", req)
+	return request.PostTo[OfferMessageResponse](ctx, c.r, "/offers/decline", req, mods...)
 }
 
 // RemoveOffer cancels and removes an outgoing trade offer (Buyer action).
 //
 // Route: POST /offers/remove
 // Permission: Connected + API
-func (c *Client) RemoveOffer(ctx context.Context, offerID int64) (*OfferMessageResponse, error) {
+func (c *Client) RemoveOffer(
+	ctx context.Context,
+	offerID int64,
+	mods ...aoni.RequestModifier,
+) (*OfferMessageResponse, error) {
 	req := OfferActionReq{ID: offerID}
-	return request.PostTo[OfferMessageResponse](ctx, c.r, "/offers/remove", req)
+	return request.PostTo[OfferMessageResponse](ctx, c.r, "/offers/remove", req, mods...)
 }

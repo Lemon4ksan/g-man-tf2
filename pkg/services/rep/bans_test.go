@@ -41,10 +41,10 @@ func TestBansManager_CheckBans(t *testing.T) {
 		manager, stub := setupBansManager(t, "mock-mptf-key")
 
 		respBptf := bptf.V1UserResponse{
-			Users: map[id.ID]bptf.V1User{
+			Users: map[id.ID]bptf.UserInfo{
 				cleanSteamID: {
 					Name: "Clean User",
-					Trust: bptf.UserTrust{
+					Trust: &bptf.UserTrust{
 						Positive: 10,
 						Negative: 0,
 					},
@@ -76,7 +76,7 @@ func TestBansManager_CheckBans(t *testing.T) {
 		manager, stub := setupBansManager(t, "")
 
 		respBptf := bptf.V1UserResponse{
-			Users: map[id.ID]bptf.V1User{
+			Users: map[id.ID]bptf.UserInfo{
 				bannedSteamID: {
 					Name: "Banned User",
 					Bans: &bptf.UserBans{
@@ -100,7 +100,7 @@ func TestBansManager_CheckBans(t *testing.T) {
 		manager, stub := setupBansManager(t, "")
 
 		respBptf := bptf.V1UserResponse{
-			Users: map[id.ID]bptf.V1User{
+			Users: map[id.ID]bptf.UserInfo{
 				scammerSteamID: {
 					Name: "SteamRep Scammer",
 					Bans: &bptf.UserBans{
@@ -123,10 +123,10 @@ func TestBansManager_CheckBans(t *testing.T) {
 		manager, stub := setupBansManager(t, "")
 
 		respBptf := bptf.V1UserResponse{
-			Users: map[id.ID]bptf.V1User{
+			Users: map[id.ID]bptf.UserInfo{
 				badTrustSteamID: {
 					Name: "Negative Trust User",
-					Trust: bptf.UserTrust{
+					Trust: &bptf.UserTrust{
 						Positive: 1,
 						Negative: 5,
 					},
@@ -147,10 +147,10 @@ func TestBansManager_CheckBans(t *testing.T) {
 		manager, stub := setupBansManager(t, "mock-mptf-key")
 
 		respBptf := bptf.V1UserResponse{
-			Users: map[id.ID]bptf.V1User{
+			Users: map[id.ID]bptf.UserInfo{
 				mptfBannedSteamID: {
 					Name: "Marketplace Banned User",
-					Trust: bptf.UserTrust{
+					Trust: &bptf.UserTrust{
 						Positive: 2,
 						Negative: 0,
 					},
@@ -182,7 +182,7 @@ func TestBansManager_CheckBans(t *testing.T) {
 		manager, stub := setupBansManager(t, "")
 
 		respBptf := bptf.V1UserResponse{
-			Users: map[id.ID]bptf.V1User{
+			Users: map[id.ID]bptf.UserInfo{
 				mptfBannedSteamID: {
 					Name: "Marketplace Banned User",
 				},
@@ -215,7 +215,7 @@ func TestBansManager_CheckBans(t *testing.T) {
 		manager, stub := setupBansManager(t, "mock-mptf-key")
 
 		respBptf := bptf.V1UserResponse{
-			Users: map[id.ID]bptf.V1User{
+			Users: map[id.ID]bptf.UserInfo{
 				cleanSteamID: {
 					Name: "Clean User",
 				},
@@ -237,7 +237,7 @@ func TestBansManager_CheckBans(t *testing.T) {
 		manager, stub := setupBansManager(t, "mock-mptf-key")
 
 		respBptf := bptf.V1UserResponse{
-			Users: map[id.ID]bptf.V1User{
+			Users: map[id.ID]bptf.UserInfo{
 				cleanSteamID: {
 					Name: "Clean User",
 				},

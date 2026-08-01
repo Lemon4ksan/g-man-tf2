@@ -298,8 +298,12 @@ type BackpackDetailsResponse struct {
 //
 // Route: GET /item/details/{item}
 // Permission: API Only (No session required)
-func (c *Client) GetItemDetails(ctx context.Context, item string) (*ItemDetails, error) {
-	return request.GetTo[ItemDetails](ctx, c.r, "/item/details/{item}", mod.WithVar("item", item))
+func (c *Client) GetItemDetails(ctx context.Context, item string, mods ...aoni.RequestModifier) (*ItemDetails, error) {
+	allMods := append([]aoni.RequestModifier{
+		mod.WithVar("item", item),
+	}, mods...)
+
+	return request.GetTo[ItemDetails](ctx, c.r, "/item/details/{item}", allMods...)
 }
 
 // SalesGraphReq contains query parameters for GetItemSalesGraph.
@@ -312,13 +316,21 @@ type SalesGraphReq struct {
 //
 // Route: GET /item/salesGraph/{item}?period={period}
 // Permission: Connected + API
-func (c *Client) GetItemSalesGraph(ctx context.Context, item, period string) (*ItemSalesGraph, error) {
+func (c *Client) GetItemSalesGraph(
+	ctx context.Context,
+	item, period string,
+	mods ...aoni.RequestModifier,
+) (*ItemSalesGraph, error) {
 	req := SalesGraphReq{Period: period}
+
+	allMods := append([]aoni.RequestModifier{
+		mod.WithVar("item", item),
+		mod.WithQuery(req),
+	}, mods...)
 
 	return request.GetTo[ItemSalesGraph](
 		ctx, c.r, "/item/salesGraph/{item}",
-		mod.WithVar("item", item),
-		mod.WithQuery(req),
+		allMods...,
 	)
 }
 
@@ -327,17 +339,21 @@ func (c *Client) GetItemSalesGraph(ctx context.Context, item, period string) (*I
 //
 // Route: GET /item/listing/count/{item} or GET /item/listing/count/{item}/{userid}
 // Permission: API Only
-func (c *Client) GetListingCount(ctx context.Context, item, userID string) (*ListingCount, error) {
+func (c *Client) GetListingCount(
+	ctx context.Context,
+	item, userID string,
+	mods ...aoni.RequestModifier,
+) (*ListingCount, error) {
 	path := "/item/listing/count/{item}"
 
-	var opts []aoni.RequestModifier
-
-	opts = append(opts, mod.WithVar("item", item))
+	opts := []aoni.RequestModifier{mod.WithVar("item", item)}
 	if userID != "" {
 		path = "/item/listing/count/{item}/{userid}"
 
 		opts = append(opts, mod.WithVar("userid", userID))
 	}
+
+	opts = append(opts, mods...)
 
 	return request.GetTo[ListingCount](ctx, c.r, path, opts...)
 }
@@ -355,12 +371,15 @@ type ListingsReq struct {
 //
 // Route: GET /item/listing/{item} or GET /item/listing/{item}/{userid}
 // Permission: API Only
-func (c *Client) GetItemListings(ctx context.Context, item, userID string, query ListingsReq) ([]Listing, error) {
+func (c *Client) GetItemListings(
+	ctx context.Context,
+	item, userID string,
+	query ListingsReq,
+	mods ...aoni.RequestModifier,
+) ([]Listing, error) {
 	path := "/item/listing/{item}"
 
-	var opts []aoni.RequestModifier
-
-	opts = append(opts, mod.WithVar("item", item))
+	opts := []aoni.RequestModifier{mod.WithVar("item", item)}
 	if userID != "" {
 		path = "/item/listing/{item}/{userid}"
 
@@ -368,6 +387,7 @@ func (c *Client) GetItemListings(ctx context.Context, item, userID string, query
 	}
 
 	opts = append(opts, mod.WithQuery(query))
+	opts = append(opts, mods...)
 
 	resp, err := request.GetTo[[]Listing](ctx, c.r, path, opts...)
 	if err != nil {
@@ -381,8 +401,16 @@ func (c *Client) GetItemListings(ctx context.Context, item, userID string, query
 //
 // Route: GET /item/buyorderList/{item}
 // Permission: API Only
-func (c *Client) GetBuyOrderList(ctx context.Context, item string) (*BuyOrderList, error) {
-	return request.GetTo[BuyOrderList](ctx, c.r, "/item/buyorderList/{item}", mod.WithVar("item", item))
+func (c *Client) GetBuyOrderList(
+	ctx context.Context,
+	item string,
+	mods ...aoni.RequestModifier,
+) (*BuyOrderList, error) {
+	allMods := append([]aoni.RequestModifier{
+		mod.WithVar("item", item),
+	}, mods...)
+
+	return request.GetTo[BuyOrderList](ctx, c.r, "/item/buyorderList/{item}", allMods...)
 }
 
 // GetItemPricing returns calculated lowest sale, highest buy order, Steam price,
@@ -390,8 +418,12 @@ func (c *Client) GetBuyOrderList(ctx context.Context, item string) (*BuyOrderLis
 //
 // Route: GET /item/pricing/{item}
 // Permission: Connected + API
-func (c *Client) GetItemPricing(ctx context.Context, item string) (*ItemPricing, error) {
-	return request.GetTo[ItemPricing](ctx, c.r, "/item/pricing/{item}", mod.WithVar("item", item))
+func (c *Client) GetItemPricing(ctx context.Context, item string, mods ...aoni.RequestModifier) (*ItemPricing, error) {
+	allMods := append([]aoni.RequestModifier{
+		mod.WithVar("item", item),
+	}, mods...)
+
+	return request.GetTo[ItemPricing](ctx, c.r, "/item/pricing/{item}", allMods...)
 }
 
 // BulkPricingReq contains query parameters for GetBulkPricing.
@@ -404,22 +436,38 @@ type BulkPricingReq struct {
 //
 // Route: GET /item/pricing/bulk?items=...
 // Permission: Connected + API
-func (c *Client) GetBulkPricing(ctx context.Context, items []string) (*BulkPricing, error) {
+func (c *Client) GetBulkPricing(
+	ctx context.Context,
+	items []string,
+	mods ...aoni.RequestModifier,
+) (*BulkPricing, error) {
 	req := BulkPricingReq{
 		Items: strings.Join(items, ","),
 	}
 
-	return request.GetTo[BulkPricing](ctx, c.r, "/item/pricing/bulk", mod.WithQuery(req))
+	allMods := append([]aoni.RequestModifier{
+		mod.WithQuery(req),
+	}, mods...)
+
+	return request.GetTo[BulkPricing](ctx, c.r, "/item/pricing/bulk", allMods...)
 }
 
 // GetBackpackDetailsTF2 queries full item details and backpack metrics for a TF2 asset ID.
 //
 // Route: GET /item/details/fromid/{backpackid}
 // Permission: API Only
-func (c *Client) GetBackpackDetailsTF2(ctx context.Context, backpackID string) (*BackpackDetailsResponse, error) {
+func (c *Client) GetBackpackDetailsTF2(
+	ctx context.Context,
+	backpackID string,
+	mods ...aoni.RequestModifier,
+) (*BackpackDetailsResponse, error) {
+	allMods := append([]aoni.RequestModifier{
+		mod.WithVar("backpackid", backpackID),
+	}, mods...)
+
 	return request.GetTo[BackpackDetailsResponse](
 		ctx, c.r, "/item/details/fromid/{backpackid}",
-		mod.WithVar("backpackid", backpackID),
+		allMods...,
 	)
 }
 
@@ -427,9 +475,17 @@ func (c *Client) GetBackpackDetailsTF2(ctx context.Context, backpackID string) (
 //
 // Route: GET /item/cs/details/fromid/{backpackid}
 // Permission: API Only
-func (c *Client) GetBackpackDetailsCS2(ctx context.Context, backpackID string) (*BackpackDetailsResponse, error) {
+func (c *Client) GetBackpackDetailsCS2(
+	ctx context.Context,
+	backpackID string,
+	mods ...aoni.RequestModifier,
+) (*BackpackDetailsResponse, error) {
+	allMods := append([]aoni.RequestModifier{
+		mod.WithVar("backpackid", backpackID),
+	}, mods...)
+
 	return request.GetTo[BackpackDetailsResponse](
 		ctx, c.r, "/item/cs/details/fromid/{backpackid}",
-		mod.WithVar("backpackid", backpackID),
+		allMods...,
 	)
 }

@@ -35,10 +35,16 @@ func NewBackpackTFChecker(client *Client) *BackpackTFChecker {
 }
 
 // CheckHistory checks the item's history on the backpack.tf website.
-func (c *BackpackTFChecker) CheckHistory(ctx context.Context, assetID uint64) (backpack.HistoryStatus, error) {
+func (c *BackpackTFChecker) CheckHistory(
+	ctx context.Context,
+	assetID uint64,
+	mods ...aoni.RequestModifier,
+) (backpack.HistoryStatus, error) {
 	path := "https://backpack.tf/item/" + strconv.FormatUint(assetID, 10)
 
-	resp, err := request.GetTo[[]byte](ctx, c.bptfClient.R(), path, decode.WithRaw())
+	allMods := append([]aoni.RequestModifier{decode.WithRaw()}, mods...)
+
+	resp, err := request.GetTo[[]byte](ctx, c.bptfClient.R(), path, allMods...)
 	if err != nil {
 		var apiErr *aoni.APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
