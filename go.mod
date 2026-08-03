@@ -6,8 +6,8 @@ require (
 	github.com/PuerkitoBio/goquery v1.12.0
 	github.com/andygrunwald/vdf v1.1.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/lemon4ksan/aoni v0.6.0
-	github.com/lemon4ksan/g-man v0.13.1-0.20260801182822-a022821247a5
+	github.com/lemon4ksan/aoni v0.6.1
+	github.com/lemon4ksan/g-man v0.14.0-rc.1
 	github.com/lemon4ksan/miyako v0.3.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/time v0.15.0
@@ -32,7 +32,7 @@ require (
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/quic-go/quic-go v0.61.0 // indirect
 	github.com/refraction-networking/utls v1.8.2 // indirect
-	github.com/stretchr/objx v0.5.2 // indirect
+	github.com/stretchr/objx v0.5.3 // indirect
 	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
