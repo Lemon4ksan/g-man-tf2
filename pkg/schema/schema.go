@@ -17,6 +17,7 @@ import (
 
 	json "github.com/goccy/go-json"
 	"github.com/lemon4ksan/g-man/pkg/trading"
+	"github.com/lemon4ksan/miyako/generic"
 
 	"github.com/lemon4ksan/g-man-tf2/internal/bytesconv"
 	"github.com/lemon4ksan/g-man-tf2/internal/stringpool"
@@ -322,7 +323,7 @@ func containsFoldASCII(s, substr string) bool {
 }
 
 func isExcludedPattern(name string) bool {
-	return containsFoldASCII(name, "medal") ||
+	return (containsFoldASCII(name, "medal") && !containsFoldASCII(name, "Gentle Manne's Service Medal")) ||
 		containsFoldASCII(name, "tournament") ||
 		containsFoldASCII(name, "etf2l") ||
 		containsFoldASCII(name, "ugc ") ||
@@ -335,10 +336,7 @@ func (s *Schema) indexItem(item *Item) {
 		return
 	}
 
-	lowName := strings.ToLower(item.ItemName)
-	if lowName == "" {
-		lowName = strings.ToLower(item.Name)
-	}
+	lowName := strings.ToLower(generic.Coalesce(item.ItemName, item.Name))
 
 	s.itemsByDef[item.Defindex] = item
 

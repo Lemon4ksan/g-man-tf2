@@ -76,6 +76,10 @@ func IsMedal(it *Item) bool {
 		return false
 	}
 
+	if containsFoldASCII(it.ItemName, "Gentle Manne's Service Medal") {
+		return false
+	}
+
 	switch it.ItemTypeName {
 	case "#TF_Wearable_TournamentMedal", "#TF_Wearable_Medal", "Tournament Medal", "Medal":
 		return true
