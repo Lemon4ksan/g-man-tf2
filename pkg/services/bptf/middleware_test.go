@@ -27,7 +27,7 @@ func TestMiddlewares(t *testing.T) {
 		}
 		stub.SetJSONResponse("api/inventory/123/values", 200, resp)
 
-		client := New(aoni.NewClient(stub), "key", "token")
+		client := NewAPI(aoni.NewClient(stub))
 		mw := ValueTierMiddleware(client)
 
 		ctx := engine.NewTradeContext(t.Context(), &trading.TradeOffer{

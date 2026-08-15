@@ -17,17 +17,17 @@ import (
 
 // BansManager handles checking users against various ban lists.
 type BansManager struct {
-	bptfClient *bptf.Client
-	mptfAPIKey string
 	rest       request.Requester
+	bptfClient bptf.API
+	mptfAPIKey string
 }
 
 // NewBansManager creates a new bans manager.
-func NewBansManager(bptfClient *bptf.Client, mptfAPIKey string) *BansManager {
+func NewBansManager(r request.Requester, bptfClient bptf.API, mptfAPIKey string) *BansManager {
 	return &BansManager{
+		rest:       r,
 		bptfClient: bptfClient,
 		mptfAPIKey: mptfAPIKey,
-		rest:       bptfClient.R(),
 	}
 }
 
@@ -44,23 +44,32 @@ func (m *BansManager) CheckBans(ctx context.Context, steamID id.ID) (*BanResult,
 	}
 
 	// Check Backpack.tf (which also includes SteamRep info)
-	userResp, err := m.bptfClient.GetUsersInfo(ctx, []id.ID{steamID})
+	userResp, err := m.bptfClient.GetUsersInfoV1(ctx, steamID.String())
 	if err == nil {
-		if user, ok := userResp.Users[steamID]; ok {
-			if user.Bans != nil {
-				if user.Bans.All != "" || user.Bans.BPTF != "" {
-					result.IsBanned = true
-					result.Details["backpack.tf"] = "banned"
+		if users, ok := userResp["users"].(map[string]any); ok {
+			if user, ok := users[steamID.String()].(map[string]any); ok {
+				if bans, ok := user["bans"].(map[string]any); ok {
+					if all, ok := bans["all"].(string); ok && all != "" {
+						result.IsBanned = true
+						result.Details["backpack.tf"] = "banned"
+					} else if bptfBan, ok := bans["bptf"].(string); ok && bptfBan != "" {
+						result.IsBanned = true
+						result.Details["backpack.tf"] = "banned"
+					}
+
+					if sr, ok := bans["steamrep_scammer"].(float64); ok && sr == 1 {
+						result.IsBanned = true
+						result.Details["steamrep.com"] = "scammer"
+					}
 				}
 
-				if user.Bans.SteamRepScammer == 1 {
-					result.IsBanned = true
-					result.Details["steamrep.com"] = "scammer"
+				if trust, ok := user["trust"].(map[string]any); ok {
+					pos, _ := trust["positive"].(float64)
+					neg, _ := trust["negative"].(float64)
+					if neg > 0 && neg > pos {
+						result.Details["trust"] = fmt.Sprintf("negative (%d/%d)", int(neg), int(pos))
+					}
 				}
-			}
-
-			if user.Trust != nil && user.Trust.Negative > 0 && user.Trust.Negative > user.Trust.Positive {
-				result.Details["trust"] = fmt.Sprintf("negative (%d/%d)", user.Trust.Negative, user.Trust.Positive)
 			}
 		}
 	}
@@ -96,7 +105,7 @@ func (m *BansManager) checkMarketplaceTF(ctx context.Context, steamID id.ID) (bo
 		} `json:"results"`
 	}
 
-	resp, err := request.PostTo[MPTFResponse](ctx, m.rest, url, req, nil)
+	resp, err := request.PostTo[MPTFResponse](ctx, m.rest, url, req)
 	if err != nil {
 		return false, err
 	}

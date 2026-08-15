@@ -76,16 +76,15 @@ type Bot struct {
 	sub             *bus.Subscription
 	wg              sync.WaitGroup
 	tradeCfgManager *tf2trading.ConfigManager
-	bptfClient      *bptf.Client
+	bptfClient      bptf.API
 	bansManager     *rep.BansManager
 	bptfChecker     *bptf.BackpackTFChecker
 	pdbManager      *pricedb.Manager
-	pdbClient       *pricedb.Client
+	pdbClient       pricedb.API
 	critClient      *crit.Client
 }
 
-// NewBot creates and initializes a new bot instance using the provided configuration
-// and injected storage and logger dependencies.
+// NewBot initializes all subsystems and wires event handlers together.
 func NewBot(cfg Config, store storage.Provider, logger log.Logger) (*Bot, error) {
 	// Initialize TF2 Trade Configuration
 	tradeCfgManager, err := tf2trading.NewConfigManager("trading_config.json")
@@ -97,13 +96,13 @@ func NewBot(cfg Config, store storage.Provider, logger log.Logger) (*Bot, error)
 
 	// Setup standard HTTP clients and TF2 API services
 	r := aoni.NewClient(&http.Client{Timeout: 30 * time.Second})
-	bptfClient := bptf.New(r, cfg.BptfAPIKey, cfg.BptfUserToken)
+	bptfClient := bptf.NewAPI(r)
 	pdbClient := pricedb.NewClient(r)
 	critClient := crit.NewClient(r, cfg.CritAPIKey)
 
 	pdbManager := pricedb.NewManager(pdbClient, r, logger)
-	bansManager := rep.NewBansManager(bptfClient, cfg.MptfAPIKey)
-	bptfChecker := bptf.NewBackpackTFChecker(bptfClient)
+	bansManager := rep.NewBansManager(r, bptfClient, cfg.MptfAPIKey)
+	bptfChecker := bptf.NewBackpackTFChecker(r)
 
 	// Configure the Steam Client with all necessary modules
 	opts := []steam.Option{

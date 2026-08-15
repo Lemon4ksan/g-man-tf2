@@ -20,8 +20,9 @@ func setupBansManager(t *testing.T, apiKey string) (*BansManager, *mock.HTTPStub
 	t.Helper()
 
 	stub := mock.NewHTTPStub()
-	bptfClient := bptf.New(aoni.NewClient(stub), "mock-bptf-key", "mock-token")
-	manager := NewBansManager(bptfClient, apiKey)
+	r := aoni.NewClient(stub)
+	bptfClient := bptf.NewAPI(r)
+	manager := NewBansManager(r, bptfClient, apiKey)
 
 	return manager, stub
 }

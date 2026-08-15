@@ -7,7 +7,6 @@ package bptf
 import (
 	"time"
 
-	"github.com/lemon4ksan/g-man/pkg/steam/id"
 	"github.com/lemon4ksan/g-man/pkg/trading/engine"
 	"github.com/lemon4ksan/miyako/generic"
 	"github.com/lemon4ksan/miyako/log"
@@ -16,7 +15,7 @@ import (
 )
 
 // SafetyMiddleware checks bans and user trust levels on backpack.tf.
-func SafetyMiddleware(bptfClient *Client, cache *generic.Cache[string, any], logger log.Logger) engine.Middleware {
+func SafetyMiddleware(bptfClient API, cache *generic.Cache[string, any], logger log.Logger) engine.Middleware {
 	return func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
 			steamID := ctx.Offer.OtherSteamID
@@ -27,19 +26,18 @@ func SafetyMiddleware(bptfClient *Client, cache *generic.Cache[string, any], log
 			if cachedData, ok := cache.Get(cacheKey); ok {
 				isBanned = cachedData.(bool)
 			} else {
-				resp, err := bptfClient.GetUsersInfo(ctx, []id.ID{steamID})
+				resp, err := bptfClient.GetUsersInfoV1(ctx, steamID.String())
 				if err != nil {
 					logger.Warn("Reputation API error, skipping safety check", log.Err(err))
 					return next(ctx)
 				}
 
-				u, ok := resp.Users[steamID]
-				if !ok {
-					return next(ctx)
-				}
-
-				if u.Bans != nil {
-					isBanned = true
+				if users, ok := resp["users"].(map[string]any); ok {
+					if u, ok := users[steamID.String()].(map[string]any); ok {
+						if bans, ok := u["bans"].(map[string]any); ok && len(bans) > 0 {
+							isBanned = true
+						}
+					}
 				}
 
 				cache.Set(cacheKey, isBanned, 2*time.Hour)
@@ -56,10 +54,10 @@ func SafetyMiddleware(bptfClient *Client, cache *generic.Cache[string, any], log
 }
 
 // ValueTierMiddleware determines the value of partner's inventory.
-func ValueTierMiddleware(bptfClient *Client) engine.Middleware {
+func ValueTierMiddleware(bptfClient API) engine.Middleware {
 	return func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
-			val, err := bptfClient.GetInventoryValues(ctx, ctx.Offer.OtherSteamID)
+			val, err := bptfClient.GetInventoryBySteamidValues(ctx, ctx.Offer.OtherSteamID.String())
 			if err != nil {
 				return next(ctx)
 			}

@@ -6,7 +6,6 @@ package pricedb
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -14,7 +13,6 @@ import (
 	"time"
 
 	json "github.com/goccy/go-json"
-	"github.com/gorilla/websocket"
 	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/mod"
 	"github.com/lemon4ksan/aoni/realtime/ws"
@@ -25,19 +23,19 @@ import (
 
 // SocketManager handles the real-time price updates via Socket.IO.
 type SocketManager struct {
-	r         aoni.WSDialer
+	r         aoni.WebSocketDialer
 	url       string
 	logger    log.Logger
 	userAgent string
 
 	mu   sync.Mutex
-	conn *websocket.Conn
+	conn ws.Conn
 
 	onPrice func(price *Price)
 }
 
 // NewSocketManager creates a new Socket.IO client for PriceDB.
-func NewSocketManager(rawURL string, r aoni.WSDialer, logger log.Logger) *SocketManager {
+func NewSocketManager(rawURL string, r aoni.WebSocketDialer, logger log.Logger) *SocketManager {
 	if r == nil {
 		r = request.DefaultClient
 	}
@@ -105,28 +103,22 @@ func (s *SocketManager) connectAndListen(ctx context.Context) error {
 		_ = resp.Body.Close()
 	}
 
-	var conn *websocket.Conn
-	if wp, ok := wsConn.(interface{ RawConn() *websocket.Conn }); ok {
-		conn = wp.RawConn()
-	} else {
-		_ = wsConn.Close()
-		return errors.New("pricedb: underlying connection is not a gorilla websocket")
-	}
-
 	s.mu.Lock()
-	s.conn = conn
+	s.conn = wsConn
 	s.mu.Unlock()
 
 	defer func() {
 		s.mu.Lock()
-		_ = s.conn.Close()
-		s.conn = nil
+		if s.conn != nil {
+			_ = s.conn.Close()
+			s.conn = nil
+		}
 		s.mu.Unlock()
 	}()
 
 	// Socket.IO Handshake sequence
 	// 1. Wait for Engine.IO "open" packet (0)
-	_, p, err := conn.ReadMessage()
+	_, p, err := wsConn.ReadMessage()
 	if err != nil {
 		return err
 	}
@@ -136,13 +128,13 @@ func (s *SocketManager) connectAndListen(ctx context.Context) error {
 	}
 
 	// 2. Send Socket.IO "connect" packet (40)
-	if err := conn.WriteMessage(websocket.TextMessage, []byte("40")); err != nil {
+	if err := wsConn.WriteMessage(ws.FrameText, []byte("40")); err != nil {
 		return err
 	}
 
 	// 3. Main listen loop
 	for {
-		_, p, err := conn.ReadMessage()
+		_, p, err := wsConn.ReadMessage()
 		if err != nil {
 			return err
 		}
@@ -155,7 +147,7 @@ func (s *SocketManager) connectAndListen(ctx context.Context) error {
 		switch packet[0] {
 		case '2': // Engine.IO Ping
 			// Respond with Pong (3)
-			if err := conn.WriteMessage(websocket.TextMessage, []byte("3")); err != nil {
+			if err := wsConn.WriteMessage(ws.FrameText, []byte("3")); err != nil {
 				return err
 			}
 

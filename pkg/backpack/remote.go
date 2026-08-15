@@ -14,10 +14,10 @@ import (
 	"sync"
 
 	json "github.com/goccy/go-json"
+	"github.com/lemon4ksan/aoni/request"
 	"github.com/lemon4ksan/g-man/pkg/steam/community"
 	"github.com/lemon4ksan/g-man/pkg/steam/community/inventory"
 	"github.com/lemon4ksan/g-man/pkg/steam/service"
-	"github.com/lemon4ksan/g-man/pkg/steam/webapi"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 	"github.com/lemon4ksan/miyako/generic"
 	"github.com/lemon4ksan/miyako/log"
@@ -132,16 +132,13 @@ func (r *Remote) GetItemsBySKU(ctx context.Context, targetSKU string) ([]TF2Item
 }
 
 func (r *Remote) CanTradeWithoutHold(ctx context.Context, token string) (bool, error) {
-	req := &webapi.IEconService_GetTradeHoldDurations_v1_Request{
-		SteamIDTarget: r.steamID, TradeOfferAccessToken: token,
-	}
-
 	type respType struct {
 		TheirHold int `json:"their_escrow"`
 		MyHold    int `json:"my_escrow"`
 	}
 
-	resp, err := webapi.IEconService_GetTradeHoldDurations_v1[respType](ctx, r.client, req)
+	query := fmt.Sprintf("steamid_target=%d&trade_offer_access_token=%s", r.steamID, url.QueryEscape(token))
+	resp, err := request.GetTo[respType](ctx, request.AsRequester(r.client), "IEconService/GetTradeHoldDurations/v1?"+query)
 	if err != nil {
 		return false, err
 	}

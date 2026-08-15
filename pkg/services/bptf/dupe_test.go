@@ -140,9 +140,7 @@ func TestBackpackTFChecker_CheckHistory(t *testing.T) {
 			}
 
 			httpClient := &http.Client{Transport: rt}
-			checker := &BackpackTFChecker{
-				bptfClient: New(aoni.NewClient(httpClient), "", ""),
-			}
+			checker := NewBackpackTFChecker(aoni.NewClient(httpClient))
 
 			got, err := checker.CheckHistory(t.Context(), 123)
 			if tt.wantErr {

@@ -20,6 +20,7 @@ import (
 
 	json "github.com/goccy/go-json"
 	"github.com/lemon4ksan/aoni"
+	"github.com/lemon4ksan/aoni/mod"
 	"github.com/lemon4ksan/g-man/pkg/test/mock"
 	"github.com/lemon4ksan/miyako/generic"
 	"github.com/stretchr/testify/assert"
@@ -45,15 +46,17 @@ func setupSchema(t *testing.T, cfg Config) (*Manager, *mock.ServiceMock) {
 
 	rt := &mockRoundTripper{
 		OnRoundTrip: func(req *http.Request) (*http.Response, error) {
-			return mockAPI.Request(req.Context(), req.Method, req.URL.String(), func(r aoni.Request) {
-				for key, values := range req.Header {
-					for _, value := range values {
-						r.SetHeader(key, value)
-					}
+			var mods []aoni.RequestModifier
+			for key, values := range req.Header {
+				for _, value := range values {
+					mods = append(mods, mod.WithHeader(key, value))
 				}
+			}
+			if req.Body != nil {
+				mods = append(mods, mod.WithBody(req.Body))
+			}
 
-				r.SetBodyStream(req.Body, req.ContentLength)
-			})
+			return mockAPI.Request(req.Context(), req.Method, req.URL.String(), mods...)
 		},
 	}
 
@@ -653,7 +656,7 @@ func TestSchema_StartAuthed_EventDispatched_Refreshes(t *testing.T) {
 
 	sm.handleUpdateRequested(&UpdateRequestedEvent{
 		Version:      5678,
-		ItemsGameURL: "http://example.com/items_game.txt",
+		ItemsGameURL: "http://example.com/items_game_v2.txt",
 	})
 
 	select {

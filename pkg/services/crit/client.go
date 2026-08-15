@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package crit provides a client for interacting with the crit.tf API.
 package crit
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"sync"
 
 	"github.com/lemon4ksan/aoni"
@@ -33,20 +33,21 @@ type Config struct {
 
 // Client interacts with the crit.tf v2 API.
 type Client struct {
+	API
 	mu    sync.Mutex
 	token string
 	r     request.Requester
 }
 
 // NewClient creates a new crit.tf API client targeting v2 endpoints by default using fast.Client.
-func NewClient(doer aoni.RequestDoer, apiKey string) *Client {
+func NewClient(doer aoni.RequestDoer, apiKey string, opts ...aoni.ClientOption) *Client {
 	c := &Client{}
 
 	if doer == nil {
 		doer = fast.NewClient()
 	}
 
-	opts := []option.Option{
+	defaultOpts := []aoni.ClientOption{
 		option.WithBaseURL(BaseURL),
 		option.WithHeaderFunc("X-Short-Lived-Token", c.Token),
 		option.WithUserAgent("G-man Bot/1.0"),
@@ -56,16 +57,18 @@ func NewClient(doer aoni.RequestDoer, apiKey string) *Client {
 	}
 
 	if apiKey != "" {
-		opts = append(opts, option.WithHeader("X-API-Key", apiKey))
+		defaultOpts = append(defaultOpts, option.WithHeader("X-API-Key", apiKey))
 	}
 
-	c.r = request.AsRequester(aoni.Configure(doer, opts...))
+	allOpts := append(defaultOpts, opts...)
+	r := request.AsRequester(aoni.Configure(doer, allOpts...))
+	c.r = r
+	c.API = New(r)
 
 	return c
 }
 
 // Token returns the current token used for authentication.
-// Use [Client.FetchAuthToken] to obtain a new token.
 func (c *Client) Token() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -86,13 +89,19 @@ func (c *Client) With(opts ...aoni.ClientOption) *Client {
 	}
 
 	return &Client{
-		r: request.AsRequester(aoni.Configure(c.r, opts...)),
+		r:   request.AsRequester(aoni.Configure(c.r, opts...)),
+		API: New(request.AsRequester(aoni.Configure(c.r, opts...))),
 	}
+}
+
+// R yields the underlying low-level Requester.
+func (c *Client) R() request.Requester {
+	return c.r
 }
 
 // FetchMyListings retrieves all active listings for the authenticated user.
 func (c *Client) FetchMyListings(ctx context.Context, mods ...aoni.RequestModifier) ([]Listing, error) {
-	resp, err := request.GetTo[ListingsResponse](ctx, c.r, "listings/my", mods...)
+	resp, err := c.API.FetchMyListings(ctx, mods...)
 	if err != nil {
 		return nil, err
 	}
@@ -107,13 +116,13 @@ func (c *Client) CreateListing(
 	currencies pricedb.Currencies,
 	mods ...aoni.RequestModifier,
 ) (*Listing, error) {
-	payload := map[string]any{
-		"asset_id":    assetID,
-		"price_keys":  currencies.Keys,
-		"price_metal": currencies.Metal,
+	req := CreateListingRequest{
+		AssetID:    assetID,
+		PriceKeys:  currencies.Keys,
+		PriceMetal: currencies.Metal,
 	}
 
-	resp, err := request.PostTo[ListingsResponse](ctx, c.r, "listings", payload, mods...)
+	resp, err := c.CreateListingDirect(ctx, req, mods...)
 	if err != nil {
 		return nil, err
 	}
@@ -132,19 +141,12 @@ func (c *Client) UpdateListing(
 	currencies pricedb.Currencies,
 	mods ...aoni.RequestModifier,
 ) (*Listing, error) {
-	payload := map[string]any{
-		"price_keys":  currencies.Keys,
-		"price_metal": currencies.Metal,
+	req := UpdateListingRequest{
+		PriceKeys:  currencies.Keys,
+		PriceMetal: currencies.Metal,
 	}
 
-	allMods := append([]aoni.RequestModifier{
-		mod.WithVar("listingID", listingID),
-	}, mods...)
-
-	resp, err := request.PutTo[ListingsResponse](
-		ctx, c.r, "listings/{listingID}", payload,
-		allMods...,
-	)
+	resp, err := c.UpdateListingDirect(ctx, listingID, req, mods...)
 	if err != nil {
 		return nil, err
 	}
@@ -158,26 +160,18 @@ func (c *Client) UpdateListing(
 
 // DeleteListing deletes an active listing by its database ID.
 func (c *Client) DeleteListing(ctx context.Context, listingID string, mods ...aoni.RequestModifier) error {
-	allMods := append([]aoni.RequestModifier{
-		mod.WithVar("listingID", listingID),
-	}, mods...)
-
-	_, err := request.DeleteTo[Response](
-		ctx, c.r, "listings/{listingID}", nil,
-		allMods...,
-	)
-
+	_, err := c.API.DeleteListing(ctx, listingID, mods...)
 	return err
 }
 
 // RefreshInventory requests crit.tf to sync the latest inventory status from Steam.
 func (c *Client) RefreshInventory(ctx context.Context, mods ...aoni.RequestModifier) (*InventoryResponse, error) {
-	return request.PostTo[InventoryResponse](ctx, c.r, "inventory/refresh", nil, mods...)
+	return c.API.RefreshInventory(ctx, mods...)
 }
 
 // GetMyGroup retrieves store group details of the authenticated bot.
 func (c *Client) GetMyGroup(ctx context.Context, mods ...aoni.RequestModifier) (*Group, error) {
-	resp, err := request.GetTo[GroupResponse](ctx, c.r, "groups/my", mods...)
+	resp, err := c.API.GetMyGroup(ctx, mods...)
 	if err != nil {
 		return nil, err
 	}
@@ -196,22 +190,14 @@ func (c *Client) InviteToGroup(
 	targetSteamID id.ID,
 	mods ...aoni.RequestModifier,
 ) error {
-	allMods := append([]aoni.RequestModifier{
-		mod.WithVar("groupID", groupID),
-	}, mods...)
-
-	_, err := request.PostTo[Response](
-		ctx, c.r, "groups/{groupID}/invite",
-		map[string]string{"steam_id": targetSteamID.String()},
-		allMods...,
-	)
-
+	req := InviteGroupRequest{SteamID: targetSteamID.String()}
+	_, err := c.InviteToGroupDirect(ctx, groupID, req, mods...)
 	return err
 }
 
 // GetPendingInvites retrieves pending store group invitations.
 func (c *Client) GetPendingInvites(ctx context.Context, mods ...aoni.RequestModifier) ([]Invite, error) {
-	resp, err := request.GetTo[InvitesResponse](ctx, c.r, "groups/invites", mods...)
+	resp, err := c.API.GetPendingInvites(ctx, mods...)
 	if err != nil {
 		return nil, err
 	}
@@ -221,46 +207,24 @@ func (c *Client) GetPendingInvites(ctx context.Context, mods ...aoni.RequestModi
 
 // AcceptGroupInvite accepts a pending group invite.
 func (c *Client) AcceptGroupInvite(ctx context.Context, groupID int, mods ...aoni.RequestModifier) error {
-	allMods := append([]aoni.RequestModifier{
-		mod.WithVar("groupID", groupID),
-	}, mods...)
-
-	_, err := request.PostTo[Response](
-		ctx, c.r, "groups/{groupID}/accept", nil,
-		allMods...,
-	)
-
+	_, err := c.API.AcceptGroupInvite(ctx, groupID, mods...)
 	return err
 }
 
 // LeaveGroup leaves a store group.
 func (c *Client) LeaveGroup(ctx context.Context, groupID int, mods ...aoni.RequestModifier) error {
-	allMods := append([]aoni.RequestModifier{
-		mod.WithVar("groupID", groupID),
-	}, mods...)
-
-	_, err := request.PostTo[Response](
-		ctx, c.r, "groups/{groupID}/leave", nil,
-		allMods...,
-	)
-
+	_, err := c.API.LeaveGroup(ctx, groupID, mods...)
 	return err
 }
 
 // FetchAuthToken requests an SSE auth token from Crit.tf API.
 // The token is stored in the client and can be retrieved using [Client.Token].
 func (c *Client) FetchAuthToken(ctx context.Context, mods ...aoni.RequestModifier) (string, error) {
-	type tokenResp struct {
-		OK     bool   `json:"ok"`
-		Token  string `json:"token"`
-		Reason string `json:"reason,omitempty"`
-	}
-
 	allMods := append([]aoni.RequestModifier{
 		mod.WithoutBaseResponse(),
 	}, mods...)
 
-	data, err := request.GetTo[tokenResp](ctx, c.r, "bot-api/auth-token", allMods...)
+	data, err := c.FetchAuthTokenDirect(ctx, allMods...)
 	if err != nil {
 		return "", fmt.Errorf("crit: auth token request failed: %w", err)
 	}
@@ -312,12 +276,12 @@ func (c *Client) SendDeadMansRequest(ctx context.Context, mods ...aoni.RequestMo
 	}
 	defer resp.Body.Close()
 
-	return resp.StatusCode == http.StatusOK, nil
+	return resp.StatusCode == 200, nil
 }
 
 // GetInventory retrieves the cached inventory of the bot from Crit.tf backend.
 func (c *Client) GetInventory(ctx context.Context, mods ...aoni.RequestModifier) ([]any, error) {
-	resp, err := request.GetTo[InventoryResponse](ctx, c.r, "inventory", mods...)
+	resp, err := c.API.GetInventory(ctx, mods...)
 	if err != nil {
 		return nil, err
 	}
@@ -327,9 +291,7 @@ func (c *Client) GetInventory(ctx context.Context, mods ...aoni.RequestModifier)
 
 // UpdateTradeURL updates the bot's trade URL on Crit.tf.
 func (c *Client) UpdateTradeURL(ctx context.Context, tradeURL string, mods ...aoni.RequestModifier) (bool, error) {
-	payload := map[string]string{"trade_url": tradeURL}
-
-	resp, err := request.PutTo[Response](ctx, c.r, "user/trade-url", payload, mods...)
+	resp, err := c.UpdateTradeURLDirect(ctx, UpdateTradeURLRequest{TradeURL: tradeURL}, mods...)
 	if err != nil {
 		return false, err
 	}
@@ -339,7 +301,7 @@ func (c *Client) UpdateTradeURL(ctx context.Context, tradeURL string, mods ...ao
 
 // GetUserInfo retrieves the authenticated user information from Crit.tf.
 func (c *Client) GetUserInfo(ctx context.Context, mods ...aoni.RequestModifier) (*User, error) {
-	resp, err := request.GetTo[UserResponse](ctx, c.r, "user", mods...)
+	resp, err := c.API.GetUserInfo(ctx, mods...)
 	if err != nil {
 		return nil, err
 	}

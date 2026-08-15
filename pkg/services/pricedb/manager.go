@@ -22,7 +22,7 @@ import (
 const BehaviorName = "pricedb_sync"
 
 // WithPriceManager registers the pricedb manager behavior with the orchestrator.
-func WithPriceManager(orch *behavior.Orchestrator, client *Client, dialer aoni.WSDialer) {
+func WithPriceManager(orch *behavior.Orchestrator, client API, dialer aoni.WebSocketDialer) {
 	orch.Register(NewManager(client, dialer, orch.Logger()).WithBus(orch.Bus()))
 }
 
@@ -41,7 +41,7 @@ type PricelistUpdatedEvent struct {
 // It acts as the primary price authority for the bot.
 // It implements behavior.Behavior interface.
 type Manager struct {
-	client *Client
+	client API
 	logger log.Logger
 	bus    *bus.Bus
 
@@ -56,7 +56,7 @@ type Manager struct {
 
 // NewManager creates a new price manager for PriceDB.
 // It implements behavior.Behavior interface.
-func NewManager(client *Client, dialer aoni.WSDialer, logger log.Logger) *Manager {
+func NewManager(client API, dialer aoni.WebSocketDialer, logger log.Logger) *Manager {
 	m := &Manager{
 		client:       client,
 		logger:       logger.With(log.Module(BehaviorName)),
@@ -193,7 +193,7 @@ func (m *Manager) Update(ctx context.Context) error {
 
 	m.logger.Debug("Syncing prices from PriceDB...", log.Int("count", len(skus)))
 
-	prices, err := m.client.GetItemsBulk(ctx, skus)
+	prices, err := GetItemsBulk(ctx, m.client, skus)
 	if err != nil {
 		return err
 	}
@@ -226,7 +226,7 @@ func (m *Manager) Fetch(ctx context.Context, skus []string) (map[string]*Price, 
 		RPS:     10,
 		Burst:   3,
 	}, skus, func(chunkCtx context.Context, sku string) (result, error) {
-		prices, err := m.client.GetItemsBulk(chunkCtx, []string{sku})
+		prices, err := GetItemsBulk(chunkCtx, m.client, []string{sku})
 		if err != nil {
 			return result{sku: sku}, err
 		}

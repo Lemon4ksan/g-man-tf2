@@ -6,13 +6,11 @@ package mannco
 
 import (
 	"context"
-	"errors"
 	"net/url"
 	"sync"
 	"time"
 
 	json "github.com/goccy/go-json"
-	"github.com/gorilla/websocket"
 	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/mod"
 	"github.com/lemon4ksan/aoni/realtime/ws"
@@ -163,13 +161,13 @@ type BuyOrderDeactivatedEvent struct {
 
 // SocketManager handles real-time market updates for Mannco.store via WebSockets.
 type SocketManager struct {
-	r         aoni.WSDialer
+	r         aoni.WebSocketDialer
 	url       string
 	logger    log.Logger
 	userAgent string
 
 	mu   sync.Mutex
-	conn *websocket.Conn
+	conn ws.Conn
 
 	onEvent               func(event *WSEvent)
 	onPriceChanged        func(event *PriceChangedEvent)
@@ -183,7 +181,7 @@ type SocketManager struct {
 }
 
 // NewSocketManager creates a new WebSocket client for Mannco.store Market Stream.
-func NewSocketManager(rawURL string, r aoni.WSDialer, logger log.Logger) *SocketManager {
+func NewSocketManager(rawURL string, r aoni.WebSocketDialer, logger log.Logger) *SocketManager {
 	if r == nil {
 		r = request.DefaultClient
 	}
@@ -324,27 +322,21 @@ func (s *SocketManager) connectAndListen(ctx context.Context) error {
 		_ = resp.Body.Close()
 	}
 
-	var conn *websocket.Conn
-	if wp, ok := wsConn.(interface{ RawConn() *websocket.Conn }); ok {
-		conn = wp.RawConn()
-	} else {
-		_ = wsConn.Close()
-		return errors.New("mannco: underlying connection is not a gorilla websocket")
-	}
-
 	s.mu.Lock()
-	s.conn = conn
+	s.conn = wsConn
 	s.mu.Unlock()
 
 	defer func() {
 		s.mu.Lock()
-		_ = s.conn.Close()
-		s.conn = nil
+		if s.conn != nil {
+			_ = s.conn.Close()
+			s.conn = nil
+		}
 		s.mu.Unlock()
 	}()
 
 	for {
-		_, p, err := conn.ReadMessage()
+		_, p, err := wsConn.ReadMessage()
 		if err != nil {
 			return err
 		}

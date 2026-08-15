@@ -172,10 +172,12 @@ type CacheStats struct {
 	} `json:"database"`
 }
 
-// bulkRequest is the internal payload for fetching multiple SKUs.
-type bulkRequest struct {
+// BulkRequest is the payload for fetching multiple SKUs.
+type BulkRequest struct {
 	SKUs []string `json:"skus"`
 }
+
+type bulkRequest = BulkRequest
 
 // ItemBrief represents name and SKU of a TF2 item.
 type ItemBrief struct {
@@ -204,16 +206,133 @@ type EffectInfo struct {
 	Name string `json:"name"`
 }
 
+// EffectsResponse represents the response wrapper for listing effects.
+type EffectsResponse struct {
+	Success bool          `json:"success"`
+	Data    []*EffectInfo `json:"data"`
+}
+
+// EffectResponse represents the response wrapper for a single effect.
+type EffectResponse struct {
+	Success bool        `json:"success"`
+	Data    *EffectInfo `json:"data"`
+}
+
 // PaintInfo represents paint can metadata.
 type PaintInfo struct {
 	DefIndex int    `json:"defindex"`
 	Name     string `json:"name"`
 }
 
+// PaintsResponse represents the response wrapper for listing paints.
+type PaintsResponse struct {
+	Success bool         `json:"success"`
+	Data    []*PaintInfo `json:"data"`
+}
+
+// PaintResponse represents the response wrapper for a single paint.
+type PaintResponse struct {
+	Success bool       `json:"success"`
+	Data    *PaintInfo `json:"data"`
+}
+
 // WearInfo represents wear level metadata.
 type WearInfo struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
+}
+
+// WearsResponse represents the response wrapper for listing wears.
+type WearsResponse struct {
+	Success bool        `json:"success"`
+	Data    []*WearInfo `json:"data"`
+}
+
+// WearResponse represents the response wrapper for a single wear.
+type WearResponse struct {
+	Success bool      `json:"success"`
+	Data    *WearInfo `json:"data"`
+}
+
+// ResolvedItem represents the resolved TF2 item properties from the SKU Service.
+type ResolvedItem struct {
+	Name      string `json:"name"`
+	SKU       string `json:"sku"`
+	DefIndex  int    `json:"defindex,omitempty"`
+	Quality   int    `json:"quality,omitempty"`
+	Craftable bool   `json:"craftable,omitempty"`
+	Wear      int    `json:"wear,omitempty"`
+	Effect    int    `json:"effect,omitempty"`
+	Paint     int    `json:"paint,omitempty"`
+}
+
+// PaintKitInfo represents War Paint kit details.
+type PaintKitInfo struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+// PaintKitsResponse represents the response wrapper for War Paint kits.
+type PaintKitsResponse struct {
+	Success bool            `json:"success"`
+	Data    []*PaintKitInfo `json:"data"`
+}
+
+// PaintKitResponse represents a single War Paint kit.
+type PaintKitResponse struct {
+	Success bool          `json:"success"`
+	Data    *PaintKitInfo `json:"data"`
+}
+
+// StrangePartInfo represents Strange Part metadata.
+type StrangePartInfo struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+	Type string `json:"type,omitempty"`
+}
+
+// StrangePartsResponse represents the response wrapper for Strange Parts.
+type StrangePartsResponse struct {
+	Success bool               `json:"success"`
+	Data    []*StrangePartInfo `json:"data"`
+}
+
+// CrateSeriesInfo represents crate series number metadata.
+type CrateSeriesInfo struct {
+	ID     int `json:"id"`
+	Series int `json:"series"`
+}
+
+// CrateSeriesResponse represents the response wrapper for crate series.
+type CrateSeriesResponse struct {
+	Success bool               `json:"success"`
+	Data    []*CrateSeriesInfo `json:"data"`
+}
+
+// WeaponInfo represents weapon definition in TF2 schema.
+type WeaponInfo struct {
+	DefIndex int    `json:"defindex"`
+	Name     string `json:"name"`
+	Class    string `json:"class,omitempty"`
+}
+
+// WeaponsResponse represents the response wrapper for weapons.
+type WeaponsResponse struct {
+	Success bool          `json:"success"`
+	Data    []*WeaponInfo `json:"data"`
+}
+
+// QualityInfo represents item quality metadata.
+type QualityInfo struct {
+	ID    int    `json:"id"`
+	Name  string `json:"name"`
+	Color string `json:"color,omitempty"`
+}
+
+// QualitiesResponse represents the response wrapper for qualities.
+type QualitiesResponse struct {
+	Success bool           `json:"success"`
+	Data    []*QualityInfo `json:"data"`
 }
 
 // SpellPriceInfo represents pricing metadata in various formats inside Spell predictions.

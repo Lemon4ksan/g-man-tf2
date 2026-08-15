@@ -21,16 +21,16 @@ import (
 )
 
 // BackpackTFChecker implements duplicate checking via the backpack.tf website.
-// Even though this is scraping, we use the transport and settings from Client.
+// Even though this is scraping, we use the transport and settings from the configured requester.
 type BackpackTFChecker struct {
-	bptfClient *Client
+	r request.Requester
 }
 
 // NewBackpackTFChecker creates a new checker instance.
-// It takes a Client, which already contains API tokens and logger settings.
-func NewBackpackTFChecker(client *Client) *BackpackTFChecker {
+// It takes a request.Requester, which already contains HTTP transport and middleware settings.
+func NewBackpackTFChecker(r request.Requester) *BackpackTFChecker {
 	return &BackpackTFChecker{
-		bptfClient: client,
+		r: r,
 	}
 }
 
@@ -44,7 +44,7 @@ func (c *BackpackTFChecker) CheckHistory(
 
 	allMods := append([]aoni.RequestModifier{decode.WithRaw()}, mods...)
 
-	resp, err := request.GetTo[[]byte](ctx, c.bptfClient.R(), path, allMods...)
+	resp, err := request.GetTo[[]byte](ctx, c.r, path, allMods...)
 	if err != nil {
 		var apiErr *aoni.APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {

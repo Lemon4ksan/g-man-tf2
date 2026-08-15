@@ -193,3 +193,45 @@ type TradeRequestEventEnvelope struct {
 	Kind         string               `json:"kind"`
 	TradeRequest *TradeRequestPayload `json:"trade_request,omitempty"`
 }
+
+// CreateListingRequest contains parameters for creating a new sell listing.
+// @aoni:dto casing=snake_case omitempty=true
+type CreateListingRequest struct {
+	AssetID    string  `json:"asset_id"`
+	PriceKeys  int     `json:"price_keys"`
+	PriceMetal float64 `json:"price_metal"`
+}
+
+// UpdateListingRequest contains parameters for updating an existing listing.
+// @aoni:dto casing=snake_case omitempty=true
+type UpdateListingRequest struct {
+	PriceKeys  int     `json:"price_keys"`
+	PriceMetal float64 `json:"price_metal"`
+}
+
+// InviteGroupRequest contains parameters for inviting a user to a store group.
+// @aoni:dto casing=snake_case omitempty=true
+type InviteGroupRequest struct {
+	SteamID string `json:"steam_id"`
+}
+
+// DeadMansRequest contains parameters for alive heartbeat pings.
+// @aoni:dto casing=snake_case omitempty=true
+type DeadMansRequest struct {
+	Alive bool `json:"alive"`
+}
+
+// UpdateTradeURLRequest contains parameters for updating user trade URL.
+// @aoni:dto casing=snake_case omitempty=true
+type UpdateTradeURLRequest struct {
+	TradeURL string `json:"trade_url"`
+}
+
+// AuthTokenResponse represents response for bot authentication token retrieval.
+// @aoni:dto casing=snake_case omitempty=true
+type AuthTokenResponse struct {
+	OK     bool   `json:"ok"`
+	Token  string `json:"token"`
+	Reason string `json:"reason,omitempty"`
+}
+

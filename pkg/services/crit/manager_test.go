@@ -779,6 +779,8 @@ func TestManager(t *testing.T) {
 		}
 		mgr.listingsMu.Unlock()
 
+		time.Sleep(100 * time.Millisecond)
+
 		mgr.Bus.Publish(&pricedb.PricelistUpdatedEvent{
 			SKU: "5021;6",
 			Sell: pricedb.Currencies{
@@ -886,7 +888,7 @@ func TestManager(t *testing.T) {
 		_, err := mgr.handleInviteCommand(ctx, 123, id.ID(76561198000000002))
 		assert.Error(t, err)
 
-		stub.ResponseErrs["api/v2/groups/my"] = nil
+		delete(stub.ResponseErrs, "api/v2/groups/my")
 		stub.SetJSONResponse("api/v2/groups/my", 200, GroupResponse{
 			Response: Response{Success: true},
 			Group: &Group{
@@ -898,7 +900,7 @@ func TestManager(t *testing.T) {
 		_, err = mgr.handleInviteCommand(ctx, 123, id.ID(76561198000000002))
 		assert.Error(t, err)
 
-		stub.ResponseErrs["api/v2/groups/123/invite"] = nil
+		delete(stub.ResponseErrs, "api/v2/groups/123/invite")
 		stub.SetJSONResponse("api/v2/groups/123/invite", 200, Response{Success: true})
 
 		msg, err := mgr.handleInviteCommand(ctx, 123, id.ID(76561198000000002))

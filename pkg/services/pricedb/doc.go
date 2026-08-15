@@ -4,7 +4,7 @@
 
 // Package pricedb implements a client for the PriceDB.io API to track TF2 item prices.
 //
-// The package combines [Client] for REST API queries (bulk fetches, price history) and
+// The package combines [API] for REST API queries (bulk fetches, price history) and
 // [SocketManager] for real-time price updates via WebSockets.
 //
 // # Quick Start

@@ -25,11 +25,11 @@ func TestListingManager(t *testing.T) {
 	t.Run("sync_multipage_loop", func(t *testing.T) {
 		respPage1 := ListingScrollable{
 			Results: []Listing{{ID: "1"}, {ID: "2"}},
-			Cursor:  Cursor{Total: 3, Limit: 2, Skip: 0},
+			Cursor:  &Cursor{Total: 3, Limit: 2, Skip: 0},
 		}
 		respPage2 := ListingScrollable{
 			Results: []Listing{{ID: "3"}},
-			Cursor:  Cursor{Total: 3, Limit: 2, Skip: 2},
+			Cursor:  &Cursor{Total: 3, Limit: 2, Skip: 2},
 		}
 
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -44,8 +44,7 @@ func TestListingManager(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := New(aoni.NewClient(nil), "", "").
-			With(option.WithBaseURL(server.URL))
+		client := NewAPI(aoni.NewClient(nil), option.WithBaseURL(server.URL))
 
 		mgr := NewListingManager(client, nil, log.Discard)
 
@@ -65,8 +64,7 @@ func TestListingManager(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := New(aoni.NewClient(nil), "", "").
-			With(option.WithBaseURL(server.URL))
+		client := NewAPI(aoni.NewClient(nil), option.WithBaseURL(server.URL))
 
 		mgr := NewListingManager(client, nil, log.Discard)
 		for i := range 150 {

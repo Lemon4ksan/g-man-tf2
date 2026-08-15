@@ -18,7 +18,7 @@ import (
 
 // ListingManager manages high-level backpack.tf listings.
 type ListingManager struct {
-	client *Client
+	client API
 	schema *schema.Manager
 	logger log.Logger
 
@@ -27,7 +27,7 @@ type ListingManager struct {
 }
 
 // NewListingManager creates a new high-level listing manager.
-func NewListingManager(client *Client, sm *schema.Manager, logger log.Logger) *ListingManager {
+func NewListingManager(client API, sm *schema.Manager, logger log.Logger) *ListingManager {
 	return &ListingManager{
 		client:   client,
 		schema:   sm,
@@ -37,7 +37,7 @@ func NewListingManager(client *Client, sm *schema.Manager, logger log.Logger) *L
 }
 
 // Client returns the underlying backpack.tf client.
-func (m *ListingManager) Client() *Client {
+func (m *ListingManager) Client() API {
 	return m.client
 }
 
@@ -51,7 +51,7 @@ func (m *ListingManager) Sync(ctx context.Context) error {
 	limit := 500
 
 	for {
-		resp, err := m.client.GetListings(ctx, skip, limit)
+		resp, err := m.client.GetV2ClassifiedsListings(ctx, skip, limit, 0, 0)
 		if err != nil {
 			return fmt.Errorf("failed to fetch listings at skip %d: %w", skip, err)
 		}
@@ -80,7 +80,7 @@ func (m *ListingManager) Sync(ctx context.Context) error {
 
 // Upsert creates or updates a listing.
 func (m *ListingManager) Upsert(ctx context.Context, listing ListingResolvable) (*Listing, error) {
-	resp, err := m.client.CreateListing(ctx, listing)
+	resp, err := m.client.PostV2ClassifiedsListings(ctx, listing)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func (m *ListingManager) Upsert(ctx context.Context, listing ListingResolvable) 
 
 // Delete removes a listing.
 func (m *ListingManager) Delete(ctx context.Context, id string) error {
-	if err := m.client.DeleteListing(ctx, id); err != nil {
+	if _, err := m.client.DeleteV2ClassifiedsListingsByListingID(ctx, id); err != nil {
 		return err
 	}
 
@@ -133,7 +133,7 @@ func (m *ListingManager) DeleteAll(ctx context.Context) error {
 		RPS:     5,
 		Burst:   2,
 	}, batches, func(chunkCtx context.Context, batch []string) error {
-		_, err := m.client.BatchDeleteListings(chunkCtx)
+		_, err := m.client.DeleteV2ClassifiedsListingsBatch(chunkCtx)
 		return err
 	})
 	if err != nil {
@@ -162,8 +162,8 @@ func (m *ListingManager) FindListingBySKU(sku string, intent ListingIntent) *Lis
 }
 
 // ItemToSKU converts a backpack.tf ItemDocument to a standard TF2 SKU.
-func (m *ListingManager) ItemToSKU(doc ItemDocument) string {
-	if m.schema == nil {
+func (m *ListingManager) ItemToSKU(doc *ItemDocument) string {
+	if doc == nil || m.schema == nil {
 		return ""
 	}
 

@@ -209,18 +209,17 @@ func TestSocketManager_PacketParsing_EdgeCases(t *testing.T) {
 	wsURL := strings.Replace(server.URL, "http://", "ws://", 1)
 	sm := NewSocketManager(wsURL, nil, log.Discard)
 
-	mu := sync.Mutex{}
-	priceReceived := false
+	priceReceived := make(chan struct{})
+	var once sync.Once
 	sm.OnPrice(func(p *Price) {
-		mu.Lock()
-		defer mu.Unlock()
-
 		if p.SKU == "5021;6" {
-			priceReceived = true
+			once.Do(func() {
+				close(priceReceived)
+			})
 		}
 	})
 
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
 	go func() {
@@ -228,15 +227,11 @@ func TestSocketManager_PacketParsing_EdgeCases(t *testing.T) {
 	}()
 
 	select {
-	case <-sequenceDone:
-		time.Sleep(10 * time.Millisecond)
-		mu.Lock()
-		defer mu.Unlock()
-
-		assert.True(t, priceReceived)
+	case <-priceReceived:
+		// Succeeded
 
 	case <-ctx.Done():
-		t.Fatal("timed out waiting for packet parsing sequence")
+		t.Fatal("timed out waiting for price update event")
 	}
 }
 

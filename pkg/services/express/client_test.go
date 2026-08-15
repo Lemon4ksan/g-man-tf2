@@ -7,6 +7,7 @@ package express_test
 import (
 	"sync"
 	"testing"
+	"time"
 
 	json "github.com/goccy/go-json"
 	"github.com/lemon4ksan/aoni"
@@ -23,7 +24,7 @@ func setupTestClient(t *testing.T) (*express.Client, *mock.HTTPStub) {
 
 	stub := mock.NewHTTPStub()
 	restClient := aoni.NewClient(stub)
-	client := express.New(restClient, "test-secret-token")
+	client := express.NewClient(restClient, "test-secret-token")
 
 	return client, stub
 }
@@ -53,23 +54,21 @@ func TestClient_Endpoints(t *testing.T) {
 			setup: func(stub *mock.HTTPStub) {
 				setJSONResponse(stub, "v2/account", 200, express.V2AccountResponse{
 					Success: true,
-					Data: express.AccountData{
+					Data: &express.AccountData{
 						CustomerID:     "cust-01900",
 						BalanceCredits: 999,
-						APIKey: express.APIKeySummary{
+						APIKey: &express.APIKeySummary{
 							ID:                 "key-01900",
 							Scopes:             []string{"steam.inventory.page.v1"},
 							RateLimitPerMinute: 120,
 						},
-						Usage: express.UsageSummary{
-							PeriodStart:    "2026-07-01",
-							PeriodEnd:      "2026-07-19",
+						Usage: &express.UsageSummary{
 							Requests:       42,
 							CreditsCharged: 40,
 							Errors:         2,
 						},
 					},
-					Meta: express.ResponseMeta{RequestID: "req_01JEXAMPLE"},
+					Meta: &express.ResponseMeta{RequestID: "req_01JEXAMPLE"},
 				})
 			},
 			execute: func(client *express.Client) error {
@@ -95,30 +94,30 @@ func TestClient_Endpoints(t *testing.T) {
 					200,
 					express.V2InventoryResponse{
 						Success: true,
-						Data: express.InventoryPage{
+						Data: &express.InventoryPage{
 							TotalCount: 1,
 							Assets: []express.SteamAsset{
 								{
-									AppID:      440,
-									ContextID:  "2",
-									AssetID:    "123456789",
-									ClassID:    "101",
-									InstanceID: "0",
+									Appid:      440,
+									Contextid:  "2",
+									Assetid:    "123456789",
+									Classid:    "101",
+									Instanceid: "0",
 									Amount:     "1",
 								},
 							},
 							Descriptions: []express.SteamDescription{
 								{
-									AppID:          440,
-									ClassID:        "101",
-									InstanceID:     "0",
-									MarketHashName: strPtr("Mann Co. Supply Crate Key"),
-									Tradable:       intPtr(1),
+									Appid:          440,
+									Classid:        "101",
+									Instanceid:     "0",
+									MarketHashName: "Mann Co. Supply Crate Key",
+									Tradable:       1,
 								},
 							},
-							Pagination: express.InventoryPagination{HasMore: false},
+							Pagination: &express.InventoryPagination{HasMore: false},
 						},
-						Meta: express.BilledResponseMeta{
+						Meta: &express.BilledResponseMeta{
 							RequestID:        "req_01JEXAMPLE",
 							ProductCode:      "steam.inventory.page.v1",
 							PriceVersion:     1,
@@ -146,8 +145,8 @@ func TestClient_Endpoints(t *testing.T) {
 				assert.True(t, resp.Success)
 				assert.Equal(t, 1, resp.Data.TotalCount)
 				assert.Len(t, resp.Data.Assets, 1)
-				assert.Equal(t, "123456789", resp.Data.Assets[0].AssetID)
-				assert.Equal(t, "Mann Co. Supply Crate Key", *resp.Data.Descriptions[0].MarketHashName)
+				assert.Equal(t, "123456789", resp.Data.Assets[0].Assetid)
+				assert.Equal(t, "Mann Co. Supply Crate Key", resp.Data.Descriptions[0].MarketHashName)
 				assert.Equal(t, 998, resp.Meta.CreditsRemaining)
 
 				return nil
@@ -158,12 +157,12 @@ func TestClient_Endpoints(t *testing.T) {
 			setup: func(stub *mock.HTTPStub) {
 				setJSONResponse(stub, "v2/steam/market/price", 200, express.V2MarketPriceResponse{
 					Success: true,
-					Data: express.MarketPriceData{
+					Data: &express.MarketPriceData{
 						LowestPrice: strPtr("$2.26"),
 						MedianPrice: strPtr("$2.27"),
 						Volume:      strPtr("49,063"),
 					},
-					Meta: express.BilledResponseMeta{
+					Meta: &express.BilledResponseMeta{
 						CreditsCharged:   1,
 						CreditsRemaining: 997,
 					},
@@ -180,9 +179,9 @@ func TestClient_Endpoints(t *testing.T) {
 				}
 
 				assert.True(t, resp.Success)
-				assert.Equal(t, "$2.26", *resp.Data.LowestPrice)
-				assert.Equal(t, "$2.27", *resp.Data.MedianPrice)
-				assert.Equal(t, "49,063", *resp.Data.Volume)
+				assert.Equal(t, "$2.26", resp.Data.LowestPrice)
+				assert.Equal(t, "$2.27", resp.Data.MedianPrice)
+				assert.Equal(t, "49,063", resp.Data.Volume)
 
 				return nil
 			},
@@ -192,12 +191,12 @@ func TestClient_Endpoints(t *testing.T) {
 			setup: func(stub *mock.HTTPStub) {
 				setJSONResponse(stub, "v1/status", 200, express.PublicStatus{
 					Status:    "operational",
-					UpdatedAt: "2026-07-31T19:53:33.321Z",
+					UpdatedAt: time.Now(),
 					Services: []express.ServiceStatus{
 						{Name: "Steam Inventory API", Status: "operational"},
 					},
 					History: []express.AvailabilityHour{
-						{Timestamp: "2026-07-31T19:00:00Z", Availability: 1.0},
+						{Timestamp: time.Now(), Availability: 1.0},
 					},
 				})
 			},
@@ -369,7 +368,7 @@ func TestModels_UnmarshalJSON(t *testing.T) {
 				assert.Equal(t, 100, resp.Data.TotalCount)
 				assert.True(t, resp.Data.Pagination.HasMore)
 				require.NotNil(t, resp.Data.Pagination.NextCursor)
-				assert.Equal(t, "987654321", *resp.Data.Pagination.NextCursor)
+				assert.Equal(t, "987654321", resp.Data.Pagination.NextCursor)
 				assert.Len(t, resp.Data.Descriptions[0].Tags, 1)
 				assert.Equal(t, "Type", resp.Data.Descriptions[0].Tags[0].Category)
 			},
@@ -403,11 +402,11 @@ func TestModels_UnmarshalJSON(t *testing.T) {
 				require.NoError(t, err)
 				assert.True(t, resp.Success)
 				require.NotNil(t, resp.Data.LowestPrice)
-				assert.Equal(t, "$2.26", *resp.Data.LowestPrice)
+				assert.Equal(t, "$2.26", resp.Data.LowestPrice)
 				require.NotNil(t, resp.Data.MedianPrice)
-				assert.Equal(t, "$2.27", *resp.Data.MedianPrice)
+				assert.Equal(t, "$2.27", resp.Data.MedianPrice)
 				require.NotNil(t, resp.Data.Volume)
-				assert.Equal(t, "49,063", *resp.Data.Volume)
+				assert.Equal(t, "49,063", resp.Data.Volume)
 			},
 		},
 		{

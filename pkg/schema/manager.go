@@ -155,7 +155,7 @@ type Manager struct {
 	config  Config
 	service service.Doer
 	rest    request.Requester
-	pricedb *pricedb.Client
+	pricedb pricedb.SKUClient
 
 	mu            sync.RWMutex
 	schema        *Schema
@@ -188,11 +188,11 @@ func (m *Manager) Init(init module.InitContext) error {
 	if aoniClient := request.UnwrapClient(m.rest); aoniClient != nil {
 		unlimitedClient := aoniClient.With(option.WithMaxResponseSize(0))
 		m.rest = unlimitedClient
-		m.pricedb = pricedb.NewClient(unlimitedClient)
+		m.pricedb = pricedb.NewSKUClient(unlimitedClient)
 	} else {
 		unlimitedClient := aoni.NewClient(nil, option.WithMaxResponseSize(0))
 		m.rest = unlimitedClient
-		m.pricedb = pricedb.NewClient(unlimitedClient)
+		m.pricedb = pricedb.NewSKUClient(unlimitedClient)
 	}
 
 	return nil

@@ -7,6 +7,7 @@ package mannco
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"github.com/lemon4ksan/aoni"
@@ -65,8 +66,9 @@ const (
 )
 
 // Client is a thread-safe client for the Mannco.store API.
-// It wraps aoni.Client and synchronizes token updates.
+// It wraps generated API services and manages session tokens.
 type Client struct {
+	API
 	mu    sync.Mutex
 	token string
 	r     request.Requester
@@ -74,21 +76,33 @@ type Client struct {
 
 // NewClient initializes a new client with the predefined Mannco.store host,
 // standard User-Agent, and BaseResponse envelope configurations, backed by fast.Client by default.
-func NewClient(rest aoni.RequestDoer) *Client {
-	c := &Client{}
-
-	if rest == nil {
-		rest = fast.NewClient()
+func NewClient(rest any, opts ...aoni.ClientOption) *Client {
+	var doer aoni.RequestDoer
+	if rest != nil {
+		if d, ok := rest.(aoni.RequestDoer); ok {
+			doer = d
+		} else if r, ok := rest.(request.Requester); ok {
+			if d, ok := any(r).(aoni.RequestDoer); ok {
+				doer = d
+			}
+		}
+	}
+	if doer == nil {
+		doer = fast.NewClient()
 	}
 
-	opts := []aoni.ClientOption{
+	c := &Client{}
+
+	defaultOpts := []aoni.ClientOption{
 		option.WithUserAgent("G-man Bot/1.0"),
 		option.WithHeaderFunc("Authorization", c.Token),
 		option.WithBaseURL(BaseURL),
-		option.WithBaseResponse(func() aoni.BaseResponse { return new(BaseResponse) }),
 	}
 
-	c.r = request.AsRequester(aoni.Configure(rest, opts...))
+	allOpts := append(defaultOpts, opts...)
+	r := request.AsRequester(aoni.Configure(doer, allOpts...))
+	c.r = r
+	c.API = New(r)
 
 	return c
 }
@@ -99,13 +113,10 @@ func (c *Client) With(opts ...aoni.ClientOption) *Client {
 		return c
 	}
 
-	return &Client{
-		r: request.AsRequester(aoni.Configure(c.r, opts...)),
-	}
+	return NewClient(c.r, opts...)
 }
 
-// Token returns the current token used for authentication.
-// Use [Client.FetchAuthToken] to obtain a new token.
+// Token returns the current token used for authentication with "Bearer " prefix.
 func (c *Client) Token() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -117,33 +128,214 @@ func (c *Client) Token() string {
 	return "Bearer " + c.token
 }
 
-func (c *Client) setToken(token string) {
+// SetToken updates the current authentication token.
+func (c *Client) SetToken(token string) {
 	c.mu.Lock()
 	c.token = token
 	c.mu.Unlock()
 }
 
-// Login authenticates the client using a Mannco API key.
-// It retrieves a JWT bearer token and configures the client to send it
-// in the 'Authorization: Bearer <jwt>' header for all subsequent Connected+API calls.
-//
-// Route: POST /user/login
-// Permission: Connected + API
+// Login authenticates the client using a Mannco API key and stores the JWT bearer token.
 func (c *Client) Login(ctx context.Context, apiKey string, mods ...aoni.RequestModifier) error {
-	body := struct {
-		APIKey string `json:"apiKey"`
-	}{APIKey: apiKey}
-
-	type resp struct {
-		JWT string `json:"jwt"`
-	}
-
-	r, err := request.PostTo[resp](ctx, c.r, "user/login", body, mods...)
+	res, err := c.PostLogin(ctx, LoginRequest{APIKey: apiKey}, mods...)
 	if err != nil {
 		return err
 	}
 
-	c.setToken(r.JWT)
-
+	c.SetToken(res.JWT)
 	return nil
+}
+
+// R returns the underlying request.Requester used by the client.
+func (c *Client) R() request.Requester {
+	return c.r
+}
+
+// SetItemPrice updates pricing for a list of inventory item asset IDs.
+func (c *Client) SetItemPrice(
+	ctx context.Context,
+	ids []string,
+	price int,
+	mods ...aoni.RequestModifier,
+) (*InventoryMessageResponse, error) {
+	req := SetPriceReq{
+		IDs:   strings.Join(ids, ","),
+		Price: price,
+	}
+
+	return c.SetPriceDirect(ctx, req, mods...)
+}
+
+// WithdrawItems pulls items from Mannco.store inventory to the user's Steam Account.
+func (c *Client) WithdrawItems(
+	ctx context.Context,
+	ids []string,
+	mods ...aoni.RequestModifier,
+) (*WithdrawResponse, error) {
+	req := WithdrawReq{
+		IDs: strings.Join(ids, ","),
+	}
+
+	return c.WithdrawDirect(ctx, req, mods...)
+}
+
+// GetBulkPricing returns calculated pricing for multiple items at once.
+func (c *Client) GetBulkPricing(
+	ctx context.Context,
+	items []string,
+	mods ...aoni.RequestModifier,
+) (*BulkPricing, error) {
+	return c.GetBulkPricingDirect(ctx, strings.Join(items, ","), mods...)
+}
+
+// GetListingCount returns the number of active sales listings for an item,
+// optionally filtered by the seller's SteamID.
+func (c *Client) GetListingCount(
+	ctx context.Context,
+	item, userID string,
+	mods ...aoni.RequestModifier,
+) (*ListingCount, error) {
+	if userID != "" {
+		return c.GetListingCountForUser(ctx, item, userID, mods...)
+	}
+
+	return c.GetListingCountDirect(ctx, item, mods...)
+}
+
+// GetItemListings fetches marketplace active listings sorted by price ascending.
+func (c *Client) GetItemListings(
+	ctx context.Context,
+	item, userID string,
+	query ListingsReq,
+	mods ...aoni.RequestModifier,
+) ([]Listing, error) {
+	if userID != "" {
+		return c.GetItemListingsForUser(ctx, item, userID, query, mods...)
+	}
+
+	return c.GetItemListingsDirect(ctx, item, query, mods...)
+}
+
+// CreateBuyOrder creates a buy order for an item.
+func (c *Client) CreateBuyOrder(
+	ctx context.Context,
+	itemID, value, amount int,
+	mods ...aoni.RequestModifier,
+) (*DetailsResponse, error) {
+	req := CreateBuyOrderReq{
+		ItemID: itemID,
+		Value:  value,
+		Amount: amount,
+	}
+
+	return c.CreateBuyOrderDirect(ctx, req, mods...)
+}
+
+// UpdateBuyOrder updates an existing buy order price and/or quantity.
+func (c *Client) UpdateBuyOrder(
+	ctx context.Context,
+	itemID, value, amount int,
+	mods ...aoni.RequestModifier,
+) (string, error) {
+	req := UpdateBuyOrderReq{
+		ItemID: itemID,
+		Value:  value,
+		Amount: amount,
+	}
+
+	return c.UpdateBuyOrderDirect(ctx, req, mods...)
+}
+
+// RemoveBuyOrder cancels a buy order and releases the reserved balance.
+func (c *Client) RemoveBuyOrder(
+	ctx context.Context,
+	itemID int,
+	mods ...aoni.RequestModifier,
+) (*DetailsResponse, error) {
+	req := RemoveBuyOrderReq{
+		ItemID: itemID,
+	}
+
+	return c.RemoveBuyOrderDirect(ctx, req, mods...)
+}
+
+// AddToCart inserts a single listing into user's shopping cart by Steam asset ID.
+func (c *Client) AddToCart(
+	ctx context.Context,
+	assetID string,
+	mods ...aoni.RequestModifier,
+) (*GetCartResponse, error) {
+	req := AddCartReq{AssetID: assetID}
+	return c.AddToCartDirect(ctx, req, mods...)
+}
+
+// BulkAddToCart searches the cheapest marketplace listings for an item and inserts them into cart.
+func (c *Client) BulkAddToCart(
+	ctx context.Context,
+	itemID, count int,
+	sellerUserID string,
+	mods ...aoni.RequestModifier,
+) (*GetCartResponse, error) {
+	req := BulkAddCartReq{
+		ItemID:       itemID,
+		Count:        count,
+		SellerUserID: sellerUserID,
+	}
+
+	return c.BulkAddToCartDirect(ctx, req, mods...)
+}
+
+// RemoveFromCart deletes an entire cart row from the cart.
+func (c *Client) RemoveFromCart(
+	ctx context.Context,
+	cartID int,
+	mods ...aoni.RequestModifier,
+) (*GetCartResponse, error) {
+	req := RemoveCartReq{CartID: cartID}
+	return c.RemoveFromCartDirect(ctx, req, mods...)
+}
+
+// CreateOffer initiates a purchase trade offer for an item on sale.
+func (c *Client) CreateOffer(
+	ctx context.Context,
+	itemAssetID int64,
+	priceCents int,
+	mods ...aoni.RequestModifier,
+) (*OfferMessageResponse, error) {
+	req := CreateOfferReq{
+		ID:    itemAssetID,
+		Price: priceCents,
+	}
+
+	return c.CreateOfferDirect(ctx, req, mods...)
+}
+
+// AcceptOffer accepts a received offer and completes the checkout transaction (Seller action).
+func (c *Client) AcceptOffer(
+	ctx context.Context,
+	offerID int64,
+	mods ...aoni.RequestModifier,
+) (*OfferMessageResponse, error) {
+	req := OfferActionReq{ID: offerID}
+	return c.AcceptOfferDirect(ctx, req, mods...)
+}
+
+// DeclineOffer declines an incoming trade offer (Seller action).
+func (c *Client) DeclineOffer(
+	ctx context.Context,
+	offerID int64,
+	mods ...aoni.RequestModifier,
+) (*OfferMessageResponse, error) {
+	req := OfferActionReq{ID: offerID}
+	return c.DeclineOfferDirect(ctx, req, mods...)
+}
+
+// RemoveOffer cancels and removes an outgoing trade offer (Buyer action).
+func (c *Client) RemoveOffer(
+	ctx context.Context,
+	offerID int64,
+	mods ...aoni.RequestModifier,
+) (*OfferMessageResponse, error) {
+	req := OfferActionReq{ID: offerID}
+	return c.RemoveOfferDirect(ctx, req, mods...)
 }

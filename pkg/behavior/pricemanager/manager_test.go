@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/lemon4ksan/aoni"
+	"github.com/lemon4ksan/aoni/option"
 	"github.com/lemon4ksan/g-man/pkg/test/mock"
 	"github.com/lemon4ksan/miyako/log"
 	"github.com/stretchr/testify/assert"
@@ -68,9 +69,9 @@ func TestPriceManager(t *testing.T) {
 		}
 		stub.SetJSONResponse("api/IGetPrices/v4", 200, mockResp)
 
-		client := bptf.New(aoni.NewClient(stub), "", "")
+		r := aoni.NewClient(stub, option.WithBaseURL("https://backpack.tf/api"))
 		cfg := Config{CachePath: filepath.Join(t.TempDir(), "prices.json")}
-		manager := NewPriceManager(client, log.Discard, cfg)
+		manager := NewPriceManager(r, log.Discard, cfg)
 
 		err := manager.Update(t.Context())
 		require.NoError(t, err)
@@ -101,8 +102,8 @@ func TestPriceManager(t *testing.T) {
 		stub := mock.NewHTTPStub()
 		stub.SetJSONResponse("api/IGetPrices/v4", 500, nil)
 
-		client := bptf.New(aoni.NewClient(stub), "", "")
-		manager := NewPriceManager(client, log.Discard, Config{})
+		r := aoni.NewClient(stub, option.WithBaseURL("https://backpack.tf/api"))
+		manager := NewPriceManager(r, log.Discard, Config{})
 		err := manager.Update(t.Context())
 		assert.Error(t, err)
 	})
@@ -115,8 +116,8 @@ func TestPriceManager(t *testing.T) {
 
 	t.Run("price_manager_run_lifecycle", func(t *testing.T) {
 		stub := mock.NewHTTPStub()
-		client := bptf.New(aoni.NewClient(stub), "", "")
-		manager := NewPriceManager(client, log.Discard, Config{SyncInterval: 10 * time.Millisecond})
+		r := aoni.NewClient(stub, option.WithBaseURL("https://backpack.tf/api"))
+		manager := NewPriceManager(r, log.Discard, Config{SyncInterval: 10 * time.Millisecond})
 
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
