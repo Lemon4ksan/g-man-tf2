@@ -27,7 +27,7 @@ type V2ErrorResponse = V2errorResponse
 
 // GetSteamUsersInventoryV2Query wraps query parameters for inventory requests.
 type GetSteamUsersInventoryV2Query struct {
-	Cursor   any           `url:"cursor,omitempty"`
+	Cursor   string        `url:"cursor,omitempty"`
 	Language SteamLanguage `url:"language,omitempty"`
 }
 

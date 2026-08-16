@@ -32,7 +32,7 @@ type API interface {
 		appid string,
 		item string,
 		quality string,
-		tradable any,
+		tradable string,
 		craftable string,
 		priceindex string,
 		mods ...aoni.RequestModifier,
@@ -113,7 +113,7 @@ type API interface {
 	//
 	// @delete "classifieds/delete/v1"
 	// @json
-	DeleteClassifiedsDeleteV1(ctx context.Context, req any, mods ...aoni.RequestModifier) (map[string]any, error)
+	DeleteClassifiedsDeleteV1(ctx context.Context, req []string, mods ...aoni.RequestModifier) (map[string]any, error)
 
 	// PostClassifiedsListV1 — Bulk create classifieds listings
 	//

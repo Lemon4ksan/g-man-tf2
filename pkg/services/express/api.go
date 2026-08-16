@@ -351,5 +351,5 @@ type API interface {
 
 	// InventoryV2V2SteamUsersSteamIDInventoryAppIDContextIDGet — Load a Steam user's inventory
 	// @get "v2/steam/users/{steam_id}/inventory/{app_id}/{context_id}"
-	InventoryV2V2SteamUsersSteamIDInventoryAppIDContextIDGet(ctx context.Context, steamID id.ID, appID int, contextID int, cursor any, language string, mods ...aoni.RequestModifier) (*V2inventoryResponse, error)
+	InventoryV2V2SteamUsersSteamIDInventoryAppIDContextIDGet(ctx context.Context, steamID id.ID, appID int, contextID int, cursor string, language string, mods ...aoni.RequestModifier) (*V2inventoryResponse, error)
 }

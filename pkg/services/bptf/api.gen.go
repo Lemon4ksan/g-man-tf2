@@ -99,7 +99,7 @@ func (c *apiClient) GetIgetCurrenciesV1(ctx context.Context, raw int, mods ...ao
 	return *resp, nil
 }
 
-func (c *apiClient) GetIgetPriceHistoryV1(ctx context.Context, appid string, item string, quality string, tradable any, craftable string, priceindex string, mods ...aoni.RequestModifier) (*V1priceHistoryResponse, error) {
+func (c *apiClient) GetIgetPriceHistoryV1(ctx context.Context, appid string, item string, quality string, tradable string, craftable string, priceindex string, mods ...aoni.RequestModifier) (*V1priceHistoryResponse, error) {
 	var stackMods [8]aoni.RequestModifier
 	allMods := stackMods[:0]
 
@@ -111,13 +111,13 @@ func (c *apiClient) GetIgetPriceHistoryV1(ctx context.Context, appid string, ite
 	qBytes = append(qBytes, url.QueryEscape(item)...)
 	qBytes = append(qBytes, "&quality="...)
 	qBytes = append(qBytes, url.QueryEscape(quality)...)
+	qBytes = append(qBytes, "&tradable="...)
+	qBytes = append(qBytes, url.QueryEscape(tradable)...)
 	qBytes = append(qBytes, "&craftable="...)
 	qBytes = append(qBytes, url.QueryEscape(craftable)...)
 	qBytes = append(qBytes, "&priceindex="...)
 	qBytes = append(qBytes, url.QueryEscape(priceindex)...)
 	allMods = append(allMods, mod.WithQuery(string(qBytes)))
-
-	allMods = append(allMods, mod.WithQuery(tradable))
 
 	if len(mods) > 0 {
 		allMods = append(allMods, mods...)
@@ -374,11 +374,15 @@ func (c *apiClient) DeleteClassifiedsAlertsByID(ctx context.Context, iD string, 
 	return *resp, nil
 }
 
-func (c *apiClient) DeleteClassifiedsDeleteV1(ctx context.Context, req any, mods ...aoni.RequestModifier) (map[string]any, error) {
-	var stackMods [4]aoni.RequestModifier
+func (c *apiClient) DeleteClassifiedsDeleteV1(ctx context.Context, req []string, mods ...aoni.RequestModifier) (map[string]any, error) {
+	var stackMods [8]aoni.RequestModifier
 	allMods := stackMods[:0]
 
-	allMods = append(allMods, mod.WithQuery(req))
+	var qBuf [64]byte
+	qBytes := qBuf[:0]
+	qBytes = append(qBytes, "req="...)
+	qBytes = append(qBytes, url.QueryEscape(fmt.Sprint(req))...)
+	allMods = append(allMods, mod.WithQuery(string(qBytes)))
 
 	if len(mods) > 0 {
 		allMods = append(allMods, mods...)

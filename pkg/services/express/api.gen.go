@@ -151,17 +151,17 @@ func (c *apiClient) MarketPriceV2V2SteamMarketPriceGet(ctx context.Context, mark
 	return resp, nil
 }
 
-func (c *apiClient) InventoryV2V2SteamUsersSteamIDInventoryAppIDContextIDGet(ctx context.Context, steamID id.ID, appID int, contextID int, cursor any, language string, mods ...aoni.RequestModifier) (*V2inventoryResponse, error) {
+func (c *apiClient) InventoryV2V2SteamUsersSteamIDInventoryAppIDContextIDGet(ctx context.Context, steamID id.ID, appID int, contextID int, cursor string, language string, mods ...aoni.RequestModifier) (*V2inventoryResponse, error) {
 	var stackMods [8]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
 	qBytes := qBuf[:0]
-	qBytes = append(qBytes, "language="...)
+	qBytes = append(qBytes, "cursor="...)
+	qBytes = append(qBytes, url.QueryEscape(cursor)...)
+	qBytes = append(qBytes, "&language="...)
 	qBytes = append(qBytes, url.QueryEscape(language)...)
 	allMods = append(allMods, mod.WithQuery(string(qBytes)))
-
-	allMods = append(allMods, mod.WithQuery(cursor))
 
 	allMods = append(allMods, mod.WithVar("steam_id", steamID))
 	allMods = append(allMods, mod.WithVar("app_id", appID))

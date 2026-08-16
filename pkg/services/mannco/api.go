@@ -94,7 +94,6 @@ type API interface {
 
 	// GetItemSalesGraph returns historical sales summary chart points.
 	// @get "item/salesGraph/{item}"
-	// @query "period"
 	GetItemSalesGraph(ctx context.Context, item string, period string, mods ...aoni.RequestModifier) (*ItemSalesGraph, error)
 
 	// GetListingCountDirect returns the number of active sales listings for an item.
@@ -123,7 +122,6 @@ type API interface {
 
 	// GetBulkPricingDirect returns calculated pricing for multiple items at once.
 	// @get "item/pricing/bulk"
-	// @query "items"
 	GetBulkPricingDirect(ctx context.Context, items string, mods ...aoni.RequestModifier) (*BulkPricing, error)
 
 	// GetBackpackDetailsTF2 queries full item details and backpack metrics for a TF2 asset ID.
@@ -220,7 +218,6 @@ type API interface {
 
 	// ResendTrade triggers a retry for a failed or pending withdrawal trade.
 	// @get "trade/resend"
-	// @query "id"
 	ResendTrade(ctx context.Context, id int, mods ...aoni.RequestModifier) (*ResendTradeResponse, error)
 
 	// GetReceivedOffers returns trade offers received from other buyers.
