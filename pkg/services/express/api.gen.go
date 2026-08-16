@@ -66,7 +66,7 @@ func (c *apiClient) R() request.Requester {
 	return c.r
 }
 
-func (c *apiClient) LiveHealthLiveGet(ctx context.Context, mods ...aoni.RequestModifier) (map[string]any, error) {
+func (c *apiClient) GetLiveHealth(ctx context.Context, mods ...aoni.RequestModifier) (map[string]any, error) {
 	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
@@ -81,7 +81,7 @@ func (c *apiClient) LiveHealthLiveGet(ctx context.Context, mods ...aoni.RequestM
 	return *resp, nil
 }
 
-func (c *apiClient) ReadyHealthReadyGet(ctx context.Context, mods ...aoni.RequestModifier) (map[string]any, error) {
+func (c *apiClient) GetReadyHealth(ctx context.Context, mods ...aoni.RequestModifier) (map[string]any, error) {
 	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
@@ -96,7 +96,7 @@ func (c *apiClient) ReadyHealthReadyGet(ctx context.Context, mods ...aoni.Reques
 	return *resp, nil
 }
 
-func (c *apiClient) PublicStatusV1StatusGet(ctx context.Context, mods ...aoni.RequestModifier) (*PublicStatus, error) {
+func (c *apiClient) GetPublicStatus(ctx context.Context, mods ...aoni.RequestModifier) (*PublicStatus, error) {
 	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
@@ -111,7 +111,7 @@ func (c *apiClient) PublicStatusV1StatusGet(ctx context.Context, mods ...aoni.Re
 	return resp, nil
 }
 
-func (c *apiClient) AccountV2V2AccountGet(ctx context.Context, mods ...aoni.RequestModifier) (*V2accountResponse, error) {
+func (c *apiClient) GetAccount(ctx context.Context, mods ...aoni.RequestModifier) (*V2accountResponse, error) {
 	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
@@ -126,7 +126,7 @@ func (c *apiClient) AccountV2V2AccountGet(ctx context.Context, mods ...aoni.Requ
 	return resp, nil
 }
 
-func (c *apiClient) MarketPriceV2V2SteamMarketPriceGet(ctx context.Context, marketHashName string, appID int, currency int, mods ...aoni.RequestModifier) (*V2marketPriceResponse, error) {
+func (c *apiClient) GetSteamMarketPrice(ctx context.Context, marketHashName string, appID int, currency int, mods ...aoni.RequestModifier) (*V2marketPriceResponse, error) {
 	var stackMods [8]aoni.RequestModifier
 	allMods := stackMods[:0]
 
@@ -151,7 +151,7 @@ func (c *apiClient) MarketPriceV2V2SteamMarketPriceGet(ctx context.Context, mark
 	return resp, nil
 }
 
-func (c *apiClient) InventoryV2V2SteamUsersSteamIDInventoryAppIDContextIDGet(ctx context.Context, steamID id.ID, appID int, contextID int, cursor string, language string, mods ...aoni.RequestModifier) (*V2inventoryResponse, error) {
+func (c *apiClient) GetSteamInventory(ctx context.Context, steamID id.ID, appID int, contextID int, cursor string, language string, mods ...aoni.RequestModifier) (*V2inventoryResponse, error) {
 	var stackMods [8]aoni.RequestModifier
 	allMods := stackMods[:0]
 

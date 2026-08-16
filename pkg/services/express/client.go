@@ -56,32 +56,32 @@ func NewClient(doer any, apiKey string, opts ...aoni.ClientOption) *Client {
 
 // GetAccountV2 fetches the API account details.
 func (c *Client) GetAccountV2(ctx context.Context, mods ...aoni.RequestModifier) (*V2AccountResponse, error) {
-	return c.API.AccountV2V2AccountGet(ctx, mods...)
+	return c.API.GetAccount(ctx, mods...)
 }
 
 // GetSteamMarketPriceV2 fetches the market price for an item.
 func (c *Client) GetSteamMarketPriceV2(ctx context.Context, q GetSteamMarketPriceV2Query, mods ...aoni.RequestModifier) (*V2MarketPriceResponse, error) {
-	return c.API.MarketPriceV2V2SteamMarketPriceGet(ctx, q.MarketHashName, q.AppID, int(q.Currency), mods...)
+	return c.API.GetSteamMarketPrice(ctx, q.MarketHashName, q.AppID, int(q.Currency), mods...)
 }
 
 // GetSteamUsersInventoryV2 loads a Steam user's inventory.
 func (c *Client) GetSteamUsersInventoryV2(ctx context.Context, steamID id.ID, appID, contextID int, q GetSteamUsersInventoryV2Query, mods ...aoni.RequestModifier) (*V2InventoryResponse, error) {
-	return c.API.InventoryV2V2SteamUsersSteamIDInventoryAppIDContextIDGet(ctx, steamID, appID, contextID, q.Cursor, string(q.Language), mods...)
+	return c.API.GetSteamInventory(ctx, steamID, appID, contextID, q.Cursor, string(q.Language), mods...)
 }
 
 // GetStatus returns the public service status.
 func (c *Client) GetStatus(ctx context.Context, mods ...aoni.RequestModifier) (*PublicStatus, error) {
-	return c.API.PublicStatusV1StatusGet(ctx, mods...)
+	return c.API.GetPublicStatus(ctx, mods...)
 }
 
 // CheckReady verifies service readiness.
 func (c *Client) CheckReady(ctx context.Context, mods ...aoni.RequestModifier) (map[string]any, error) {
-	return c.API.ReadyHealthReadyGet(ctx, mods...)
+	return c.API.GetReadyHealth(ctx, mods...)
 }
 
 // CheckLive verifies service liveness.
 func (c *Client) CheckLive(ctx context.Context, mods ...aoni.RequestModifier) (map[string]any, error) {
-	return c.API.LiveHealthLiveGet(ctx, mods...)
+	return c.API.GetLiveHealth(ctx, mods...)
 }
 
 // WithIdempotencyKey returns a RequestModifier that sets the Idempotency-Key header.

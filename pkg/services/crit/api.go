@@ -14,6 +14,7 @@ import (
 //
 // @aoni:service casing=snake_case
 // @base_url "https://crit.tf/api/v2/"
+// @version "v2.0.0"
 type API interface {
 	// FetchMyListings retrieves all active listings for the authenticated user.
 	// @get "listings/my"

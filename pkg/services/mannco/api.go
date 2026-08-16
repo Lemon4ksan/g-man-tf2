@@ -13,6 +13,8 @@ import (
 // API defines the declarative REST API endpoints for the Mannco.store platform.
 // @aoni:service casing=snake_case
 // @base_url "https://api.mannco.store/"
+// @version "v1.0.0"
+// @source "mannco_openapi.json"
 // @unwrap "content"
 type API interface {
 	// PostLogin authenticates using an API key and returns a JWT token.

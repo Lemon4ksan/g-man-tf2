@@ -14,6 +14,8 @@ import (
 //
 // @aoni:service casing=snake_case
 // @base_url "https://pricedb.io/api/"
+// @version "v1.0.0"
+// @source "pricedb_openapi.json"
 type API interface {
 	// GetItem fetches the latest price for a specific item SKU.
 	// @get "item/{sku}"
@@ -84,6 +86,8 @@ type API interface {
 //
 // @aoni:service casing=snake_case
 // @base_url "https://sku.pricedb.io/api/"
+// @version "v1.0.0"
+// @source "pricedb_sku.json"
 type SKUClient interface {
 	// ResolveName looks up an item by name using the SKU Service.
 	// @get "name/{name}"
@@ -178,6 +182,8 @@ type SKUClient interface {
 //
 // @aoni:service casing=snake_case
 // @base_url "https://spell.pricedb.io/api/"
+// @version "v1.0.0"
+// @source "pricedb_spells.json"
 type SpellClient interface {
 	// PredictSpellPrice estimates the premium values for given comma-separated spell names and item name.
 	// @get "spell/predict"
