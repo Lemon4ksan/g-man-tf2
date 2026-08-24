@@ -31,18 +31,7 @@ func newAPI(doer any, opts ...aoni.ClientOption) *apiClient {
 	var baseOpts []aoni.ClientOption
 	baseOpts = append(baseOpts, opts...)
 
-	var targetReq request.Requester
-	if d, ok := doer.(aoni.RequestDoer); ok {
-		targetReq = request.AsRequester(aoni.Configure(d, append([]aoni.ClientOption{option.WithBaseURL("https://pricedb.io/api/")}, baseOpts...)...))
-	} else if req, ok := doer.(request.Requester); ok {
-		targetReq = request.AsRequester(aoni.Configure(req, append([]aoni.ClientOption{option.WithBaseURL("https://pricedb.io/api/")}, baseOpts...)...))
-	} else if rd, ok := doer.(interface{ Rest() request.Requester }); ok && rd.Rest() != nil {
-		targetReq = rd.Rest()
-	} else if rd, ok := doer.(interface{ Requester() request.Requester }); ok && rd.Requester() != nil {
-		targetReq = rd.Requester()
-	} else {
-		targetReq = request.AsRequester(aoni.Configure(fast.NewClient(), append([]aoni.ClientOption{option.WithBaseURL("https://pricedb.io/api/")}, baseOpts...)...))
-	}
+	targetReq := request.Configure(doer, append([]aoni.ClientOption{option.WithBaseURL("https://pricedb.io/api/")}, baseOpts...)...)
 
 	return &apiClient{
 		r: targetReq,
@@ -65,7 +54,7 @@ func (c *apiClient) R() request.Requester {
 }
 
 func (c *apiClient) GetItem(ctx context.Context, sku string, mods ...aoni.RequestModifier) (*Price, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("sku", sku))
@@ -96,7 +85,7 @@ func (c *apiClient) PostItemsBulk(ctx context.Context, req bulkRequest, mods ...
 }
 
 func (c *apiClient) Search(ctx context.Context, q string, limit int, mods ...aoni.RequestModifier) (*SearchResult, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
@@ -119,7 +108,7 @@ func (c *apiClient) Search(ctx context.Context, q string, limit int, mods ...aon
 }
 
 func (c *apiClient) GetHistory(ctx context.Context, sku string, start int64, end int64, mods ...aoni.RequestModifier) ([]*Price, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
@@ -143,7 +132,7 @@ func (c *apiClient) GetHistory(ctx context.Context, sku string, start int64, end
 }
 
 func (c *apiClient) GetStats(ctx context.Context, sku string, mods ...aoni.RequestModifier) (*ItemStats, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("sku", sku))
@@ -159,7 +148,7 @@ func (c *apiClient) GetStats(ctx context.Context, sku string, mods ...aoni.Reque
 }
 
 func (c *apiClient) Compare(ctx context.Context, sku1 string, sku2 string, mods ...aoni.RequestModifier) (*CompareResult, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("sku1", sku1))
@@ -176,7 +165,7 @@ func (c *apiClient) Compare(ctx context.Context, sku1 string, sku2 string, mods 
 }
 
 func (c *apiClient) TriggerPriceCheck(ctx context.Context, sku string, mods ...aoni.RequestModifier) error {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("sku", sku))
@@ -249,7 +238,7 @@ func (c *apiClient) GetLatestPrices(ctx context.Context, mods ...aoni.RequestMod
 }
 
 func (c *apiClient) GetPrices(ctx context.Context, limit int, offset int, mods ...aoni.RequestModifier) (*PriceHistoryResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
@@ -272,7 +261,7 @@ func (c *apiClient) GetPrices(ctx context.Context, limit int, offset int, mods .
 }
 
 func (c *apiClient) GetSnapshot(ctx context.Context, timestamp int64, mods ...aoni.RequestModifier) ([]*Price, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("timestamp", timestamp))
@@ -288,7 +277,7 @@ func (c *apiClient) GetSnapshot(ctx context.Context, timestamp int64, mods ...ao
 }
 
 func (c *apiClient) GetGraph(ctx context.Context, sku string, header bool, height int, width string, mods ...aoni.RequestModifier) (string, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [128]byte
@@ -329,7 +318,7 @@ func (c *apiClient) GetAutobItems(ctx context.Context, mods ...aoni.RequestModif
 }
 
 func (c *apiClient) GetAutobItem(ctx context.Context, sku string, mods ...aoni.RequestModifier) (*Price, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("sku", sku))
@@ -356,18 +345,7 @@ func newSKUClient(doer any, opts ...aoni.ClientOption) *skuClientClient {
 	var baseOpts []aoni.ClientOption
 	baseOpts = append(baseOpts, opts...)
 
-	var targetReq request.Requester
-	if d, ok := doer.(aoni.RequestDoer); ok {
-		targetReq = request.AsRequester(aoni.Configure(d, append([]aoni.ClientOption{option.WithBaseURL("https://sku.pricedb.io/api/")}, baseOpts...)...))
-	} else if req, ok := doer.(request.Requester); ok {
-		targetReq = request.AsRequester(aoni.Configure(req, append([]aoni.ClientOption{option.WithBaseURL("https://sku.pricedb.io/api/")}, baseOpts...)...))
-	} else if rd, ok := doer.(interface{ Rest() request.Requester }); ok && rd.Rest() != nil {
-		targetReq = rd.Rest()
-	} else if rd, ok := doer.(interface{ Requester() request.Requester }); ok && rd.Requester() != nil {
-		targetReq = rd.Requester()
-	} else {
-		targetReq = request.AsRequester(aoni.Configure(fast.NewClient(), append([]aoni.ClientOption{option.WithBaseURL("https://sku.pricedb.io/api/")}, baseOpts...)...))
-	}
+	targetReq := request.Configure(doer, append([]aoni.ClientOption{option.WithBaseURL("https://sku.pricedb.io/api/")}, baseOpts...)...)
 
 	return &skuClientClient{
 		r: targetReq,
@@ -385,7 +363,7 @@ func (c *skuClientClient) R() request.Requester {
 }
 
 func (c *skuClientClient) ResolveName(ctx context.Context, name string, mods ...aoni.RequestModifier) (*ResolvedItem, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("name", name))
@@ -401,7 +379,7 @@ func (c *skuClientClient) ResolveName(ctx context.Context, name string, mods ...
 }
 
 func (c *skuClientClient) ResolveSKU(ctx context.Context, sku string, mods ...aoni.RequestModifier) (*ResolvedItem, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("sku", sku))
@@ -432,7 +410,7 @@ func (c *skuClientClient) GetSchema(ctx context.Context, mods ...aoni.RequestMod
 }
 
 func (c *skuClientClient) GetImageBySKU(ctx context.Context, sku string, mods ...aoni.RequestModifier) ([]byte, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("sku", sku))
@@ -449,7 +427,7 @@ func (c *skuClientClient) GetImageBySKU(ctx context.Context, sku string, mods ..
 }
 
 func (c *skuClientClient) GetImageByName(ctx context.Context, name string, mods ...aoni.RequestModifier) ([]byte, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("name", name))
@@ -481,7 +459,7 @@ func (c *skuClientClient) ListEffects(ctx context.Context, mods ...aoni.RequestM
 }
 
 func (c *skuClientClient) GetEffectByID(ctx context.Context, id int, mods ...aoni.RequestModifier) (*EffectResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("id", id))
@@ -497,7 +475,7 @@ func (c *skuClientClient) GetEffectByID(ctx context.Context, id int, mods ...aon
 }
 
 func (c *skuClientClient) GetEffectByName(ctx context.Context, name string, mods ...aoni.RequestModifier) (*EffectResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("name", name))
@@ -528,7 +506,7 @@ func (c *skuClientClient) ListPaints(ctx context.Context, mods ...aoni.RequestMo
 }
 
 func (c *skuClientClient) GetPaintByID(ctx context.Context, id int, mods ...aoni.RequestModifier) (*PaintResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("id", id))
@@ -544,7 +522,7 @@ func (c *skuClientClient) GetPaintByID(ctx context.Context, id int, mods ...aoni
 }
 
 func (c *skuClientClient) GetPaintByName(ctx context.Context, name string, mods ...aoni.RequestModifier) (*PaintResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("name", name))
@@ -575,7 +553,7 @@ func (c *skuClientClient) ListWears(ctx context.Context, mods ...aoni.RequestMod
 }
 
 func (c *skuClientClient) GetWearByID(ctx context.Context, id int, mods ...aoni.RequestModifier) (*WearResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("id", id))
@@ -606,7 +584,7 @@ func (c *skuClientClient) ListPaintKits(ctx context.Context, mods ...aoni.Reques
 }
 
 func (c *skuClientClient) GetPaintKitByID(ctx context.Context, id int, mods ...aoni.RequestModifier) (*PaintKitResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("id", id))
@@ -622,7 +600,7 @@ func (c *skuClientClient) GetPaintKitByID(ctx context.Context, id int, mods ...a
 }
 
 func (c *skuClientClient) GetPaintKitByName(ctx context.Context, name string, mods ...aoni.RequestModifier) (*PaintKitResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("name", name))
@@ -739,18 +717,7 @@ func newSpellClient(doer any, opts ...aoni.ClientOption) *spellClientClient {
 	var baseOpts []aoni.ClientOption
 	baseOpts = append(baseOpts, opts...)
 
-	var targetReq request.Requester
-	if d, ok := doer.(aoni.RequestDoer); ok {
-		targetReq = request.AsRequester(aoni.Configure(d, append([]aoni.ClientOption{option.WithBaseURL("https://spell.pricedb.io/api/")}, baseOpts...)...))
-	} else if req, ok := doer.(request.Requester); ok {
-		targetReq = request.AsRequester(aoni.Configure(req, append([]aoni.ClientOption{option.WithBaseURL("https://spell.pricedb.io/api/")}, baseOpts...)...))
-	} else if rd, ok := doer.(interface{ Rest() request.Requester }); ok && rd.Rest() != nil {
-		targetReq = rd.Rest()
-	} else if rd, ok := doer.(interface{ Requester() request.Requester }); ok && rd.Requester() != nil {
-		targetReq = rd.Requester()
-	} else {
-		targetReq = request.AsRequester(aoni.Configure(fast.NewClient(), append([]aoni.ClientOption{option.WithBaseURL("https://spell.pricedb.io/api/")}, baseOpts...)...))
-	}
+	targetReq := request.Configure(doer, append([]aoni.ClientOption{option.WithBaseURL("https://spell.pricedb.io/api/")}, baseOpts...)...)
 
 	return &spellClientClient{
 		r: targetReq,
@@ -768,7 +735,7 @@ func (c *spellClientClient) R() request.Requester {
 }
 
 func (c *spellClientClient) PredictSpellPrice(ctx context.Context, spells string, item string, mods ...aoni.RequestModifier) (*SpellPredictionResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
@@ -806,7 +773,7 @@ func (c *spellClientClient) PredictSpellItem(ctx context.Context, req PredictSpe
 }
 
 func (c *spellClientClient) GetSpellValue(ctx context.Context, ids string, mods ...aoni.RequestModifier) (*SpellValueResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
@@ -842,7 +809,7 @@ func (c *spellClientClient) GetSpellAnalytics(ctx context.Context, mods ...aoni.
 }
 
 func (c *spellClientClient) GetItemSpellPremium(ctx context.Context, item string, ids string, mods ...aoni.RequestModifier) (*ItemSpellPremiumResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
@@ -865,7 +832,7 @@ func (c *spellClientClient) GetItemSpellPremium(ctx context.Context, item string
 }
 
 func (c *spellClientClient) GetSpellByID(ctx context.Context, id int, mods ...aoni.RequestModifier) (*SpellMetadata, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
@@ -886,7 +853,7 @@ func (c *spellClientClient) GetSpellByID(ctx context.Context, id int, mods ...ao
 }
 
 func (c *spellClientClient) GetSpellByName(ctx context.Context, name string, mods ...aoni.RequestModifier) (*SpellMetadata, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte

@@ -15,7 +15,6 @@ import (
 // @aoni:service casing=snake_case
 // @base_url "https://pricedb.io/api/"
 // @version "v1.0.0"
-// @source "pricedb_openapi.json"
 type API interface {
 	// GetItem fetches the latest price for a specific item SKU.
 	// @get "item/{sku}"

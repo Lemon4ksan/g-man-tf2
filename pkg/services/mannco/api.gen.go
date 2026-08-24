@@ -30,18 +30,7 @@ func newAPI(doer any, opts ...aoni.ClientOption) *apiClient {
 	var baseOpts []aoni.ClientOption
 	baseOpts = append(baseOpts, opts...)
 
-	var targetReq request.Requester
-	if d, ok := doer.(aoni.RequestDoer); ok {
-		targetReq = request.AsRequester(aoni.Configure(d, append([]aoni.ClientOption{option.WithBaseURL("https://api.mannco.store/")}, baseOpts...)...))
-	} else if req, ok := doer.(request.Requester); ok {
-		targetReq = request.AsRequester(aoni.Configure(req, append([]aoni.ClientOption{option.WithBaseURL("https://api.mannco.store/")}, baseOpts...)...))
-	} else if rd, ok := doer.(interface{ Rest() request.Requester }); ok && rd.Rest() != nil {
-		targetReq = rd.Rest()
-	} else if rd, ok := doer.(interface{ Requester() request.Requester }); ok && rd.Requester() != nil {
-		targetReq = rd.Requester()
-	} else {
-		targetReq = request.AsRequester(aoni.Configure(fast.NewClient(), append([]aoni.ClientOption{option.WithBaseURL("https://api.mannco.store/")}, baseOpts...)...))
-	}
+	targetReq := request.Configure(doer, append([]aoni.ClientOption{option.WithBaseURL("https://api.mannco.store/")}, baseOpts...)...)
 
 	return &apiClient{
 		r: targetReq,
@@ -210,7 +199,7 @@ func (c *apiClient) GetIPSessionList(ctx context.Context, query IPSessionListQue
 }
 
 func (c *apiClient) GetPublicStoreProfile(ctx context.Context, identifier string, mods ...aoni.RequestModifier) (*PublicStoreProfile, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("identifier", identifier))
@@ -363,7 +352,7 @@ func (c *apiClient) GetSalesHistory(ctx context.Context, query SalesHistoryQuery
 }
 
 func (c *apiClient) GetSalesHistoryForUser(ctx context.Context, userid string, query SalesHistoryQuery, mods ...aoni.RequestModifier) (*SalesHistoryResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithQuery(query))
@@ -442,7 +431,7 @@ func (c *apiClient) GetTransactionHistory(ctx context.Context, query Transaction
 }
 
 func (c *apiClient) GetTransactionDetails(ctx context.Context, transactionID string, mods ...aoni.RequestModifier) (*TransactionDetailsResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
@@ -498,7 +487,7 @@ func (c *apiClient) GetCryptoDepositHistory(ctx context.Context, query CryptoDep
 }
 
 func (c *apiClient) GetItemDetails(ctx context.Context, item string, mods ...aoni.RequestModifier) (*ItemDetails, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("item", item))
@@ -523,7 +512,7 @@ func (c *apiClient) GetItemDetails(ctx context.Context, item string, mods ...aon
 }
 
 func (c *apiClient) GetItemSalesGraph(ctx context.Context, item string, period string, mods ...aoni.RequestModifier) (*ItemSalesGraph, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
@@ -554,7 +543,7 @@ func (c *apiClient) GetItemSalesGraph(ctx context.Context, item string, period s
 }
 
 func (c *apiClient) GetListingCountDirect(ctx context.Context, item string, mods ...aoni.RequestModifier) (*ListingCount, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("item", item))
@@ -579,7 +568,7 @@ func (c *apiClient) GetListingCountDirect(ctx context.Context, item string, mods
 }
 
 func (c *apiClient) GetListingCountForUser(ctx context.Context, item string, userid string, mods ...aoni.RequestModifier) (*ListingCount, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("item", item))
@@ -605,7 +594,7 @@ func (c *apiClient) GetListingCountForUser(ctx context.Context, item string, use
 }
 
 func (c *apiClient) GetItemListingsDirect(ctx context.Context, item string, query ListingsReq, mods ...aoni.RequestModifier) ([]Listing, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithQuery(query))
@@ -660,7 +649,7 @@ func (c *apiClient) GetItemListingsForUser(ctx context.Context, item string, use
 }
 
 func (c *apiClient) GetBuyOrderList(ctx context.Context, item string, mods ...aoni.RequestModifier) (*BuyOrderList, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("item", item))
@@ -685,7 +674,7 @@ func (c *apiClient) GetBuyOrderList(ctx context.Context, item string, mods ...ao
 }
 
 func (c *apiClient) GetItemPricing(ctx context.Context, item string, mods ...aoni.RequestModifier) (*ItemPricing, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("item", item))
@@ -710,7 +699,7 @@ func (c *apiClient) GetItemPricing(ctx context.Context, item string, mods ...aon
 }
 
 func (c *apiClient) GetBulkPricingDirect(ctx context.Context, items string, mods ...aoni.RequestModifier) (*BulkPricing, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
@@ -740,7 +729,7 @@ func (c *apiClient) GetBulkPricingDirect(ctx context.Context, items string, mods
 }
 
 func (c *apiClient) GetBackpackDetailsTF2(ctx context.Context, backpackid string, mods ...aoni.RequestModifier) (*BackpackDetailsResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("backpackid", backpackid))
@@ -765,7 +754,7 @@ func (c *apiClient) GetBackpackDetailsTF2(ctx context.Context, backpackid string
 }
 
 func (c *apiClient) GetBackpackDetailsCS2(ctx context.Context, backpackid string, mods ...aoni.RequestModifier) (*BackpackDetailsResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("backpackid", backpackid))
@@ -958,7 +947,7 @@ func (c *apiClient) RemoveBuyOrderDirect(ctx context.Context, req RemoveBuyOrder
 }
 
 func (c *apiClient) GetUserBuyOrdersForItem(ctx context.Context, item string, mods ...aoni.RequestModifier) (*UserBuyOrderResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("item", item))
@@ -1129,7 +1118,7 @@ func (c *apiClient) UpdateCart(ctx context.Context, mods ...aoni.RequestModifier
 }
 
 func (c *apiClient) GetDepositInfo(ctx context.Context, game int, mods ...aoni.RequestModifier) (*GetDepositInfoResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("game", game))
@@ -1154,7 +1143,7 @@ func (c *apiClient) GetDepositInfo(ctx context.Context, game int, mods ...aoni.R
 }
 
 func (c *apiClient) GetInstantSellInfo(ctx context.Context, game int, mods ...aoni.RequestModifier) (*GetDepositInfoResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("game", game))
@@ -1227,7 +1216,7 @@ func (c *apiClient) CreateInstantSellTrade(ctx context.Context, req CreateInstan
 }
 
 func (c *apiClient) GetDepositTradeStatus(ctx context.Context, tradeid int, mods ...aoni.RequestModifier) (*TradeStatusResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("tradeid", tradeid))
@@ -1300,7 +1289,7 @@ func (c *apiClient) GetAllTrades(ctx context.Context, mods ...aoni.RequestModifi
 }
 
 func (c *apiClient) ResendTrade(ctx context.Context, id int, mods ...aoni.RequestModifier) (*ResendTradeResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
@@ -1474,7 +1463,7 @@ func (c *apiClient) RemoveOfferDirect(ctx context.Context, req OfferActionReq, m
 }
 
 func (c *apiClient) InitiatePayment(ctx context.Context, provider string, req PaymentReq, mods ...aoni.RequestModifier) (*PaymentResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("provider", provider))

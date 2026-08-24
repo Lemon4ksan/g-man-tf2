@@ -4,14 +4,57 @@ package express
 
 import (
 	"context"
-	"github.com/lemon4ksan/g-man/pkg/steam/id"
 	"time"
+
+	"github.com/lemon4ksan/g-man/pkg/steam/id"
 
 	"github.com/lemon4ksan/aoni"
 )
 
 // BaseURL is the default API base endpoint.
 const BaseURL = "https://api.express-load.com/"
+
+// @aoni:service casing=snake_case
+// @base_url "https://api.express-load.com/"
+// @version "v2.0.0"
+// @source "https://api.express-load.com/openapi.json"
+type API interface {
+	// LiveHealthLiveGet — Check process liveness
+	//
+	// @get "health/live"
+	// @bind "live_health_live_get"
+	GetLiveHealth(ctx context.Context, mods ...aoni.RequestModifier) (map[string]any, error)
+
+	// ReadyHealthReadyGet — Check service readiness
+	//
+	// @get "health/ready"
+	// @bind "ready_health_ready_get"
+	GetReadyHealth(ctx context.Context, mods ...aoni.RequestModifier) (map[string]any, error)
+
+	// PublicStatusV1StatusGet — Get public service status
+	//
+	// @get "v1/status"
+	// @bind "public_status_v1_status_get"
+	GetPublicStatus(ctx context.Context, mods ...aoni.RequestModifier) (*PublicStatus, error)
+
+	// AccountV2V2AccountGet — Get the API account
+	//
+	// @get "v2/account"
+	// @bind "account_v2_v2_account_get"
+	GetAccount(ctx context.Context, mods ...aoni.RequestModifier) (*V2accountResponse, error)
+
+	// MarketPriceV2V2SteamMarketPriceGet — Get a Steam Community Market price
+	//
+	// @get "v2/steam/market/price"
+	// @bind "market_price_v2_v2_steam_market_price_get"
+	GetSteamMarketPrice(ctx context.Context, marketHashName string, appID int, currency int, mods ...aoni.RequestModifier) (*V2marketPriceResponse, error)
+
+	// InventoryV2V2SteamUsersSteamIDInventoryAppIDContextIDGet — Load a Steam user's inventory
+	//
+	// @get "v2/steam/users/{steam_id}/inventory/{app_id}/{context_id}"
+	// @bind "inventory_v2_v2_steam_users__steam_id__inventory__app_id___context_id__get"
+	GetSteamInventory(ctx context.Context, steamID id.ID, appID int, contextID int, cursor string, language string, mods ...aoni.RequestModifier) (*V2inventoryResponse, error)
+}
 
 // @aoni:dto casing=snake_case omitempty=true
 type AccountData struct {
@@ -324,46 +367,4 @@ type ValidationError struct {
 	Loc   []any          `json:"loc"`
 	Msg   string         `json:"msg"`
 	Type  string         `json:"type"`
-}
-
-// @aoni:service casing=snake_case
-// @base_url "https://api.express-load.com/"
-// @version "v2.0.0"
-// @source "express.json"
-type API interface {
-	// LiveHealthLiveGet — Check process liveness
-	//
-	// @get "health/live"
-	// @bind "live_health_live_get"
-	GetLiveHealth(ctx context.Context, mods ...aoni.RequestModifier) (map[string]any, error)
-
-	// ReadyHealthReadyGet — Check service readiness
-	//
-	// @get "health/ready"
-	// @bind "ready_health_ready_get"
-	GetReadyHealth(ctx context.Context, mods ...aoni.RequestModifier) (map[string]any, error)
-
-	// PublicStatusV1StatusGet — Get public service status
-	//
-	// @get "v1/status"
-	// @bind "public_status_v1_status_get"
-	GetPublicStatus(ctx context.Context, mods ...aoni.RequestModifier) (*PublicStatus, error)
-
-	// AccountV2V2AccountGet — Get the API account
-	//
-	// @get "v2/account"
-	// @bind "account_v2_v2_account_get"
-	GetAccount(ctx context.Context, mods ...aoni.RequestModifier) (*V2accountResponse, error)
-
-	// MarketPriceV2V2SteamMarketPriceGet — Get a Steam Community Market price
-	//
-	// @get "v2/steam/market/price"
-	// @bind "market_price_v2_v2_steam_market_price_get"
-	GetSteamMarketPrice(ctx context.Context, marketHashName string, appID int, currency int, mods ...aoni.RequestModifier) (*V2marketPriceResponse, error)
-
-	// InventoryV2V2SteamUsersSteamIDInventoryAppIDContextIDGet — Load a Steam user's inventory
-	//
-	// @get "v2/steam/users/{steam_id}/inventory/{app_id}/{context_id}"
-	// @bind "inventory_v2_v2_steam_users__steam_id__inventory__app_id___context_id__get"
-	GetSteamInventory(ctx context.Context, steamID id.ID, appID int, contextID int, cursor string, language string, mods ...aoni.RequestModifier) (*V2inventoryResponse, error)
 }

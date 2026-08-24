@@ -27,18 +27,7 @@ func newAPI(doer any, opts ...aoni.ClientOption) *apiClient {
 	var baseOpts []aoni.ClientOption
 	baseOpts = append(baseOpts, opts...)
 
-	var targetReq request.Requester
-	if d, ok := doer.(aoni.RequestDoer); ok {
-		targetReq = request.AsRequester(aoni.Configure(d, append([]aoni.ClientOption{option.WithBaseURL("https://crit.tf/api/v2/")}, baseOpts...)...))
-	} else if req, ok := doer.(request.Requester); ok {
-		targetReq = request.AsRequester(aoni.Configure(req, append([]aoni.ClientOption{option.WithBaseURL("https://crit.tf/api/v2/")}, baseOpts...)...))
-	} else if rd, ok := doer.(interface{ Rest() request.Requester }); ok && rd.Rest() != nil {
-		targetReq = rd.Rest()
-	} else if rd, ok := doer.(interface{ Requester() request.Requester }); ok && rd.Requester() != nil {
-		targetReq = rd.Requester()
-	} else {
-		targetReq = request.AsRequester(aoni.Configure(fast.NewClient(), append([]aoni.ClientOption{option.WithBaseURL("https://crit.tf/api/v2/")}, baseOpts...)...))
-	}
+	targetReq := request.Configure(doer, append([]aoni.ClientOption{option.WithBaseURL("https://crit.tf/api/v2/")}, baseOpts...)...)
 
 	return &apiClient{
 		r: targetReq,
@@ -91,7 +80,7 @@ func (c *apiClient) CreateListingDirect(ctx context.Context, req CreateListingRe
 }
 
 func (c *apiClient) UpdateListingDirect(ctx context.Context, listingID string, req UpdateListingRequest, mods ...aoni.RequestModifier) (*ListingsResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("listing_id", listingID))
@@ -107,7 +96,7 @@ func (c *apiClient) UpdateListingDirect(ctx context.Context, listingID string, r
 }
 
 func (c *apiClient) DeleteListing(ctx context.Context, listingID string, mods ...aoni.RequestModifier) (*Response, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("listing_id", listingID))
@@ -153,7 +142,7 @@ func (c *apiClient) GetMyGroup(ctx context.Context, mods ...aoni.RequestModifier
 }
 
 func (c *apiClient) InviteToGroupDirect(ctx context.Context, groupID int, req InviteGroupRequest, mods ...aoni.RequestModifier) (*Response, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("group_id", groupID))
@@ -184,7 +173,7 @@ func (c *apiClient) GetPendingInvites(ctx context.Context, mods ...aoni.RequestM
 }
 
 func (c *apiClient) AcceptGroupInvite(ctx context.Context, groupID int, mods ...aoni.RequestModifier) (*Response, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("group_id", groupID))
@@ -200,7 +189,7 @@ func (c *apiClient) AcceptGroupInvite(ctx context.Context, groupID int, mods ...
 }
 
 func (c *apiClient) LeaveGroup(ctx context.Context, groupID int, mods ...aoni.RequestModifier) (*Response, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("group_id", groupID))

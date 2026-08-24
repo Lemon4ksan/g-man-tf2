@@ -33,18 +33,7 @@ func newAPI(doer any, opts ...aoni.ClientOption) *apiClient {
 	var baseOpts []aoni.ClientOption
 	baseOpts = append(baseOpts, opts...)
 
-	var targetReq request.Requester
-	if d, ok := doer.(aoni.RequestDoer); ok {
-		targetReq = request.AsRequester(aoni.Configure(d, append([]aoni.ClientOption{option.WithBaseURL("https://api.express-load.com/")}, baseOpts...)...))
-	} else if req, ok := doer.(request.Requester); ok {
-		targetReq = request.AsRequester(aoni.Configure(req, append([]aoni.ClientOption{option.WithBaseURL("https://api.express-load.com/")}, baseOpts...)...))
-	} else if rd, ok := doer.(interface{ Rest() request.Requester }); ok && rd.Rest() != nil {
-		targetReq = rd.Rest()
-	} else if rd, ok := doer.(interface{ Requester() request.Requester }); ok && rd.Requester() != nil {
-		targetReq = rd.Requester()
-	} else {
-		targetReq = request.AsRequester(aoni.Configure(fast.NewClient(), append([]aoni.ClientOption{option.WithBaseURL("https://api.express-load.com/")}, baseOpts...)...))
-	}
+	targetReq := request.Configure(doer, append([]aoni.ClientOption{option.WithBaseURL("https://api.express-load.com/")}, baseOpts...)...)
 
 	return &apiClient{
 		r: targetReq,
@@ -127,7 +116,7 @@ func (c *apiClient) GetAccount(ctx context.Context, mods ...aoni.RequestModifier
 }
 
 func (c *apiClient) GetSteamMarketPrice(ctx context.Context, marketHashName string, appID int, currency int, mods ...aoni.RequestModifier) (*V2marketPriceResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [128]byte
@@ -177,7 +166,6 @@ func (c *apiClient) GetSteamInventory(ctx context.Context, steamID id.ID, appID 
 	return resp, nil
 }
 
-// AppendFormData serializes AccountData into url-encoded form bytes on dst buffer (0 B/op).
 func (r *AccountData) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -188,7 +176,7 @@ func (r *AccountData) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "api_key="...)
-		dst = append(dst, fmt.Sprint(r.APIKey)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.APIKey))...)
 	}
 	if r.BalanceCredits != 0 {
 		if len(dst) > 0 {
@@ -209,18 +197,16 @@ func (r *AccountData) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "usage="...)
-		dst = append(dst, fmt.Sprint(r.Usage)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Usage))...)
 	}
 
 	return dst
 }
 
-// AppendQuery serializes AccountData into query string bytes on dst buffer (0 B/op).
 func (r *AccountData) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes AccountData into url.Values without reflection.
 func (r *AccountData) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -239,7 +225,6 @@ func (r *AccountData) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes APIKeySummary into url-encoded form bytes on dst buffer (0 B/op).
 func (r *APIKeySummary) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -270,12 +255,10 @@ func (r *APIKeySummary) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes APIKeySummary into query string bytes on dst buffer (0 B/op).
 func (r *APIKeySummary) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes APIKeySummary into url.Values without reflection.
 func (r *APIKeySummary) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -291,7 +274,6 @@ func (r *APIKeySummary) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes AvailabilityHour into url-encoded form bytes on dst buffer (0 B/op).
 func (r *AvailabilityHour) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -315,12 +297,10 @@ func (r *AvailabilityHour) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes AvailabilityHour into query string bytes on dst buffer (0 B/op).
 func (r *AvailabilityHour) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes AvailabilityHour into url.Values without reflection.
 func (r *AvailabilityHour) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -333,7 +313,6 @@ func (r *AvailabilityHour) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes BilledResponseMeta into url-encoded form bytes on dst buffer (0 B/op).
 func (r *BilledResponseMeta) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -372,7 +351,7 @@ func (r *BilledResponseMeta) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "rate_limit="...)
-		dst = append(dst, fmt.Sprint(r.RateLimit)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.RateLimit))...)
 	}
 	if r.RequestID != "" {
 		if len(dst) > 0 {
@@ -385,12 +364,10 @@ func (r *BilledResponseMeta) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes BilledResponseMeta into query string bytes on dst buffer (0 B/op).
 func (r *BilledResponseMeta) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes BilledResponseMeta into url.Values without reflection.
 func (r *BilledResponseMeta) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -415,7 +392,6 @@ func (r *BilledResponseMeta) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes ErrorDetail into url-encoded form bytes on dst buffer (0 B/op).
 func (r *ErrorDetail) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -433,7 +409,7 @@ func (r *ErrorDetail) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "detail="...)
-		dst = append(dst, fmt.Sprint(r.Detail)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Detail))...)
 	}
 	if r.Message != "" {
 		if len(dst) > 0 {
@@ -453,12 +429,10 @@ func (r *ErrorDetail) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes ErrorDetail into query string bytes on dst buffer (0 B/op).
 func (r *ErrorDetail) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes ErrorDetail into url.Values without reflection.
 func (r *ErrorDetail) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -477,7 +451,6 @@ func (r *ErrorDetail) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes ErrorResponse into url-encoded form bytes on dst buffer (0 B/op).
 func (r *ErrorResponse) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -488,18 +461,16 @@ func (r *ErrorResponse) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "error="...)
-		dst = append(dst, fmt.Sprint(r.Error)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Error))...)
 	}
 
 	return dst
 }
 
-// AppendQuery serializes ErrorResponse into query string bytes on dst buffer (0 B/op).
 func (r *ErrorResponse) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes ErrorResponse into url.Values without reflection.
 func (r *ErrorResponse) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -509,7 +480,6 @@ func (r *ErrorResponse) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes HttpvalidationError into url-encoded form bytes on dst buffer (0 B/op).
 func (r *HttpvalidationError) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -518,19 +488,16 @@ func (r *HttpvalidationError) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes HttpvalidationError into query string bytes on dst buffer (0 B/op).
 func (r *HttpvalidationError) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes HttpvalidationError into url.Values without reflection.
 func (r *HttpvalidationError) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
 	}
 }
 
-// AppendFormData serializes InventoryPage into url-encoded form bytes on dst buffer (0 B/op).
 func (r *InventoryPage) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -541,7 +508,7 @@ func (r *InventoryPage) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "pagination="...)
-		dst = append(dst, fmt.Sprint(r.Pagination)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Pagination))...)
 	}
 	if r.TotalCount != 0 {
 		if len(dst) > 0 {
@@ -554,12 +521,10 @@ func (r *InventoryPage) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes InventoryPage into query string bytes on dst buffer (0 B/op).
 func (r *InventoryPage) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes InventoryPage into url.Values without reflection.
 func (r *InventoryPage) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -572,7 +537,6 @@ func (r *InventoryPage) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes InventoryPagination into url-encoded form bytes on dst buffer (0 B/op).
 func (r *InventoryPagination) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -589,18 +553,16 @@ func (r *InventoryPagination) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "next_cursor="...)
-		dst = append(dst, fmt.Sprint(r.NextCursor)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.NextCursor))...)
 	}
 
 	return dst
 }
 
-// AppendQuery serializes InventoryPagination into query string bytes on dst buffer (0 B/op).
 func (r *InventoryPagination) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes InventoryPagination into url.Values without reflection.
 func (r *InventoryPagination) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -613,7 +575,6 @@ func (r *InventoryPagination) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes InventoryResponse into url-encoded form bytes on dst buffer (0 B/op).
 func (r *InventoryResponse) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -624,14 +585,14 @@ func (r *InventoryResponse) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "last_assetid="...)
-		dst = append(dst, fmt.Sprint(r.LastAssetid)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.LastAssetid))...)
 	}
 	if r.MoreItems != nil {
 		if len(dst) > 0 {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "more_items="...)
-		dst = append(dst, fmt.Sprint(r.MoreItems)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.MoreItems))...)
 	}
 	if r.Success != 0 {
 		if len(dst) > 0 {
@@ -651,12 +612,10 @@ func (r *InventoryResponse) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes InventoryResponse into query string bytes on dst buffer (0 B/op).
 func (r *InventoryResponse) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes InventoryResponse into url.Values without reflection.
 func (r *InventoryResponse) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -675,7 +634,6 @@ func (r *InventoryResponse) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes MarketPriceData into url-encoded form bytes on dst buffer (0 B/op).
 func (r *MarketPriceData) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -686,32 +644,30 @@ func (r *MarketPriceData) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "lowest_price="...)
-		dst = append(dst, fmt.Sprint(r.LowestPrice)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.LowestPrice))...)
 	}
 	if r.MedianPrice != nil {
 		if len(dst) > 0 {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "median_price="...)
-		dst = append(dst, fmt.Sprint(r.MedianPrice)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.MedianPrice))...)
 	}
 	if r.Volume != nil {
 		if len(dst) > 0 {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "volume="...)
-		dst = append(dst, fmt.Sprint(r.Volume)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Volume))...)
 	}
 
 	return dst
 }
 
-// AppendQuery serializes MarketPriceData into query string bytes on dst buffer (0 B/op).
 func (r *MarketPriceData) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes MarketPriceData into url.Values without reflection.
 func (r *MarketPriceData) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -727,7 +683,6 @@ func (r *MarketPriceData) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes PublicStatus into url-encoded form bytes on dst buffer (0 B/op).
 func (r *PublicStatus) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -751,12 +706,10 @@ func (r *PublicStatus) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes PublicStatus into query string bytes on dst buffer (0 B/op).
 func (r *PublicStatus) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes PublicStatus into url.Values without reflection.
 func (r *PublicStatus) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -769,7 +722,6 @@ func (r *PublicStatus) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes RateLimitMeta into url-encoded form bytes on dst buffer (0 B/op).
 func (r *RateLimitMeta) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -800,12 +752,10 @@ func (r *RateLimitMeta) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes RateLimitMeta into query string bytes on dst buffer (0 B/op).
 func (r *RateLimitMeta) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes RateLimitMeta into url.Values without reflection.
 func (r *RateLimitMeta) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -821,7 +771,6 @@ func (r *RateLimitMeta) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes ResponseMeta into url-encoded form bytes on dst buffer (0 B/op).
 func (r *ResponseMeta) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -838,12 +787,10 @@ func (r *ResponseMeta) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes ResponseMeta into query string bytes on dst buffer (0 B/op).
 func (r *ResponseMeta) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes ResponseMeta into url.Values without reflection.
 func (r *ResponseMeta) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -853,7 +800,6 @@ func (r *ResponseMeta) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes ServiceStatus into url-encoded form bytes on dst buffer (0 B/op).
 func (r *ServiceStatus) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -877,12 +823,10 @@ func (r *ServiceStatus) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes ServiceStatus into query string bytes on dst buffer (0 B/op).
 func (r *ServiceStatus) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes ServiceStatus into url.Values without reflection.
 func (r *ServiceStatus) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -895,7 +839,6 @@ func (r *ServiceStatus) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes SteamAsset into url-encoded form bytes on dst buffer (0 B/op).
 func (r *SteamAsset) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -947,12 +890,10 @@ func (r *SteamAsset) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes SteamAsset into query string bytes on dst buffer (0 B/op).
 func (r *SteamAsset) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes SteamAsset into url.Values without reflection.
 func (r *SteamAsset) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -977,7 +918,6 @@ func (r *SteamAsset) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes SteamDescription into url-encoded form bytes on dst buffer (0 B/op).
 func (r *SteamDescription) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1002,7 +942,7 @@ func (r *SteamDescription) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "commodity="...)
-		dst = append(dst, fmt.Sprint(r.Commodity)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Commodity))...)
 	}
 	if r.Instanceid != "" {
 		if len(dst) > 0 {
@@ -1016,53 +956,51 @@ func (r *SteamDescription) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "market_hash_name="...)
-		dst = append(dst, fmt.Sprint(r.MarketHashName)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.MarketHashName))...)
 	}
 	if r.MarketName != nil {
 		if len(dst) > 0 {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "market_name="...)
-		dst = append(dst, fmt.Sprint(r.MarketName)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.MarketName))...)
 	}
 	if r.Marketable != nil {
 		if len(dst) > 0 {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "marketable="...)
-		dst = append(dst, fmt.Sprint(r.Marketable)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Marketable))...)
 	}
 	if r.Name != nil {
 		if len(dst) > 0 {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "name="...)
-		dst = append(dst, fmt.Sprint(r.Name)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Name))...)
 	}
 	if r.Tradable != nil {
 		if len(dst) > 0 {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "tradable="...)
-		dst = append(dst, fmt.Sprint(r.Tradable)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Tradable))...)
 	}
 	if r.Type != nil {
 		if len(dst) > 0 {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "type="...)
-		dst = append(dst, fmt.Sprint(r.Type)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Type))...)
 	}
 
 	return dst
 }
 
-// AppendQuery serializes SteamDescription into query string bytes on dst buffer (0 B/op).
 func (r *SteamDescription) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes SteamDescription into url.Values without reflection.
 func (r *SteamDescription) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1099,7 +1037,6 @@ func (r *SteamDescription) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes SteamTag into url-encoded form bytes on dst buffer (0 B/op).
 func (r *SteamTag) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1124,25 +1061,23 @@ func (r *SteamTag) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "localized_category_name="...)
-		dst = append(dst, fmt.Sprint(r.LocalizedCategoryName)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.LocalizedCategoryName))...)
 	}
 	if r.LocalizedTagName != nil {
 		if len(dst) > 0 {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "localized_tag_name="...)
-		dst = append(dst, fmt.Sprint(r.LocalizedTagName)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.LocalizedTagName))...)
 	}
 
 	return dst
 }
 
-// AppendQuery serializes SteamTag into query string bytes on dst buffer (0 B/op).
 func (r *SteamTag) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes SteamTag into url.Values without reflection.
 func (r *SteamTag) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1161,7 +1096,6 @@ func (r *SteamTag) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes UsageSummary into url-encoded form bytes on dst buffer (0 B/op).
 func (r *UsageSummary) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1206,12 +1140,10 @@ func (r *UsageSummary) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes UsageSummary into query string bytes on dst buffer (0 B/op).
 func (r *UsageSummary) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes UsageSummary into url.Values without reflection.
 func (r *UsageSummary) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1233,7 +1165,6 @@ func (r *UsageSummary) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes V2accountResponse into url-encoded form bytes on dst buffer (0 B/op).
 func (r *V2accountResponse) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1244,14 +1175,14 @@ func (r *V2accountResponse) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "data="...)
-		dst = append(dst, fmt.Sprint(r.Data)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Data))...)
 	}
 	if r.Meta != nil {
 		if len(dst) > 0 {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "meta="...)
-		dst = append(dst, fmt.Sprint(r.Meta)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Meta))...)
 	}
 	if r.Success {
 		if len(dst) > 0 {
@@ -1263,12 +1194,10 @@ func (r *V2accountResponse) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes V2accountResponse into query string bytes on dst buffer (0 B/op).
 func (r *V2accountResponse) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes V2accountResponse into url.Values without reflection.
 func (r *V2accountResponse) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1284,7 +1213,6 @@ func (r *V2accountResponse) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes V2errorDetail into url-encoded form bytes on dst buffer (0 B/op).
 func (r *V2errorDetail) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1302,7 +1230,7 @@ func (r *V2errorDetail) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "detail="...)
-		dst = append(dst, fmt.Sprint(r.Detail)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Detail))...)
 	}
 	if strVal := fmt.Sprint(r.Message); strVal != "" && strVal != "0" {
 		if len(dst) > 0 {
@@ -1322,12 +1250,10 @@ func (r *V2errorDetail) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes V2errorDetail into query string bytes on dst buffer (0 B/op).
 func (r *V2errorDetail) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes V2errorDetail into url.Values without reflection.
 func (r *V2errorDetail) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1346,7 +1272,6 @@ func (r *V2errorDetail) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes V2errorResponse into url-encoded form bytes on dst buffer (0 B/op).
 func (r *V2errorResponse) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1357,7 +1282,7 @@ func (r *V2errorResponse) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "error="...)
-		dst = append(dst, fmt.Sprint(r.Error)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Error))...)
 	}
 	if r.Success {
 		if len(dst) > 0 {
@@ -1369,12 +1294,10 @@ func (r *V2errorResponse) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes V2errorResponse into query string bytes on dst buffer (0 B/op).
 func (r *V2errorResponse) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes V2errorResponse into url.Values without reflection.
 func (r *V2errorResponse) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1387,7 +1310,6 @@ func (r *V2errorResponse) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes V2inventoryErrorDetail into url-encoded form bytes on dst buffer (0 B/op).
 func (r *V2inventoryErrorDetail) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1398,21 +1320,21 @@ func (r *V2inventoryErrorDetail) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "code="...)
-		dst = append(dst, fmt.Sprint(r.Code)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Code))...)
 	}
 	if r.Detail != nil {
 		if len(dst) > 0 {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "detail="...)
-		dst = append(dst, fmt.Sprint(r.Detail)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Detail))...)
 	}
 	if r.Message != nil {
 		if len(dst) > 0 {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "message="...)
-		dst = append(dst, fmt.Sprint(r.Message)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Message))...)
 	}
 	if r.RequestID != "" {
 		if len(dst) > 0 {
@@ -1425,12 +1347,10 @@ func (r *V2inventoryErrorDetail) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes V2inventoryErrorDetail into query string bytes on dst buffer (0 B/op).
 func (r *V2inventoryErrorDetail) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes V2inventoryErrorDetail into url.Values without reflection.
 func (r *V2inventoryErrorDetail) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1449,7 +1369,6 @@ func (r *V2inventoryErrorDetail) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes V2inventoryErrorResponse into url-encoded form bytes on dst buffer (0 B/op).
 func (r *V2inventoryErrorResponse) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1460,7 +1379,7 @@ func (r *V2inventoryErrorResponse) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "error="...)
-		dst = append(dst, fmt.Sprint(r.Error)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Error))...)
 	}
 	if r.Success {
 		if len(dst) > 0 {
@@ -1472,12 +1391,10 @@ func (r *V2inventoryErrorResponse) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes V2inventoryErrorResponse into query string bytes on dst buffer (0 B/op).
 func (r *V2inventoryErrorResponse) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes V2inventoryErrorResponse into url.Values without reflection.
 func (r *V2inventoryErrorResponse) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1490,7 +1407,6 @@ func (r *V2inventoryErrorResponse) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes V2inventoryResponse into url-encoded form bytes on dst buffer (0 B/op).
 func (r *V2inventoryResponse) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1501,14 +1417,14 @@ func (r *V2inventoryResponse) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "data="...)
-		dst = append(dst, fmt.Sprint(r.Data)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Data))...)
 	}
 	if r.Meta != nil {
 		if len(dst) > 0 {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "meta="...)
-		dst = append(dst, fmt.Sprint(r.Meta)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Meta))...)
 	}
 	if r.Success {
 		if len(dst) > 0 {
@@ -1520,12 +1436,10 @@ func (r *V2inventoryResponse) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes V2inventoryResponse into query string bytes on dst buffer (0 B/op).
 func (r *V2inventoryResponse) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes V2inventoryResponse into url.Values without reflection.
 func (r *V2inventoryResponse) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1541,7 +1455,6 @@ func (r *V2inventoryResponse) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes V2marketPriceResponse into url-encoded form bytes on dst buffer (0 B/op).
 func (r *V2marketPriceResponse) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1552,14 +1465,14 @@ func (r *V2marketPriceResponse) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "data="...)
-		dst = append(dst, fmt.Sprint(r.Data)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Data))...)
 	}
 	if r.Meta != nil {
 		if len(dst) > 0 {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "meta="...)
-		dst = append(dst, fmt.Sprint(r.Meta)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Meta))...)
 	}
 	if r.Success {
 		if len(dst) > 0 {
@@ -1571,12 +1484,10 @@ func (r *V2marketPriceResponse) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes V2marketPriceResponse into query string bytes on dst buffer (0 B/op).
 func (r *V2marketPriceResponse) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes V2marketPriceResponse into url.Values without reflection.
 func (r *V2marketPriceResponse) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1592,7 +1503,6 @@ func (r *V2marketPriceResponse) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes ValidationError into url-encoded form bytes on dst buffer (0 B/op).
 func (r *ValidationError) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1603,7 +1513,7 @@ func (r *ValidationError) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "input="...)
-		dst = append(dst, fmt.Sprint(r.Input)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Input))...)
 	}
 	if r.Msg != "" {
 		if len(dst) > 0 {
@@ -1623,12 +1533,10 @@ func (r *ValidationError) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes ValidationError into query string bytes on dst buffer (0 B/op).
 func (r *ValidationError) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes ValidationError into url.Values without reflection.
 func (r *ValidationError) EncodeValues(vals url.Values) {
 	if r == nil {
 		return

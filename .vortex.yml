@@ -3,19 +3,22 @@
 
 version: 1
 defaults:
-    casing: snake_case
-    engine: fast
+  casing: snake_case
+  engine: fast
 contracts:
-    - name: Bptf
-      file: pkg/services/bptf/api.go
-      upstream:
-        source: https://api.backpack.tf/api/swagger.json
-        format: openapi
-    - name: Crit
-      file: pkg/services/crit/api.go
-    - name: Express
-      file: pkg/services/express/api.go
-    - name: Mannco
-      file: pkg/services/mannco/api.go
-    - name: Pricedb
-      file: pkg/services/pricedb/api.go
+  - name: Bptf
+    file: pkg/services/bptf/api.go
+    upstream:
+      source: https://api.backpack.tf/api/swagger.json
+      format: openapi
+  - name: Crit
+    file: pkg/services/crit/api.go
+  - name: Express
+    file: pkg/services/express/api.go
+    upstream:
+      source: https://api.express-load.com/openapi.json
+      format: openapi
+  - name: Mannco
+    file: pkg/services/mannco/api.go
+  - name: Pricedb
+    file: pkg/services/pricedb/api.go

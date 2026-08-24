@@ -4,15 +4,18 @@ import (
 	"context"
 
 	"github.com/lemon4ksan/aoni"
+	"github.com/lemon4ksan/aoni/option"
 )
 
 // BaseURL is the default API base endpoint.
 const BaseURL = "https://backpack.tf/api"
 
+// API defines the declarative REST API endpoints for the Backpack.tf platform.
+//
 // @aoni:service casing=snake_case
 // @base_url "https://backpack.tf/api"
 // @version "v1.0.0"
-// @source "swagger.json"
+// @source "https://api.backpack.tf/api/swagger.json"
 type API interface {
 	// Get — Get client info
 	//
@@ -304,4 +307,23 @@ type API interface {
 	//
 	// @post "v2/classifieds/listings/{listingId}/promote"
 	PostV2ClassifiedsListingsByListingIDPromote(ctx context.Context, listingID string, mods ...aoni.RequestModifier) (*Listing, error)
+}
+
+// Client is an alias for API for backward compatibility.
+type Client = API
+
+// NewClient creates a new Backpack.tf API client configured with optional apiKey (for Web API endpoints)
+// and userToken (for Classifieds listings management).
+func NewClient(doer any, apiKey, userToken string, opts ...aoni.ClientOption) API {
+	var defaultOpts []aoni.ClientOption
+	defaultOpts = append(defaultOpts, option.WithBaseURL(BaseURL))
+	if userToken != "" {
+		defaultOpts = append(defaultOpts, option.WithHeader("X-Auth-Token", userToken))
+	}
+	if apiKey != "" {
+		defaultOpts = append(defaultOpts, option.WithHeader("token", apiKey))
+	}
+	defaultOpts = append(defaultOpts, opts...)
+
+	return New(doer, defaultOpts...)
 }

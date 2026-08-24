@@ -14,6 +14,7 @@ import (
 //
 // @aoni:service casing=snake_case
 // @base_url "https://crit.tf/api/v2/"
+// @source "https://api.express-load.com/openapi.json"
 // @version "v2.0.0"
 type API interface {
 	// FetchMyListings retrieves all active listings for the authenticated user.
