@@ -332,6 +332,39 @@ func isExcludedPattern(name string) bool {
 		containsFoldASCII(name, "asiafortress")
 }
 
+func hasUpperASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			return true
+		}
+	}
+
+	return false
+}
+
+func toLowerASCIIBuf(s string, buf []byte) string {
+	if !hasUpperASCII(s) {
+		return s
+	}
+
+	if len(s) <= len(buf) {
+		b := buf[:len(s)]
+		for i := 0; i < len(s); i++ {
+			c := s[i]
+			if c >= 'A' && c <= 'Z' {
+				b[i] = c + ('a' - 'A')
+			} else {
+				b[i] = c
+			}
+		}
+
+		return bytesconv.B2S(b)
+	}
+
+	return strings.ToLower(s)
+}
+
 func (s *Schema) indexItem(item *Item) {
 	if item == nil {
 		return
@@ -340,6 +373,9 @@ func (s *Schema) indexItem(item *Item) {
 	lowName := strings.ToLower(generic.Coalesce(item.ItemName, item.Name))
 
 	s.itemsByDef[item.Defindex] = item
+	if item.Defindex >= 0 && item.Defindex < len(s.itemsByDefDirect) {
+		s.itemsByDefDirect[item.Defindex] = item
+	}
 
 	if item.ItemClass != "" && strings.HasPrefix(item.Name, "Upgradeable ") {
 		if _, ok := s.upgradeableByClass[item.ItemClass]; !ok {
@@ -379,12 +415,13 @@ func (s *Schema) indexItem(item *Item) {
 	}
 }
 
-func (s *Schema) ItemByNameWithThe(loweredName string) *Item {
-	if s == nil || len(loweredName) == 0 {
+func (s *Schema) ItemByNameWithThe(name string) *Item {
+	if s == nil || len(name) == 0 {
 		return nil
 	}
 
-	loweredName = strings.ToLower(loweredName)
+	var stackBuf [128]byte
+	loweredName := toLowerASCIIBuf(name, stackBuf[:])
 
 	if s.itemsByNameStripped != nil {
 		if item, ok := s.itemsByNameStripped[loweredName]; ok {
@@ -398,30 +435,39 @@ func (s *Schema) ItemByNameWithThe(loweredName string) *Item {
 		}
 	}
 
-	stripped := strings.TrimPrefix(loweredName, "the ")
+	stripped := loweredName
+	if strings.HasPrefix(loweredName, "the ") {
+		stripped = loweredName[4:]
 
-	if s.itemsByNameStripped != nil {
-		if item, ok := s.itemsByNameStripped[stripped]; ok {
-			return item
+		if s.itemsByNameStripped != nil {
+			if item, ok := s.itemsByNameStripped[stripped]; ok {
+				return item
+			}
 		}
-	}
 
-	if s.itemsByName != nil {
-		if item, ok := s.itemsByName[stripped]; ok {
-			return item
+		if s.itemsByName != nil {
+			if item, ok := s.itemsByName[stripped]; ok {
+				return item
+			}
 		}
-	}
+	} else {
+		var theBuf [128]byte
+		if len(stripped)+4 <= len(theBuf) {
+			copy(theBuf[:4], "the ")
+			copy(theBuf[4:], stripped)
+			withThe := bytesconv.B2S(theBuf[:4+len(stripped)])
 
-	withThe := "the " + stripped
-	if s.itemsByName != nil {
-		if item, ok := s.itemsByName[withThe]; ok {
-			return item
-		}
-	}
+			if s.itemsByName != nil {
+				if item, ok := s.itemsByName[withThe]; ok {
+					return item
+				}
+			}
 
-	if s.itemsByNameStripped != nil {
-		if item, ok := s.itemsByNameStripped[withThe]; ok {
-			return item
+			if s.itemsByNameStripped != nil {
+				if item, ok := s.itemsByNameStripped[withThe]; ok {
+					return item
+				}
+			}
 		}
 	}
 
@@ -531,11 +577,13 @@ type Schema struct {
 	Time    time.Time
 
 	itemsByDef          map[int]*Item
+	itemsByDefDirect    []*Item
 	itemsByName         map[string]*Item
 	itemList            []*Item
 	killEaterTypesByID  map[int]string
 	attrsByDef          map[int]*AttributeSchema
 	qualByID            map[int]string
+	qualByIDDirect      [16]string
 	qualByName          map[string]int
 	effByID             map[int]string
 	effByName           map[string]int
@@ -548,6 +596,10 @@ type Schema struct {
 	spellsByName        map[string]sku.Spell
 	spellsByID          map[string]string
 	strangePartsCache   map[string]string
+
+	qualList     []namedID
+	effList      []namedID
+	paintKitList []namedID
 
 	craftableWeapons             []*Item
 	craftableWeaponsForTrading   []string
@@ -564,6 +616,11 @@ type Schema struct {
 	promoByItemName    map[string]int
 	nonPromoByItemName map[string]int
 	itemsTrie          *trie.RadixTree[*Item]
+}
+
+type namedID struct {
+	Name string
+	ID   int
 }
 
 func New(raw *Raw) *Schema {
@@ -584,6 +641,17 @@ func (s *Schema) buildIndices() {
 	for _, p := range s.Raw.Schema.KillEaterScoreTypes {
 		s.killEaterTypesByID[p.Type] = stringpool.Intern(p.TypeName)
 	}
+
+	maxDef := 0
+	for _, item := range s.Raw.Schema.Items {
+		if item.Defindex > maxDef {
+			maxDef = item.Defindex
+		}
+	}
+	if maxDef < 35000 {
+		maxDef = 35000
+	}
+	s.itemsByDefDirect = make([]*Item, maxDef+1)
 
 	s.itemsByDef = make(map[int]*Item, numItems)
 	s.itemsByName = make(map[string]*Item, numItems)
@@ -617,6 +685,30 @@ func (s *Schema) buildIndices() {
 	s.indexEffects()
 	s.indexPaints()
 
+	s.qualList = make([]namedID, 0, len(s.qualByName))
+	for name, id := range s.qualByName {
+		s.qualList = append(s.qualList, namedID{Name: name, ID: id})
+	}
+	slices.SortFunc(s.qualList, func(a, b namedID) int {
+		return len(b.Name) - len(a.Name)
+	})
+
+	s.effList = make([]namedID, 0, len(s.effByName))
+	for name, id := range s.effByName {
+		s.effList = append(s.effList, namedID{Name: name, ID: id})
+	}
+	slices.SortFunc(s.effList, func(a, b namedID) int {
+		return len(b.Name) - len(a.Name)
+	})
+
+	s.paintKitList = make([]namedID, 0, len(s.paintKitByName))
+	for name, id := range s.paintKitByName {
+		s.paintKitList = append(s.paintKitList, namedID{Name: name, ID: id})
+	}
+	slices.SortFunc(s.paintKitList, func(a, b namedID) int {
+		return len(b.Name) - len(a.Name)
+	})
+
 	s.crateSeriesList = s.buildCrateSeriesList()
 	s.buildSpellIndices()
 	s.indexWeapons()
@@ -634,6 +726,9 @@ func (s *Schema) indexQualities() {
 		if name, ok := s.Raw.Schema.QualityNames[qType]; ok {
 			internedName := stringpool.Intern(name)
 			s.qualByID[id] = internedName
+			if uint(id) < 16 {
+				s.qualByIDDirect[id] = internedName
+			}
 			s.qualByName[strings.ToLower(internedName)] = id
 		}
 	}
@@ -649,6 +744,9 @@ func (s *Schema) indexQualities() {
 		for id, name := range fallbackQualities {
 			internedName := stringpool.Intern(name)
 			s.qualByID[id] = internedName
+			if uint(id) < 16 {
+				s.qualByIDDirect[id] = internedName
+			}
 			s.qualByName[strings.ToLower(internedName)] = id
 		}
 	}
@@ -920,16 +1018,73 @@ func (s *Schema) ItemCount() int {
 	return len(s.itemList)
 }
 
-func (s *Schema) ItemByDef(def int) *Item                     { return s.itemsByDef[def] }
-func (s *Schema) ItemByName(name string) *Item                { return s.itemsByName[strings.ToLower(name)] }
-func (s *Schema) AttributeByDef(def int) *AttributeSchema     { return s.attrsByDef[def] }
-func (s *Schema) QualityByID(id int) string                   { return s.qualByID[id] }
-func (s *Schema) QualityIDByName(name string) int             { return s.qualByName[strings.ToLower(name)] }
-func (s *Schema) EffectByID(id int) string                    { return s.effByID[id] }
-func (s *Schema) EffectIDByName(name string) int              { return s.effByName[strings.ToLower(name)] }
-func (s *Schema) SkinByID(id int) string                      { return s.paintKitByID[id] }
-func (s *Schema) SkinIDByName(name string) int                { return s.paintKitByName[strings.ToLower(name)] }
-func (s *Schema) PaintDecimalByName(name string) int          { return s.paintByName[strings.ToLower(name)] }
+func (s *Schema) ItemByDef(def int) *Item {
+	if s == nil {
+		return nil
+	}
+	if uint(def) < uint(len(s.itemsByDefDirect)) {
+		if it := s.itemsByDefDirect[def]; it != nil {
+			return it
+		}
+	}
+	return s.itemsByDef[def]
+}
+
+func (s *Schema) ItemByName(name string) *Item {
+	if s == nil || len(name) == 0 {
+		return nil
+	}
+	var stackBuf [128]byte
+	return s.itemsByName[toLowerASCIIBuf(name, stackBuf[:])]
+}
+
+func (s *Schema) AttributeByDef(def int) *AttributeSchema { return s.attrsByDef[def] }
+
+func (s *Schema) QualityByID(id int) string {
+	if s == nil {
+		return ""
+	}
+	if uint(id) < 16 && s.qualByIDDirect[id] != "" {
+		return s.qualByIDDirect[id]
+	}
+	return s.qualByID[id]
+}
+
+func (s *Schema) QualityIDByName(name string) int {
+	if s == nil || len(name) == 0 {
+		return 0
+	}
+	var stackBuf [128]byte
+	return s.qualByName[toLowerASCIIBuf(name, stackBuf[:])]
+}
+
+func (s *Schema) EffectByID(id int) string { return s.effByID[id] }
+
+func (s *Schema) EffectIDByName(name string) int {
+	if s == nil || len(name) == 0 {
+		return 0
+	}
+	var stackBuf [128]byte
+	return s.effByName[toLowerASCIIBuf(name, stackBuf[:])]
+}
+
+func (s *Schema) SkinByID(id int) string { return s.paintKitByID[id] }
+
+func (s *Schema) SkinIDByName(name string) int {
+	if s == nil || len(name) == 0 {
+		return 0
+	}
+	var stackBuf [128]byte
+	return s.paintKitByName[toLowerASCIIBuf(name, stackBuf[:])]
+}
+
+func (s *Schema) PaintDecimalByName(name string) int {
+	if s == nil || len(name) == 0 {
+		return 0
+	}
+	var stackBuf [128]byte
+	return s.paintByName[toLowerASCIIBuf(name, stackBuf[:])]
+}
 func (s *Schema) Qualities() map[string]int                   { return s.qualByName }
 func (s *Schema) ParticleEffects() map[string]int             { return s.effByName }
 func (s *Schema) PaintKitsByName() map[string]int             { return s.paintKitByName }
@@ -943,19 +1098,16 @@ func (s *Schema) UncraftableWeaponsForTrading() []string      { return s.uncraft
 func (s *Schema) CrateSeriesList() map[int]int                { return s.crateSeriesList }
 
 func (s *Schema) QualityName(qualityID int) string {
-	if s == nil {
-		return ""
-	}
-
-	return s.qualByID[qualityID]
+	return s.QualityByID(qualityID)
 }
 
 func (s *Schema) QualityID(name string) int {
-	if s == nil {
+	if s == nil || len(name) == 0 {
 		return -1
 	}
 
-	if id, ok := s.qualByName[strings.ToLower(name)]; ok {
+	var stackBuf [128]byte
+	if id, ok := s.qualByName[toLowerASCIIBuf(name, stackBuf[:])]; ok {
 		return id
 	}
 
@@ -1114,7 +1266,7 @@ func (s *Schema) NormalizeItem(item *sku.Item) {
 		return
 	}
 
-	if schemaItem.ItemClass != "" && strings.Contains(schemaItem.Name, strings.ToUpper(schemaItem.ItemClass)) {
+	if schemaItem.ItemClass != "" && containsFoldASCII(schemaItem.Name, schemaItem.ItemClass) {
 		if s.upgradeableByClass != nil {
 			if upDef, ok := s.upgradeableByClass[schemaItem.ItemClass]; ok {
 				item.Defindex = upDef
@@ -1700,6 +1852,27 @@ func (s *Schema) ItemFromName(name string) *sku.Item {
 	}
 
 	name = s.parseQualityFromName(name, item)
+
+	if item.Effect == 0 && item.Wear == 0 && item.Paintkit == 0 && !kitFabricatorDetected &&
+		!strings.Contains(name, "chemistry set") && !strings.Contains(name, "strangifier") &&
+		!strings.Contains(name, "kit") && !strings.Contains(name, "crate") &&
+		!strings.Contains(name, "(paint: ") && !strings.Contains(name, "war paint") {
+		if schemaItem := s.ItemByNameWithThe(name); schemaItem != nil {
+			item.Defindex = schemaItem.Defindex
+			if item.Quality == 0 {
+				if hasStrangePrefix {
+					item.Quality = QualityStrange
+				} else {
+					item.Quality = schemaItem.ItemQuality
+				}
+			} else if hasStrangePrefix && item.Quality != QualityStrange && item.Quality2 == Quality2None {
+				item.Quality2 = QualityStrange
+			}
+
+			return item
+		}
+	}
+
 	name = s.parseEffectFromName(name, item)
 
 	if item.Wear != 0 {
@@ -1829,18 +2002,18 @@ func (s *Schema) parseQualityFromName(name string, item *sku.Item) string {
 		return name
 	}
 
-	for qName, qID := range s.qualByName {
+	checkQuality := func(qName string, qID int) (string, bool) {
 		if qID == QualityDecorated {
-			continue
+			return "", false
 		}
 
 		if qID == QualityCollectors && strings.Contains(qualitySearch, "collector's") &&
 			strings.Contains(qualitySearch, "chemistry set") {
-			continue
+			return "", false
 		}
 
 		if qID == QualityCommunity && strings.HasPrefix(qualitySearch, "community sparkle") {
-			continue
+			return "", false
 		}
 
 		if strings.HasPrefix(qualitySearch, qName) {
@@ -1854,7 +2027,23 @@ func (s *Schema) parseQualityFromName(name string, item *sku.Item) string {
 				item.Quality = qID
 			}
 
-			return strings.TrimSpace(strings.Replace(name, qName, "", 1))
+			return strings.TrimSpace(strings.Replace(name, qName, "", 1)), true
+		}
+
+		return "", false
+	}
+
+	if len(s.qualList) > 0 {
+		for _, q := range s.qualList {
+			if res, ok := checkQuality(q.Name, q.ID); ok {
+				return res
+			}
+		}
+	} else {
+		for qName, qID := range s.qualByName {
+			if res, ok := checkQuality(qName, qID); ok {
+				return res
+			}
 		}
 	}
 
@@ -1864,54 +2053,54 @@ func (s *Schema) parseQualityFromName(name string, item *sku.Item) string {
 func (s *Schema) parseEffectFromName(name string, item *sku.Item) string {
 	excludeAtomic := strings.Contains(name, "bonk! atomic punch") || strings.Contains(name, "atomic accolade")
 
-	for effName, effID := range s.effByName {
+	checkEffect := func(effName string, effID int) (string, bool) {
 		if effName == "" || !strings.Contains(name, effName) {
-			continue
+			return "", false
 		}
 
 		if effName == "stardust" && strings.Contains(name, "starduster") &&
 			!strings.Contains(strings.ReplaceAll(name, "stardust", ""), "starduster") {
-			continue
+			return "", false
 		}
 
 		if effName == "showstopper" && !strings.Contains(name, "taunt: ") && !strings.Contains(name, "shred alert") {
-			continue
+			return "", false
 		}
 
 		if effName == "smoking" && (name == "smoking jacket" || strings.Contains(name, "smoking skid lid")) &&
 			!strings.HasPrefix(name, "smoking smoking") {
-			continue
+			return "", false
 		}
 
 		if (effName == "haunted ghosts" || effName == "pumpkin patch" || effName == "stardust") && item.Wear != 0 {
-			continue
+			return "", false
 		}
 
 		if effName == "atomic" && (strings.Contains(name, "subatomic") || excludeAtomic) {
-			continue
+			return "", false
 		}
 
 		if effName == "spellbound" && (strings.Contains(name, "taunt:") || strings.Contains(name, "shred alert")) {
-			continue
+			return "", false
 		}
 
 		if effName == "accursed" && strings.Contains(name, "accursed apparition") ||
 			effName == "haunted" && strings.Contains(name, "haunted kraken") ||
 			effName == "frostbite" && strings.Contains(name, "frostbite bonnet") ||
 			effName == "sizzling" && strings.HasPrefix(name, "sizzling aroma") {
-			continue
+			return "", false
 		}
 
 		if effName == "hot" {
 			if item.Wear == 0 ||
 				(!strings.Contains(name, "hot ") && (strings.Contains(name, "shotgun") || strings.Contains(name, "shot ") || strings.Contains(name, "plaid potshotter"))) ||
 				!strings.HasPrefix(name, "hot ") {
-				continue
+				return "", false
 			}
 		}
 
 		if effName == "cool" && item.Wear == 0 {
-			continue
+			return "", false
 		}
 
 		name = strings.TrimSpace(strings.ReplaceAll(name, effName, ""))
@@ -1929,19 +2118,33 @@ func (s *Schema) parseEffectFromName(name string, item *sku.Item) string {
 			item.Quality = QualityUnusual
 		}
 
-		break
+		return name, true
+	}
+
+	if len(s.effList) > 0 {
+		for _, eff := range s.effList {
+			if res, ok := checkEffect(eff.Name, eff.ID); ok {
+				return res
+			}
+		}
+	} else {
+		for effName, effID := range s.effByName {
+			if res, ok := checkEffect(effName, effID); ok {
+				return res
+			}
+		}
 	}
 
 	return name
 }
 
 func (s *Schema) parsePaintkitAndSkins(name string, item *sku.Item, isExplicitElevatedStrange bool) (*sku.Item, bool) {
-	for pkName, pkID := range s.paintKitByName {
+	checkPaintKit := func(pkName string, pkID int) (string, bool) {
 		if strings.Contains(name, pkName) {
 			if strings.Contains(name, "mk.ii") && !strings.Contains(pkName, "mk.ii") ||
 				strings.Contains(name, "(green)") && !strings.Contains(pkName, "(green)") ||
 				strings.Contains(name, "chilly") && !strings.Contains(pkName, "chilly") {
-				continue
+				return "", false
 			}
 
 			name = strings.ReplaceAll(name, pkName, "")
@@ -1966,7 +2169,25 @@ func (s *Schema) parsePaintkitAndSkins(name string, item *sku.Item, isExplicitEl
 				item.Quality = QualityDecorated
 			}
 
-			break
+			return name, true
+		}
+
+		return "", false
+	}
+
+	if len(s.paintKitList) > 0 {
+		for _, pk := range s.paintKitList {
+			if newName, ok := checkPaintKit(pk.Name, pk.ID); ok {
+				name = newName
+				break
+			}
+		}
+	} else {
+		for pkName, pkID := range s.paintKitByName {
+			if newName, ok := checkPaintKit(pkName, pkID); ok {
+				name = newName
+				break
+			}
 		}
 	}
 

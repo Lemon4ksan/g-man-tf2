@@ -2212,3 +2212,74 @@ func BenchmarkSchema_ItemByNameWithThe(b *testing.B) {
 		_ = s.ItemByNameWithThe("The Scattergun")
 	}
 }
+
+func BenchmarkSchema_ItemByDef(b *testing.B) {
+	s := createMockSchema()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_ = s.ItemByDef(13)
+	}
+}
+
+func BenchmarkSchema_QualityByID(b *testing.B) {
+	s := createMockSchema()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_ = s.QualityByID(6)
+	}
+}
+
+func BenchmarkSchema_ItemName(b *testing.B) {
+	s := createMockSchema()
+	item := &sku.Item{
+		Defindex:   13,
+		Quality:    QualityUnusual,
+		Effect:     9,
+		Killstreak: 3,
+		Australium: true,
+		Tradable:   true,
+		Craftable:  true,
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_ = s.ItemName(item, true, false, false)
+	}
+}
+
+func BenchmarkSchema_ItemFromName(b *testing.B) {
+	s := createMockSchema()
+	name := "Professional Killstreak Australium Scattergun"
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_ = s.ItemFromName(name)
+	}
+}
+
+func BenchmarkSchema_SKUFromItem(b *testing.B) {
+	s := createMockSchema()
+	item := &sku.Item{
+		Defindex:   13,
+		Quality:    QualityUnique,
+		Tradable:   true,
+		Craftable:  true,
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_ = s.SKUFromItem(item)
+	}
+}
