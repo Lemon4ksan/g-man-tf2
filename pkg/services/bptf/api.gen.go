@@ -7,7 +7,6 @@ package bptf
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"strconv"
 
@@ -30,18 +29,7 @@ func newAPI(doer any, opts ...aoni.ClientOption) *apiClient {
 	var baseOpts []aoni.ClientOption
 	baseOpts = append(baseOpts, opts...)
 
-	var targetReq request.Requester
-	if d, ok := doer.(aoni.RequestDoer); ok {
-		targetReq = request.AsRequester(aoni.Configure(d, append([]aoni.ClientOption{option.WithBaseURL("https://backpack.tf/api")}, baseOpts...)...))
-	} else if req, ok := doer.(request.Requester); ok {
-		targetReq = request.AsRequester(aoni.Configure(req, append([]aoni.ClientOption{option.WithBaseURL("https://backpack.tf/api")}, baseOpts...)...))
-	} else if rd, ok := doer.(interface{ Rest() request.Requester }); ok && rd.Rest() != nil {
-		targetReq = rd.Rest()
-	} else if rd, ok := doer.(interface{ Requester() request.Requester }); ok && rd.Requester() != nil {
-		targetReq = rd.Requester()
-	} else {
-		targetReq = request.AsRequester(aoni.Configure(fast.NewClient(), append([]aoni.ClientOption{option.WithBaseURL("https://backpack.tf/api")}, baseOpts...)...))
-	}
+	targetReq := request.Configure(doer, append([]aoni.ClientOption{option.WithBaseURL("https://backpack.tf/api")}, baseOpts...)...)
 
 	return &apiClient{
 		r: targetReq,
@@ -79,7 +67,7 @@ func (c *apiClient) Get(ctx context.Context, mods ...aoni.RequestModifier) (map[
 }
 
 func (c *apiClient) GetIgetCurrenciesV1(ctx context.Context, raw int, mods ...aoni.RequestModifier) (map[string]any, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
@@ -99,24 +87,24 @@ func (c *apiClient) GetIgetCurrenciesV1(ctx context.Context, raw int, mods ...ao
 	return *resp, nil
 }
 
-func (c *apiClient) GetIgetPriceHistoryV1(ctx context.Context, appid string, item string, quality string, tradable string, craftable string, priceindex string, mods ...aoni.RequestModifier) (*V1priceHistoryResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+func (c *apiClient) GetIgetPriceHistoryV1(ctx context.Context, appid string, craftable string, item string, priceindex string, quality string, tradable string, mods ...aoni.RequestModifier) (*V1priceHistoryResponse, error) {
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [256]byte
 	qBytes := qBuf[:0]
 	qBytes = append(qBytes, "appid="...)
 	qBytes = append(qBytes, url.QueryEscape(appid)...)
+	qBytes = append(qBytes, "&craftable="...)
+	qBytes = append(qBytes, url.QueryEscape(craftable)...)
 	qBytes = append(qBytes, "&item="...)
 	qBytes = append(qBytes, url.QueryEscape(item)...)
+	qBytes = append(qBytes, "&priceindex="...)
+	qBytes = append(qBytes, url.QueryEscape(priceindex)...)
 	qBytes = append(qBytes, "&quality="...)
 	qBytes = append(qBytes, url.QueryEscape(quality)...)
 	qBytes = append(qBytes, "&tradable="...)
 	qBytes = append(qBytes, url.QueryEscape(tradable)...)
-	qBytes = append(qBytes, "&craftable="...)
-	qBytes = append(qBytes, url.QueryEscape(craftable)...)
-	qBytes = append(qBytes, "&priceindex="...)
-	qBytes = append(qBytes, url.QueryEscape(priceindex)...)
 	allMods = append(allMods, mod.WithQuery(string(qBytes)))
 
 	if len(mods) > 0 {
@@ -131,7 +119,7 @@ func (c *apiClient) GetIgetPriceHistoryV1(ctx context.Context, appid string, ite
 }
 
 func (c *apiClient) GetIgetPricesV4(ctx context.Context, raw int, since int, mods ...aoni.RequestModifier) (*V4pricesResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
@@ -154,7 +142,7 @@ func (c *apiClient) GetIgetPricesV4(ctx context.Context, raw int, since int, mod
 }
 
 func (c *apiClient) GetIgetSpecialItemsV1(ctx context.Context, appid int, mods ...aoni.RequestModifier) (*SpecialItemsResponse, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
@@ -175,7 +163,7 @@ func (c *apiClient) GetIgetSpecialItemsV1(ctx context.Context, appid int, mods .
 }
 
 func (c *apiClient) GetIgetUsersGetImpersonatedUsers(ctx context.Context, limit int, skip int, mods ...aoni.RequestModifier) (map[string]any, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
@@ -198,15 +186,25 @@ func (c *apiClient) GetIgetUsersGetImpersonatedUsers(ctx context.Context, limit 
 }
 
 func (c *apiClient) GetIgetUsersV3(ctx context.Context, steamid []string, steamids []string, mods ...aoni.RequestModifier) (any, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
 	qBytes := qBuf[:0]
 	qBytes = append(qBytes, "steamid="...)
-	qBytes = append(qBytes, url.QueryEscape(fmt.Sprint(steamid))...)
+	for idx, v := range steamid {
+		if idx > 0 {
+			qBytes = append(qBytes, ',')
+		}
+		qBytes = append(qBytes, url.QueryEscape(v)...)
+	}
 	qBytes = append(qBytes, "&steamids="...)
-	qBytes = append(qBytes, url.QueryEscape(fmt.Sprint(steamids))...)
+	for idx, v := range steamids {
+		if idx > 0 {
+			qBytes = append(qBytes, ',')
+		}
+		qBytes = append(qBytes, url.QueryEscape(v)...)
+	}
 	allMods = append(allMods, mod.WithQuery(string(qBytes)))
 
 	if len(mods) > 0 {
@@ -265,16 +263,16 @@ func (c *apiClient) PostAgentStop(ctx context.Context, mods ...aoni.RequestModif
 	return resp, nil
 }
 
-func (c *apiClient) GetClassifiedsAlerts(ctx context.Context, skip int, limit int, mods ...aoni.RequestModifier) (map[string]any, error) {
-	var stackMods [8]aoni.RequestModifier
+func (c *apiClient) GetClassifiedsAlerts(ctx context.Context, limit int, skip int, mods ...aoni.RequestModifier) (map[string]any, error) {
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
 	qBytes := qBuf[:0]
-	qBytes = append(qBytes, "skip="...)
-	qBytes = strconv.AppendInt(qBytes, int64(skip), 10)
-	qBytes = append(qBytes, "&limit="...)
+	qBytes = append(qBytes, "limit="...)
 	qBytes = strconv.AppendInt(qBytes, int64(limit), 10)
+	qBytes = append(qBytes, "&skip="...)
+	qBytes = strconv.AppendInt(qBytes, int64(skip), 10)
 	allMods = append(allMods, mod.WithQuery(string(qBytes)))
 
 	if len(mods) > 0 {
@@ -288,24 +286,24 @@ func (c *apiClient) GetClassifiedsAlerts(ctx context.Context, skip int, limit in
 	return *resp, nil
 }
 
-func (c *apiClient) PostClassifiedsAlerts(ctx context.Context, itemName string, intent string, currency string, min int, max int, blanket int, mods ...aoni.RequestModifier) (map[string]any, error) {
-	var stackMods [8]aoni.RequestModifier
+func (c *apiClient) PostClassifiedsAlerts(ctx context.Context, blanket int, currency string, intent string, itemName string, max int, min int, mods ...aoni.RequestModifier) (map[string]any, error) {
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [256]byte
 	qBytes := qBuf[:0]
-	qBytes = append(qBytes, "item_name="...)
-	qBytes = append(qBytes, url.QueryEscape(itemName)...)
-	qBytes = append(qBytes, "&intent="...)
-	qBytes = append(qBytes, url.QueryEscape(intent)...)
+	qBytes = append(qBytes, "blanket="...)
+	qBytes = strconv.AppendInt(qBytes, int64(blanket), 10)
 	qBytes = append(qBytes, "&currency="...)
 	qBytes = append(qBytes, url.QueryEscape(currency)...)
-	qBytes = append(qBytes, "&min="...)
-	qBytes = strconv.AppendInt(qBytes, int64(min), 10)
+	qBytes = append(qBytes, "&intent="...)
+	qBytes = append(qBytes, url.QueryEscape(intent)...)
+	qBytes = append(qBytes, "&item_name="...)
+	qBytes = append(qBytes, url.QueryEscape(itemName)...)
 	qBytes = append(qBytes, "&max="...)
 	qBytes = strconv.AppendInt(qBytes, int64(max), 10)
-	qBytes = append(qBytes, "&blanket="...)
-	qBytes = strconv.AppendInt(qBytes, int64(blanket), 10)
+	qBytes = append(qBytes, "&min="...)
+	qBytes = strconv.AppendInt(qBytes, int64(min), 10)
 	allMods = append(allMods, mod.WithQuery(string(qBytes)))
 
 	if len(mods) > 0 {
@@ -319,16 +317,16 @@ func (c *apiClient) PostClassifiedsAlerts(ctx context.Context, itemName string, 
 	return *resp, nil
 }
 
-func (c *apiClient) DeleteClassifiedsAlerts(ctx context.Context, itemName string, intent string, mods ...aoni.RequestModifier) (map[string]any, error) {
-	var stackMods [8]aoni.RequestModifier
+func (c *apiClient) DeleteClassifiedsAlerts(ctx context.Context, intent string, itemName string, mods ...aoni.RequestModifier) (map[string]any, error) {
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
 	qBytes := qBuf[:0]
-	qBytes = append(qBytes, "item_name="...)
-	qBytes = append(qBytes, url.QueryEscape(itemName)...)
-	qBytes = append(qBytes, "&intent="...)
+	qBytes = append(qBytes, "intent="...)
 	qBytes = append(qBytes, url.QueryEscape(intent)...)
+	qBytes = append(qBytes, "&item_name="...)
+	qBytes = append(qBytes, url.QueryEscape(itemName)...)
 	allMods = append(allMods, mod.WithQuery(string(qBytes)))
 
 	if len(mods) > 0 {
@@ -343,7 +341,7 @@ func (c *apiClient) DeleteClassifiedsAlerts(ctx context.Context, itemName string
 }
 
 func (c *apiClient) GetClassifiedsAlertsByID(ctx context.Context, iD string, mods ...aoni.RequestModifier) (map[string]any, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("id", iD))
@@ -359,7 +357,7 @@ func (c *apiClient) GetClassifiedsAlertsByID(ctx context.Context, iD string, mod
 }
 
 func (c *apiClient) DeleteClassifiedsAlertsByID(ctx context.Context, iD string, mods ...aoni.RequestModifier) (map[string]any, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("id", iD))
@@ -375,13 +373,18 @@ func (c *apiClient) DeleteClassifiedsAlertsByID(ctx context.Context, iD string, 
 }
 
 func (c *apiClient) DeleteClassifiedsDeleteV1(ctx context.Context, req []string, mods ...aoni.RequestModifier) (map[string]any, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
 	qBytes := qBuf[:0]
 	qBytes = append(qBytes, "req="...)
-	qBytes = append(qBytes, url.QueryEscape(fmt.Sprint(req))...)
+	for idx, v := range req {
+		if idx > 0 {
+			qBytes = append(qBytes, ',')
+		}
+		qBytes = append(qBytes, url.QueryEscape(v)...)
+	}
 	allMods = append(allMods, mod.WithQuery(string(qBytes)))
 
 	if len(mods) > 0 {
@@ -426,7 +429,7 @@ func (c *apiClient) GetClassifiedsListingsV1(ctx context.Context, mods ...aoni.R
 }
 
 func (c *apiClient) PostInventoryBySteamidRefresh(ctx context.Context, steamid string, mods ...aoni.RequestModifier) (*InventoryStatus, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("steamid", steamid))
@@ -442,7 +445,7 @@ func (c *apiClient) PostInventoryBySteamidRefresh(ctx context.Context, steamid s
 }
 
 func (c *apiClient) GetInventoryBySteamidStatus(ctx context.Context, steamid string, mods ...aoni.RequestModifier) (*InventoryStatus, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("steamid", steamid))
@@ -458,7 +461,7 @@ func (c *apiClient) GetInventoryBySteamidStatus(ctx context.Context, steamid str
 }
 
 func (c *apiClient) GetInventoryBySteamidValues(ctx context.Context, steamid string, mods ...aoni.RequestModifier) (*InventoryValues, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("steamid", steamid))
@@ -473,16 +476,16 @@ func (c *apiClient) GetInventoryBySteamidValues(ctx context.Context, steamid str
 	return resp, nil
 }
 
-func (c *apiClient) GetNotifications(ctx context.Context, skip int, limit int, unread int, mods ...aoni.RequestModifier) (map[string]any, error) {
-	var stackMods [8]aoni.RequestModifier
+func (c *apiClient) GetNotifications(ctx context.Context, limit int, skip int, unread int, mods ...aoni.RequestModifier) (map[string]any, error) {
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [128]byte
 	qBytes := qBuf[:0]
-	qBytes = append(qBytes, "skip="...)
-	qBytes = strconv.AppendInt(qBytes, int64(skip), 10)
-	qBytes = append(qBytes, "&limit="...)
+	qBytes = append(qBytes, "limit="...)
 	qBytes = strconv.AppendInt(qBytes, int64(limit), 10)
+	qBytes = append(qBytes, "&skip="...)
+	qBytes = strconv.AppendInt(qBytes, int64(skip), 10)
 	qBytes = append(qBytes, "&unread="...)
 	qBytes = strconv.AppendInt(qBytes, int64(unread), 10)
 	allMods = append(allMods, mod.WithQuery(string(qBytes)))
@@ -529,7 +532,7 @@ func (c *apiClient) PostNotificationsUnread(ctx context.Context, mods ...aoni.Re
 }
 
 func (c *apiClient) GetNotificationsByID(ctx context.Context, iD string, mods ...aoni.RequestModifier) (map[string]any, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("id", iD))
@@ -545,7 +548,7 @@ func (c *apiClient) GetNotificationsByID(ctx context.Context, iD string, mods ..
 }
 
 func (c *apiClient) DeleteNotificationsByID(ctx context.Context, iD string, mods ...aoni.RequestModifier) (map[string]any, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("id", iD))
@@ -561,7 +564,7 @@ func (c *apiClient) DeleteNotificationsByID(ctx context.Context, iD string, mods
 }
 
 func (c *apiClient) GetUsersInfoV1(ctx context.Context, steamids string, mods ...aoni.RequestModifier) (map[string]any, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
@@ -581,16 +584,16 @@ func (c *apiClient) GetUsersInfoV1(ctx context.Context, steamids string, mods ..
 	return *resp, nil
 }
 
-func (c *apiClient) GetV2ClassifiedsArchive(ctx context.Context, skip int, limit int, mods ...aoni.RequestModifier) (*ListingScrollable, error) {
-	var stackMods [8]aoni.RequestModifier
+func (c *apiClient) GetV2ClassifiedsArchive(ctx context.Context, limit int, skip int, mods ...aoni.RequestModifier) (*ListingScrollable, error) {
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	var qBuf [64]byte
 	qBytes := qBuf[:0]
-	qBytes = append(qBytes, "skip="...)
-	qBytes = strconv.AppendInt(qBytes, int64(skip), 10)
-	qBytes = append(qBytes, "&limit="...)
+	qBytes = append(qBytes, "limit="...)
 	qBytes = strconv.AppendInt(qBytes, int64(limit), 10)
+	qBytes = append(qBytes, "&skip="...)
+	qBytes = strconv.AppendInt(qBytes, int64(skip), 10)
 	allMods = append(allMods, mod.WithQuery(string(qBytes)))
 
 	if len(mods) > 0 {
@@ -652,7 +655,7 @@ func (c *apiClient) DeleteV2ClassifiedsArchiveBatch(ctx context.Context, mods ..
 }
 
 func (c *apiClient) GetV2ClassifiedsArchiveByListingID(ctx context.Context, listingID string, mods ...aoni.RequestModifier) (*Listing, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("listingId", listingID))
@@ -668,7 +671,7 @@ func (c *apiClient) GetV2ClassifiedsArchiveByListingID(ctx context.Context, list
 }
 
 func (c *apiClient) DeleteV2ClassifiedsArchiveByListingID(ctx context.Context, listingID string, mods ...aoni.RequestModifier) (map[string]any, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("listingId", listingID))
@@ -684,7 +687,7 @@ func (c *apiClient) DeleteV2ClassifiedsArchiveByListingID(ctx context.Context, l
 }
 
 func (c *apiClient) PatchV2ClassifiedsArchiveByListingID(ctx context.Context, listingID string, req ListingPatchRequest, mods ...aoni.RequestModifier) (*Listing, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("listingId", listingID))
@@ -700,7 +703,7 @@ func (c *apiClient) PatchV2ClassifiedsArchiveByListingID(ctx context.Context, li
 }
 
 func (c *apiClient) PostV2ClassifiedsArchiveByListingIDPublish(ctx context.Context, listingID string, mods ...aoni.RequestModifier) (*Listing, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("listingId", listingID))
@@ -715,20 +718,20 @@ func (c *apiClient) PostV2ClassifiedsArchiveByListingIDPublish(ctx context.Conte
 	return resp, nil
 }
 
-func (c *apiClient) GetV2ClassifiedsListings(ctx context.Context, skip int, limit int, bumpedSince int, createdSince int, mods ...aoni.RequestModifier) (*ListingScrollable, error) {
-	var stackMods [8]aoni.RequestModifier
+func (c *apiClient) GetV2ClassifiedsListings(ctx context.Context, bumpedSince int, createdSince int, limit int, skip int, mods ...aoni.RequestModifier) (*ListingScrollable, error) {
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
-	var qBuf [256]byte
+	var qBuf [128]byte
 	qBytes := qBuf[:0]
-	qBytes = append(qBytes, "skip="...)
-	qBytes = strconv.AppendInt(qBytes, int64(skip), 10)
-	qBytes = append(qBytes, "&limit="...)
-	qBytes = strconv.AppendInt(qBytes, int64(limit), 10)
-	qBytes = append(qBytes, "&bumped_since="...)
+	qBytes = append(qBytes, "bumped_since="...)
 	qBytes = strconv.AppendInt(qBytes, int64(bumpedSince), 10)
 	qBytes = append(qBytes, "&created_since="...)
 	qBytes = strconv.AppendInt(qBytes, int64(createdSince), 10)
+	qBytes = append(qBytes, "&limit="...)
+	qBytes = strconv.AppendInt(qBytes, int64(limit), 10)
+	qBytes = append(qBytes, "&skip="...)
+	qBytes = strconv.AppendInt(qBytes, int64(skip), 10)
 	allMods = append(allMods, mod.WithQuery(string(qBytes)))
 
 	if len(mods) > 0 {
@@ -819,6 +822,21 @@ func (c *apiClient) PostV2ClassifiedsListingsBatch(ctx context.Context, req []Li
 	return *resp, nil
 }
 
+func (c *apiClient) PatchV2ClassifiedsListingsBatch(ctx context.Context, req []ListingBatchUpdateItem, mods ...aoni.RequestModifier) (*ListingBatchUpdateResponse, error) {
+	var stackMods [4]aoni.RequestModifier
+	allMods := stackMods[:0]
+
+	if len(mods) > 0 {
+		allMods = append(allMods, mods...)
+	}
+
+	resp, err := request.PatchTo[ListingBatchUpdateResponse](ctx, c.r, "v2/classifieds/listings/batch", req, allMods...)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 func (c *apiClient) DeleteV2ClassifiedsListingsBatch(ctx context.Context, mods ...aoni.RequestModifier) (map[string]any, error) {
 	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
@@ -850,7 +868,7 @@ func (c *apiClient) PostV2ClassifiedsListingsPublishAll(ctx context.Context, mod
 }
 
 func (c *apiClient) GetV2ClassifiedsListingsByListingID(ctx context.Context, listingID string, mods ...aoni.RequestModifier) (*Listing, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("listingId", listingID))
@@ -866,7 +884,7 @@ func (c *apiClient) GetV2ClassifiedsListingsByListingID(ctx context.Context, lis
 }
 
 func (c *apiClient) DeleteV2ClassifiedsListingsByListingID(ctx context.Context, listingID string, mods ...aoni.RequestModifier) (map[string]any, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("listingId", listingID))
@@ -882,7 +900,7 @@ func (c *apiClient) DeleteV2ClassifiedsListingsByListingID(ctx context.Context, 
 }
 
 func (c *apiClient) PatchV2ClassifiedsListingsByListingID(ctx context.Context, listingID string, req ListingPatchRequest, mods ...aoni.RequestModifier) (*Listing, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("listingId", listingID))
@@ -898,7 +916,7 @@ func (c *apiClient) PatchV2ClassifiedsListingsByListingID(ctx context.Context, l
 }
 
 func (c *apiClient) PostV2ClassifiedsListingsByListingIDArchive(ctx context.Context, listingID string, mods ...aoni.RequestModifier) (*Listing, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("listingId", listingID))
@@ -914,7 +932,7 @@ func (c *apiClient) PostV2ClassifiedsListingsByListingIDArchive(ctx context.Cont
 }
 
 func (c *apiClient) PostV2ClassifiedsListingsByListingIDDemote(ctx context.Context, listingID string, mods ...aoni.RequestModifier) (*Listing, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("listingId", listingID))
@@ -930,7 +948,7 @@ func (c *apiClient) PostV2ClassifiedsListingsByListingIDDemote(ctx context.Conte
 }
 
 func (c *apiClient) PostV2ClassifiedsListingsByListingIDPromote(ctx context.Context, listingID string, mods ...aoni.RequestModifier) (*Listing, error) {
-	var stackMods [8]aoni.RequestModifier
+	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
 	allMods = append(allMods, mod.WithVar("listingId", listingID))

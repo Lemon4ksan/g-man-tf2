@@ -17,8 +17,8 @@ import (
 	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/g-man/pkg/behavior"
 	"github.com/lemon4ksan/g-man/pkg/test/mock"
-	"github.com/lemon4ksan/miyako/bus"
-	"github.com/lemon4ksan/miyako/log"
+	"github.com/lemon4ksan/foundation/async/event"
+	"github.com/lemon4ksan/foundation/async/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -157,7 +157,7 @@ func TestPriceManager_OrchestratorOption(t *testing.T) {
 	logger := log.New(log.DefaultConfig(log.LevelError))
 	r := aoni.NewClient(nil)
 	client := NewClient(r)
-	b := bus.New()
+	b := event.New()
 	orchestrator := behavior.NewOrchestrator(b, logger)
 
 	assert.NotPanics(t, func() {
@@ -259,7 +259,7 @@ func TestPriceManager_EventPublication(t *testing.T) {
 	t.Parallel()
 
 	logger := log.New(log.DefaultConfig(log.LevelError))
-	eventBus := bus.New()
+	eventBus := event.New()
 	r := aoni.NewClient(nil)
 	manager := NewManager(nil, r, logger).WithBus(eventBus)
 

@@ -9,9 +9,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/lemon4ksan/foundation/async/event"
+	"github.com/lemon4ksan/foundation/async/log"
 	"github.com/lemon4ksan/g-man/pkg/behavior"
-	"github.com/lemon4ksan/miyako/bus"
-	"github.com/lemon4ksan/miyako/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
@@ -194,7 +194,7 @@ func TestAutomator_RunAndRegistration(t *testing.T) {
 
 	assert.Equal(t, "pure_liquidator", a.Name())
 
-	b := bus.New()
+	b := event.New()
 	orch := behavior.NewOrchestrator(b, logger)
 	WithPureLiquidator(orch, mgr, inv)
 

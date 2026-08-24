@@ -5,70 +5,70 @@
 package tf2
 
 import (
-	"github.com/lemon4ksan/miyako/bus"
+	"github.com/lemon4ksan/foundation/async/event"
 )
 
 type ConnectedEvent struct {
-	bus.BaseEvent
+	event.BaseEvent
 	Version uint32
 }
 
 type DisconnectedEvent struct {
-	bus.BaseEvent
+	event.BaseEvent
 }
 
 type BackpackLoadedEvent struct {
-	bus.BaseEvent
+	event.BaseEvent
 	Count int
 }
 
 type ItemAcquiredEvent struct {
-	bus.BaseEvent
+	event.BaseEvent
 	Item *Item
 }
 
 type ItemRemovedEvent struct {
-	bus.BaseEvent
+	event.BaseEvent
 	ItemID uint64
 }
 
 type ItemUpdatedEvent struct {
-	bus.BaseEvent
+	event.BaseEvent
 	Item *Item
 }
 
 type CraftResponseEvent struct {
-	bus.BaseEvent
+	event.BaseEvent
 	BlueprintID  uint16
 	CreatedItems []uint64
 }
 
 type TradeRequestEvent struct {
-	bus.BaseEvent
+	event.BaseEvent
 	SteamID uint64
 	TradeID uint32
 }
 
 type CraftingCompleteEvent struct {
-	bus.BaseEvent
+	event.BaseEvent
 	RecipeID     int16
 	ItemsCreated []uint64
 }
 
 type NotificationEvent struct {
-	bus.BaseEvent
+	event.BaseEvent
 	TitleLocalizationKey string
 	BodyLocalizationKey  string
 	ReplacementStrings   map[string]string
 }
 
 type ItemBroadcastEvent struct {
-	bus.BaseEvent
+	event.BaseEvent
 	UserName       string
 	WasDestruction bool
 	DefIndex       uint32
 }
 
 type BackpackSortFinishedEvent struct {
-	bus.BaseEvent
+	event.BaseEvent
 }

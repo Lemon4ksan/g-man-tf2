@@ -364,3 +364,67 @@ func TestManager_SmeltClassWeapons(t *testing.T) {
 		assert.Contains(t, err.Error(), "refusing to smelt")
 	})
 }
+
+func TestManager_TokensAndRebuild(t *testing.T) {
+	t.Parallel()
+
+	t.Run("craft_class_token_success", func(t *testing.T) {
+		gc := new(mockGC)
+		mgr := NewManager(nil, gc)
+		ctx := t.Context()
+
+		gc.On("Craft", ctx, []uint64{10, 11, 12}, RecipeFabricateToken).Return([]uint64{5003}, nil)
+
+		res, err := cmCraftClassToken(mgr, ctx, []uint64{10, 11, 12, 13})
+		assert.NoError(t, err)
+		assert.Equal(t, []uint64{5003}, res)
+	})
+
+	t.Run("craft_class_token_not_enough", func(t *testing.T) {
+		mgr := NewManager(nil, nil)
+		res, err := cmCraftClassToken(mgr, t.Context(), []uint64{10, 11})
+		assert.Error(t, err)
+		assert.Nil(t, res)
+		assert.Contains(t, err.Error(), "need 3 weapons")
+	})
+
+	t.Run("craft_slot_token_success", func(t *testing.T) {
+		gc := new(mockGC)
+		mgr := NewManager(nil, gc)
+		ctx := t.Context()
+
+		gc.On("Craft", ctx, []uint64{20, 21, 22}, RecipeFabricateSlotToken).Return([]uint64{5012}, nil)
+
+		res, err := cmCraftSlotToken(mgr, ctx, []uint64{20, 21, 22})
+		assert.NoError(t, err)
+		assert.Equal(t, []uint64{5012}, res)
+	})
+
+	t.Run("craft_slot_token_not_enough", func(t *testing.T) {
+		mgr := NewManager(nil, nil)
+		res, err := cmCraftSlotToken(mgr, t.Context(), []uint64{20})
+		assert.Error(t, err)
+		assert.Nil(t, res)
+		assert.Contains(t, err.Error(), "need 3 weapons")
+	})
+
+	t.Run("rebuild_headgear_success", func(t *testing.T) {
+		gc := new(mockGC)
+		mgr := NewManager(nil, gc)
+		ctx := t.Context()
+
+		gc.On("Craft", ctx, []uint64{100, 200}, RecipeRebuildHeadgear).Return([]uint64{300}, nil)
+
+		res, err := mgr.RebuildHeadgear(ctx, 100, 200)
+		assert.NoError(t, err)
+		assert.Equal(t, []uint64{300}, res)
+	})
+}
+
+func cmCraftClassToken(mgr *Manager, ctx context.Context, ids []uint64) ([]uint64, error) {
+	return mgr.CraftClassToken(ctx, ids)
+}
+
+func cmCraftSlotToken(mgr *Manager, ctx context.Context, ids []uint64) ([]uint64, error) {
+	return mgr.CraftSlotToken(ctx, ids)
+}

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	json "github.com/goccy/go-json"
+	"github.com/lemon4ksan/foundation/codec/json"
 	"github.com/lemon4ksan/g-man/pkg/steam/community/inventory"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

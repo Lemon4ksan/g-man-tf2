@@ -12,8 +12,8 @@ import (
 
 	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/option"
+	"github.com/lemon4ksan/foundation/async/log"
 	"github.com/lemon4ksan/g-man/pkg/test/mock"
-	"github.com/lemon4ksan/miyako/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 

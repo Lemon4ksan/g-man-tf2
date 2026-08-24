@@ -57,7 +57,7 @@ func main() {
 	}
 
 	// Map to merge duplicate blocks
-	// Key: filePathAndRange (e.g., github.com/lemon4ksan/miyako/bus)
+	// Key: filePathAndRange (e.g., github.com/lemon4ksan/foundation/async/event)
 	mergedBlocks := make(map[string]*BlockInfo)
 
 	for scanner.Scan() {

@@ -15,11 +15,11 @@ import (
 	"sync"
 	"time"
 
-	json "github.com/goccy/go-json"
 	"github.com/lemon4ksan/aoni/mod"
 	"github.com/lemon4ksan/aoni/request"
+	"github.com/lemon4ksan/foundation/async/log"
+	"github.com/lemon4ksan/foundation/codec/json"
 	"github.com/lemon4ksan/g-man/pkg/behavior"
-	"github.com/lemon4ksan/miyako/log"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/bptf"

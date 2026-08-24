@@ -8,7 +8,7 @@ import (
 	"errors"
 	"strings"
 
-	json "github.com/goccy/go-json"
+	"github.com/lemon4ksan/foundation/codec/json"
 )
 
 // BaseResponse represents the standard Mannco.store API response envelope.

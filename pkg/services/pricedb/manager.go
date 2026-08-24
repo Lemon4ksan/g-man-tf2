@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/lemon4ksan/aoni"
+	"github.com/lemon4ksan/foundation/async/event"
+	"github.com/lemon4ksan/foundation/async/log"
+	"github.com/lemon4ksan/foundation/async/pipeline"
 	"github.com/lemon4ksan/g-man/pkg/behavior"
-	"github.com/lemon4ksan/miyako/bus"
-	"github.com/lemon4ksan/miyako/log"
-	"github.com/lemon4ksan/miyako/yumi"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 )
@@ -28,7 +28,7 @@ func WithPriceManager(orch *behavior.Orchestrator, client API, dialer aoni.WebSo
 
 // PricelistUpdatedEvent is published when a price in the database is set or changed.
 type PricelistUpdatedEvent struct {
-	bus.BaseEvent
+	event.BaseEvent
 	SKU     string     `json:"sku"`
 	Buy     Currencies `json:"buy"`
 	Sell    Currencies `json:"sell"`
@@ -43,7 +43,7 @@ type PricelistUpdatedEvent struct {
 type Manager struct {
 	client API
 	logger log.Logger
-	bus    *bus.Bus
+	bus    *event.Bus
 
 	mu    sync.RWMutex
 	cache map[string]PackedPrice
@@ -81,7 +81,7 @@ func NewManager(client API, dialer aoni.WebSocketDialer, logger log.Logger) *Man
 }
 
 // WithBus registers the G-man event bus with this manager.
-func (m *Manager) WithBus(b *bus.Bus) *Manager {
+func (m *Manager) WithBus(b *event.Bus) *Manager {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -221,7 +221,7 @@ func (m *Manager) Fetch(ctx context.Context, skus []string) (map[string]*Price, 
 		price *Price
 	}
 
-	results, err := yumi.Map(ctx, yumi.PipelineConfig{
+	results, err := pipeline.Map(ctx, pipeline.PipelineConfig{
 		Workers: 5,
 		RPS:     10,
 		Burst:   3,

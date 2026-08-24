@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/lemon4ksan/g-man/pkg/behavior/achievements"
-	"github.com/lemon4ksan/g-man/pkg/protobuf/custom"
-	pb_steam "github.com/lemon4ksan/g-man/pkg/protobuf/steam"
+	"github.com/lemon4ksan/g-man/protobuf/custom"
+	pb_steam "github.com/lemon4ksan/g-man/protobuf/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 	"github.com/lemon4ksan/g-man/pkg/steam/module"
@@ -24,13 +24,13 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/steam/service"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/apps"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/gc"
-	"github.com/lemon4ksan/miyako/bus"
-	"github.com/lemon4ksan/miyako/jobs"
-	"github.com/lemon4ksan/miyako/kata"
+	"github.com/lemon4ksan/foundation/async/event"
+	"github.com/lemon4ksan/foundation/async/fsm"
+	"github.com/lemon4ksan/foundation/async/task"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/protoadapt"
 
-	pb "github.com/lemon4ksan/g-man-tf2/pkg/protobuf/tf2"
+	pb "github.com/lemon4ksan/g-man-tf2/protobuf/tf2"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 )
 
@@ -99,8 +99,8 @@ const (
 type CoordinatorProvider interface {
 	Send(ctx context.Context, appID, msgType uint32, msg proto.Message) error
 	SendRaw(ctx context.Context, appID, msgType uint32, payload []byte) error
-	Call(ctx context.Context, appID, msgType uint32, msg proto.Message, cb jobs.Callback[*protocol.GCPacket]) error
-	CallRaw(ctx context.Context, appID, msgType uint32, payload []byte, cb jobs.Callback[*protocol.GCPacket]) error
+	Call(ctx context.Context, appID, msgType uint32, msg proto.Message, cb task.Callback[*protocol.GCPacket]) error
+	CallRaw(ctx context.Context, appID, msgType uint32, payload []byte, cb task.Callback[*protocol.GCPacket]) error
 }
 
 type AppsProvider interface {
@@ -120,26 +120,26 @@ type TF2 struct {
 	service service.Doer
 	apps    AppsProvider
 
-	fsm        *kata.FSM[State, Event]
+	fsm        *fsm.FSM[State, Event]
 	cache      *SOCache
 	schema     SchemaProvider
 	keepActive bool
 }
 
 func New() *TF2 {
-	fsm := kata.NewFSM[State, Event](Disconnected)
-	fsm.AddRules(
-		kata.TransitionRule[State, Event]{From: Disconnected, Event: EventConnect, To: Connecting},
-		kata.TransitionRule[State, Event]{From: Connecting, Event: EventConnected, To: Connected},
-		kata.TransitionRule[State, Event]{From: Connected, Event: EventServerGoodbye, To: Connecting},
-		kata.TransitionRule[State, Event]{From: Connecting, Event: EventDisconnect, To: Disconnected},
-		kata.TransitionRule[State, Event]{From: Connected, Event: EventDisconnect, To: Disconnected},
-		kata.TransitionRule[State, Event]{From: Disconnected, Event: EventDisconnect, To: Disconnected},
+	mach := fsm.NewFSM[State, Event](Disconnected)
+	mach.AddRules(
+		fsm.TransitionRule[State, Event]{From: Disconnected, Event: EventConnect, To: Connecting},
+		fsm.TransitionRule[State, Event]{From: Connecting, Event: EventConnected, To: Connected},
+		fsm.TransitionRule[State, Event]{From: Connected, Event: EventServerGoodbye, To: Connecting},
+		fsm.TransitionRule[State, Event]{From: Connecting, Event: EventDisconnect, To: Disconnected},
+		fsm.TransitionRule[State, Event]{From: Connected, Event: EventDisconnect, To: Disconnected},
+		fsm.TransitionRule[State, Event]{From: Disconnected, Event: EventDisconnect, To: Disconnected},
 	)
 
 	return &TF2{
 		Base: module.New(ModuleName).WithDeps(gc.ModuleName, apps.ModuleName, schema.ModuleName),
-		fsm:  fsm,
+		fsm:  mach,
 	}
 }
 
@@ -407,7 +407,7 @@ func (t *TF2) sendHello(ctx context.Context) {
 	_ = t.gc.Send(ctx, AppID, uint32(pb.EGCBaseClientMsg_k_EMsgGCClientHello), msg)
 }
 
-func (t *TF2) messageLoop(ctx context.Context, sub *bus.Subscription) {
+func (t *TF2) messageLoop(ctx context.Context, sub *event.Subscription) {
 	defer sub.Unsubscribe()
 
 	for {
@@ -456,5 +456,62 @@ func (t *TF2) routePacket(ctx context.Context, pkt *protocol.GCPacket) {
 		t.cache.handleSOCacheCheck(ctx, pkt)
 	case pb.ESOMsg_k_ESOMsg_CacheSubscribedUpToDate:
 		t.cache.handleUpToDate(pkt)
+	}
+
+	switch pb.EGCItemMsg(pkt.MsgType) {
+	case pb.EGCItemMsg_k_EMsgGCCraftResponse:
+		if len(pkt.Payload) >= 8 {
+			blueprint := binary.LittleEndian.Uint16(pkt.Payload[0:2])
+			idCount := binary.LittleEndian.Uint16(pkt.Payload[6:8])
+			offset := 8
+			var items []uint64
+			for i := 0; i < int(idCount) && offset+8 <= len(pkt.Payload); i++ {
+				items = append(items, binary.LittleEndian.Uint64(pkt.Payload[offset:offset+8]))
+				offset += 8
+			}
+			t.Bus.Publish(&CraftResponseEvent{
+				BlueprintID:  blueprint,
+				CreatedItems: items,
+			})
+			t.Bus.Publish(&CraftingCompleteEvent{
+				RecipeID:     int16(blueprint),
+				ItemsCreated: items,
+			})
+		}
+	case pb.EGCItemMsg_k_EMsgGCTrading_InitiateTradeRequest:
+		if len(pkt.Payload) >= 12 {
+			tradeID := binary.LittleEndian.Uint32(pkt.Payload[0:4])
+			steamID := binary.LittleEndian.Uint64(pkt.Payload[4:12])
+			t.Bus.Publish(&TradeRequestEvent{
+				TradeID: tradeID,
+				SteamID: steamID,
+			})
+		}
+	case pb.EGCItemMsg_k_EMsgGCBackpackSortFinished:
+		t.Bus.Publish(&BackpackSortFinishedEvent{})
+	case pb.EGCItemMsg_k_EMsgGCClientDisplayNotification:
+		var msg pb.CMsgGCClientDisplayNotification
+		if proto.Unmarshal(pkt.Payload, &msg) == nil {
+			replacements := make(map[string]string)
+			keys := msg.GetBodySubstringKeys()
+			values := msg.GetBodySubstringValues()
+			for i := 0; i < len(keys) && i < len(values); i++ {
+				replacements[keys[i]] = values[i]
+			}
+			t.Bus.Publish(&NotificationEvent{
+				TitleLocalizationKey: msg.GetNotificationTitleLocalizationKey(),
+				BodyLocalizationKey:  msg.GetNotificationBodyLocalizationKey(),
+				ReplacementStrings:   replacements,
+			})
+		}
+	case pb.EGCItemMsg_k_EMsgGCTFSpecificItemBroadcast:
+		var msg pb.CMsgGCTFSpecificItemBroadcast
+		if proto.Unmarshal(pkt.Payload, &msg) == nil {
+			t.Bus.Publish(&ItemBroadcastEvent{
+				UserName:       msg.GetUserName(),
+				WasDestruction: msg.GetWasDestruction(),
+				DefIndex:       msg.GetItemDefIndex(),
+			})
+		}
 	}
 }

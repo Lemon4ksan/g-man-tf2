@@ -4,11 +4,11 @@
 
 package backpack
 
-import "github.com/lemon4ksan/miyako/bus"
+import "github.com/lemon4ksan/foundation/async/event"
 
 // FullEvent is broadcast when the backpack inventory reaches or exceeds maximum slot capacity.
 type FullEvent struct {
-	bus.BaseEvent
+	event.BaseEvent
 	Count int
 	Max   int
 }

@@ -32,9 +32,9 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/storage/jsonfile"
 	"github.com/lemon4ksan/g-man/pkg/trading/engine"
 	webtrading "github.com/lemon4ksan/g-man/pkg/trading/web"
-	"github.com/lemon4ksan/miyako/bus"
-	"github.com/lemon4ksan/miyako/generic"
-	"github.com/lemon4ksan/miyako/log"
+	"github.com/lemon4ksan/foundation/async/event"
+	"github.com/lemon4ksan/foundation/async/log"
+	"github.com/lemon4ksan/foundation/generic"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 	"github.com/lemon4ksan/g-man-tf2/pkg/crafting"
@@ -73,7 +73,7 @@ type Bot struct {
 	store           storage.Provider
 	logger          log.Logger
 	client          *steam.Client
-	sub             *bus.Subscription
+	sub             *event.Subscription
 	wg              sync.WaitGroup
 	tradeCfgManager *tf2trading.ConfigManager
 	bptfClient      bptf.API

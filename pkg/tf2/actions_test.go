@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	pb "github.com/lemon4ksan/g-man-tf2/pkg/protobuf/tf2"
+	pb "github.com/lemon4ksan/g-man-tf2/protobuf/tf2"
 )
 
 func TestTF2_Actions_ValidInputs_SendsCorrectGCPackets(t *testing.T) {
@@ -503,5 +503,21 @@ func TestTF2_ProtoActions_ValidInputs_SendsCorrectGCPackets(t *testing.T) {
 		err := tf.ApplyStrangifier(t.Context(), 1, 2)
 		require.NoError(t, err)
 		assert.Equal(t, uint32(pb.EGCItemMsg_k_EMsgGCApplyXifier), mCoord.GetLastSendMsgType())
+	})
+
+	t.Run("trade_up", func(t *testing.T) {
+		t.Parallel()
+		tf, _, mCoord := setupTF2(t)
+		err := tf.TradeUp(t.Context(), []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
+		require.NoError(t, err)
+		assert.Equal(t, uint32(pb.EGCItemMsg_k_EMsgGCCraftCollectionUpgrade), mCoord.GetLastSendMsgType())
+	})
+
+	t.Run("send_professor_speks", func(t *testing.T) {
+		t.Parallel()
+		tf, _, mCoord := setupTF2(t)
+		err := tf.SendProfessorSpeks(t.Context(), 12345)
+		require.NoError(t, err)
+		assert.Equal(t, uint32(pb.ETFGCMsg_k_EMsgGCFreeTrial_ChooseMostHelpfulFriend), mCoord.GetLastSendMsgType())
 	})
 }

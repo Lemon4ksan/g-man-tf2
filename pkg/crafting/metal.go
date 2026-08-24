@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lemon4ksan/miyako/log"
+	"github.com/lemon4ksan/foundation/async/log"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"

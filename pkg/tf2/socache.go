@@ -14,12 +14,12 @@ import (
 	"time"
 
 	"github.com/lemon4ksan/g-man/pkg/steam/protocol"
-	"github.com/lemon4ksan/miyako/bus"
-	"github.com/lemon4ksan/miyako/generic"
-	"github.com/lemon4ksan/miyako/log"
+	"github.com/lemon4ksan/foundation/async/event"
+	"github.com/lemon4ksan/foundation/async/log"
+	"github.com/lemon4ksan/foundation/generic"
 	"google.golang.org/protobuf/proto"
 
-	pb "github.com/lemon4ksan/g-man-tf2/pkg/protobuf/tf2"
+	pb "github.com/lemon4ksan/g-man-tf2/protobuf/tf2"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 )
@@ -36,7 +36,7 @@ func WithLogger(l log.Logger) Option {
 	return func(s *SOCache) { s.logger = l.With(log.Component("so_cache")) }
 }
 
-func WithBus(b *bus.Bus) Option {
+func WithBus(b *event.Bus) Option {
 	return func(s *SOCache) { s.bus = b }
 }
 
@@ -47,7 +47,7 @@ func WithSchema(s *schema.Schema) Option {
 type SOCache struct {
 	mu sync.RWMutex
 
-	bus    *bus.Bus
+	bus    *event.Bus
 	schema *schema.Schema
 	logger log.Logger
 
@@ -80,7 +80,7 @@ func NewSOCache(coord CoordinatorProvider, opts ...Option) *SOCache {
 	generic.ApplyOptions(s, opts...)
 
 	if s.bus == nil {
-		s.bus = bus.New()
+		s.bus = event.New()
 	}
 
 	return s
@@ -329,7 +329,7 @@ func (c *SOCache) handleSOUpdate(pkt *protocol.GCPacket) {
 
 	var (
 		newVersion uint64
-		events     []bus.Event
+		events     []event.Event
 	)
 
 	c.mu.Lock()
@@ -392,7 +392,7 @@ func (c *SOCache) requestRefresh(ctx context.Context, owner uint64, logger log.L
 	_ = c.coord.Send(ctx, AppID, uint32(pb.ESOMsg_k_ESOMsg_CacheSubscriptionRefresh), req)
 }
 
-func (c *SOCache) processObject(typeID int32, data []byte, isBulk bool, events *[]bus.Event) {
+func (c *SOCache) processObject(typeID int32, data []byte, isBulk bool, events *[]event.Event) {
 	switch typeID {
 	case SOTypeEconItem:
 		econItem := &pb.CSOEconItem{}
@@ -448,7 +448,7 @@ func (c *SOCache) processObject(typeID int32, data []byte, isBulk bool, events *
 	}
 }
 
-func (c *SOCache) processDestroy(typeID int32, data []byte, events *[]bus.Event) {
+func (c *SOCache) processDestroy(typeID int32, data []byte, events *[]event.Event) {
 	if typeID != SOTypeEconItem {
 		return
 	}

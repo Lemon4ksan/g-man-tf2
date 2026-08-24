@@ -7,31 +7,31 @@ package schema
 import (
 	"time"
 
-	"github.com/lemon4ksan/miyako/bus"
+	"github.com/lemon4ksan/foundation/async/event"
 )
 
 // ReadyEvent is emitted when the schema has loaded and is ready for use.
 type ReadyEvent struct {
-	bus.BaseEvent
+	event.BaseEvent
 }
 
 // UpdatedEvent is emitted when the schema has successfully updated.
 type UpdatedEvent struct {
-	bus.BaseEvent
+	event.BaseEvent
 	// Timestamp represents the time when the schema was updated.
 	Timestamp time.Time
 }
 
 // UpdateFailedEvent is emitted when a background schema update fails.
 type UpdateFailedEvent struct {
-	bus.BaseEvent
+	event.BaseEvent
 	// Error contains the failure reason.
 	Error error
 }
 
 // UpdateRequestedEvent is emitted when a schema update is requested.
 type UpdateRequestedEvent struct {
-	bus.BaseEvent
+	event.BaseEvent
 	// Version represents the requested schema version.
 	Version uint32
 	// ItemsGameURL represents the URL of the items_game.txt file.

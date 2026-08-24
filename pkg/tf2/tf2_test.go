@@ -19,14 +19,14 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/apps"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/gc"
 	module "github.com/lemon4ksan/g-man/pkg/test/mock"
-	"github.com/lemon4ksan/miyako/bus"
-	"github.com/lemon4ksan/miyako/jobs"
-	"github.com/lemon4ksan/miyako/log"
+	"github.com/lemon4ksan/foundation/async/event"
+	"github.com/lemon4ksan/foundation/async/log"
+	"github.com/lemon4ksan/foundation/async/task"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	pb "github.com/lemon4ksan/g-man-tf2/pkg/protobuf/tf2"
+	pb "github.com/lemon4ksan/g-man-tf2/protobuf/tf2"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 )
@@ -117,7 +117,7 @@ func (m *mockCoordinator) Call(
 	ctx context.Context,
 	appID, msgType uint32,
 	msg proto.Message,
-	cb jobs.Callback[*protocol.GCPacket],
+	cb task.Callback[*protocol.GCPacket],
 ) error {
 	return nil
 }
@@ -126,7 +126,7 @@ func (m *mockCoordinator) CallRaw(
 	ctx context.Context,
 	appID, msgType uint32,
 	payload []byte,
-	cb jobs.Callback[*protocol.GCPacket],
+	cb task.Callback[*protocol.GCPacket],
 ) error {
 	m.lastSendMsgType = msgType
 	m.lastSendPayload = payload
@@ -601,7 +601,7 @@ func TestSOCache_NewSOCache_AllOptions(t *testing.T) {
 	t.Parallel()
 
 	logger := log.Discard
-	busInstance := bus.New()
+	busInstance := event.New()
 	sch := &schema.Schema{}
 
 	cache := NewSOCache(&mockCoordinator{}, WithLogger(logger), WithBus(busInstance), WithSchema(sch))

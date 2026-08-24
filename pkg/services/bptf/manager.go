@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/lemon4ksan/miyako/log"
-	"github.com/lemon4ksan/miyako/yumi"
+	"github.com/lemon4ksan/foundation/async/log"
+	"github.com/lemon4ksan/foundation/async/pipeline"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
@@ -51,7 +51,7 @@ func (m *ListingManager) Sync(ctx context.Context) error {
 	limit := 500
 
 	for {
-		resp, err := m.client.GetV2ClassifiedsListings(ctx, skip, limit, 0, 0)
+		resp, err := m.client.GetV2ClassifiedsListings(ctx, 0, 0, limit, skip)
 		if err != nil {
 			return fmt.Errorf("failed to fetch listings at skip %d: %w", skip, err)
 		}
@@ -128,7 +128,7 @@ func (m *ListingManager) DeleteAll(ctx context.Context) error {
 		batches = append(batches, ids[i:end])
 	}
 
-	err := yumi.ForEach(ctx, yumi.PipelineConfig{
+	err := pipeline.ForEach(ctx, pipeline.PipelineConfig{
 		Workers: 3,
 		RPS:     5,
 		Burst:   2,

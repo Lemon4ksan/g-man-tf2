@@ -108,6 +108,6 @@ linters:
         path: "(cmd|examples)/.*"
 
     paths:
-      - pkg/protobuf/.*
+      - protobuf/.*
       - examples/.*
       - tests/.*

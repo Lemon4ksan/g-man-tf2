@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	json "github.com/goccy/go-json"
-	"github.com/lemon4ksan/miyako/log"
+	"github.com/lemon4ksan/foundation/async/log"
+	"github.com/lemon4ksan/foundation/codec/json"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -76,7 +76,7 @@ type API interface {
 	// GetClassifiedsAlerts — Get alerts
 	//
 	// @get "classifieds/alerts"
-	GetClassifiedsAlerts(ctx context.Context, skip int, limit int, mods ...aoni.RequestModifier) (map[string]any, error)
+	GetClassifiedsAlerts(ctx context.Context, limit int, skip int, mods ...aoni.RequestModifier) (map[string]any, error)
 
 	// PostClassifiedsAlerts — Create alert
 	//
@@ -84,12 +84,12 @@ type API interface {
 	// @query casing=snake_case
 	PostClassifiedsAlerts(
 		ctx context.Context,
-		itemName string,
-		intent string,
-		currency string,
-		min int,
-		max int,
 		blanket int,
+		currency string,
+		intent string,
+		itemName string,
+		max int,
+		min int,
 		mods ...aoni.RequestModifier,
 	) (map[string]any, error)
 
@@ -97,7 +97,7 @@ type API interface {
 	//
 	// @delete "classifieds/alerts"
 	// @query casing=snake_case
-	DeleteClassifiedsAlerts(ctx context.Context, itemName string, intent string, mods ...aoni.RequestModifier) (map[string]any, error)
+	DeleteClassifiedsAlerts(ctx context.Context, intent string, itemName string, mods ...aoni.RequestModifier) (map[string]any, error)
 
 	// GetClassifiedsAlertsByID — Get alert
 	//
@@ -145,8 +145,8 @@ type API interface {
 	// @get "notifications"
 	GetNotifications(
 		ctx context.Context,
-		skip int,
 		limit int,
+		skip int,
 		unread int,
 		mods ...aoni.RequestModifier,
 	) (map[string]any, error)
@@ -179,7 +179,7 @@ type API interface {
 	// GetV2ClassifiedsArchive — Get account archived listings
 	//
 	// @get "v2/classifieds/archive"
-	GetV2ClassifiedsArchive(ctx context.Context, skip int, limit int, mods ...aoni.RequestModifier) (*ListingScrollable, error)
+	GetV2ClassifiedsArchive(ctx context.Context, limit int, skip int, mods ...aoni.RequestModifier) (*ListingScrollable, error)
 
 	// DeleteV2ClassifiedsArchive — Delete all archived listings
 	//
@@ -223,10 +223,10 @@ type API interface {
 	// @get "v2/classifieds/listings"
 	GetV2ClassifiedsListings(
 		ctx context.Context,
-		skip int,
-		limit int,
 		bumpedSince int,
 		createdSince int,
+		limit int,
+		skip int,
 		mods ...aoni.RequestModifier,
 	) (*ListingScrollable, error)
 
@@ -257,6 +257,12 @@ type API interface {
 	// @post "v2/classifieds/listings/batch"
 	// @json
 	PostV2ClassifiedsListingsBatch(ctx context.Context, req []ListingResolvable, mods ...aoni.RequestModifier) ([]*ListingBatchCreateResult, error)
+
+	// PatchV2ClassifiedsListingsBatch — Batch update listings
+	//
+	// @patch "v2/classifieds/listings/batch"
+	// @json
+	PatchV2ClassifiedsListingsBatch(ctx context.Context, req []ListingBatchUpdateItem, mods ...aoni.RequestModifier) (*ListingBatchUpdateResponse, error)
 
 	// DeleteV2ClassifiedsListingsBatch — Batch delete listings
 	//

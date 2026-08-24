@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"testing"
 
-	gojson "github.com/goccy/go-json"
+	"github.com/lemon4ksan/foundation/codec/json"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
@@ -121,7 +121,7 @@ func BenchmarkSchema_Unmarshal_StandardJSON(b *testing.B) {
 	}
 }
 
-func BenchmarkSchema_Unmarshal_GoccyJSON(b *testing.B) {
+func BenchmarkSchema_Unmarshal_FoundationJSON(b *testing.B) {
 	data, err := os.ReadFile("testdata/schema.json")
 	if err != nil {
 		b.Skip("schema.json not found in testdata, skipping")
@@ -132,7 +132,7 @@ func BenchmarkSchema_Unmarshal_GoccyJSON(b *testing.B) {
 
 	for range b.N {
 		var raw schema.Raw
-		if err := gojson.Unmarshal(data, &raw); err != nil {
+		if err := json.Unmarshal(data, &raw); err != nil {
 			b.Fatal(err)
 		}
 

@@ -17,7 +17,7 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/trading"
 	"github.com/lemon4ksan/g-man/pkg/trading/engine"
 	"github.com/lemon4ksan/g-man/pkg/trading/reason"
-	"github.com/lemon4ksan/miyako/log"
+	"github.com/lemon4ksan/foundation/async/log"
 
 	"github.com/lemon4ksan/g-man-tf2/internal/bytesconv"
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"

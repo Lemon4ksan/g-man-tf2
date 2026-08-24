@@ -12,13 +12,13 @@ import (
 	"sync"
 	"time"
 
-	json "github.com/goccy/go-json"
 	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/mod"
 	"github.com/lemon4ksan/aoni/realtime/ws"
 	"github.com/lemon4ksan/aoni/request"
-	"github.com/lemon4ksan/miyako/generic"
-	"github.com/lemon4ksan/miyako/log"
+	"github.com/lemon4ksan/foundation/async/log"
+	"github.com/lemon4ksan/foundation/codec/json"
+	"github.com/lemon4ksan/foundation/generic"
 )
 
 // SocketManager handles the real-time price updates via Socket.IO.

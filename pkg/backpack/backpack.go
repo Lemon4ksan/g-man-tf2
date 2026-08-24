@@ -15,10 +15,10 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/module"
 	"github.com/lemon4ksan/g-man/pkg/trading"
-	"github.com/lemon4ksan/miyako/bus"
-	"github.com/lemon4ksan/miyako/generic"
-	"github.com/lemon4ksan/miyako/log"
-	"github.com/lemon4ksan/miyako/sync/keylock"
+	"github.com/lemon4ksan/foundation/async/event"
+	"github.com/lemon4ksan/foundation/async/log"
+	"github.com/lemon4ksan/foundation/generic"
+	"github.com/lemon4ksan/foundation/sync/keylock"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
@@ -667,8 +667,8 @@ func (m *Backpack) eventLoop(ctx context.Context) {
 	}
 }
 
-func (m *Backpack) handleEvent(ctx context.Context, ev bus.Event) []bus.Event {
-	var events []bus.Event
+func (m *Backpack) handleEvent(ctx context.Context, ev event.Event) []event.Event {
+	var events []event.Event
 
 	if _, ok := ev.(*tf2.ItemAcquiredEvent); ok {
 		count := len(m.cache.GetItems())

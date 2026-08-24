@@ -174,9 +174,47 @@ type ListingBatchCreateResult struct {
 	Result *Listing       `json:"result,omitempty"`
 }
 
-// ListingCurrencies — A key-value map of currency IDs to values.
+// ListingCurrencies — A key-value map of currency IDs to values (keys, metal).
 // @aoni:dto casing=snake_case omitempty=true
 type ListingCurrencies struct {
+	Keys  float64 `json:"keys,omitempty"`
+	Metal float64 `json:"metal,omitempty"`
+}
+
+// ListingBatchUpdateItem represents a single item update in a batch PATCH request.
+// @aoni:dto casing=snake_case omitempty=true
+type ListingBatchUpdateItem struct {
+	ID   string              `json:"id,omitempty"`
+	Body ListingPatchRequest `json:"body,omitempty"`
+}
+
+// ListingBatchUpdateResponse represents the result of a batch PATCH operation.
+// @aoni:dto casing=snake_case omitempty=true
+type ListingBatchUpdateResponse struct {
+	Updated []ListingBatchUpdatedEntry `json:"updated,omitempty"`
+	Errors  []ListingBatchUpdateError  `json:"errors,omitempty"`
+}
+
+// ListingBatchUpdatedEntry contains the ID of a successfully updated listing.
+// @aoni:dto casing=snake_case omitempty=true
+type ListingBatchUpdatedEntry struct {
+	ID string `json:"id,omitempty"`
+}
+
+// ListingBatchUpdateError contains error details for a failed listing update.
+// @aoni:dto casing=snake_case omitempty=true
+type ListingBatchUpdateError struct {
+	ID      string `json:"id,omitempty"`
+	Index   int    `json:"index,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+// ItemAttribute represents an attribute on a backpack.tf item.
+// @aoni:dto casing=snake_case omitempty=true
+type ItemAttribute struct {
+	Defindex   int     `json:"defindex,omitempty"`
+	Value      any     `json:"value,omitempty"`
+	FloatValue float64 `json:"float_value,omitempty"`
 }
 
 // @aoni:dto casing=snake_case omitempty=true

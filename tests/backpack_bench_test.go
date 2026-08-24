@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/lemon4ksan/miyako/generic"
+	"github.com/lemon4ksan/foundation/generic"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"

@@ -11,7 +11,6 @@ import (
 	"strconv"
 )
 
-// AppendFormData serializes ClassifiedsResourceLimits into url-encoded form bytes on dst buffer (0 B/op).
 func (r *ClassifiedsResourceLimits) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -20,19 +19,16 @@ func (r *ClassifiedsResourceLimits) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes ClassifiedsResourceLimits into query string bytes on dst buffer (0 B/op).
 func (r *ClassifiedsResourceLimits) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes ClassifiedsResourceLimits into url.Values without reflection.
 func (r *ClassifiedsResourceLimits) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
 	}
 }
 
-// AppendFormData serializes Currency into url-encoded form bytes on dst buffer (0 B/op).
 func (r *Currency) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -78,7 +74,7 @@ func (r *Currency) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "price="...)
-		dst = append(dst, fmt.Sprint(r.Price)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Price))...)
 	}
 	if strVal := fmt.Sprint(r.Priceindex); strVal != "" && strVal != "0" {
 		if len(dst) > 0 {
@@ -112,12 +108,10 @@ func (r *Currency) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes Currency into query string bytes on dst buffer (0 B/op).
 func (r *Currency) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes Currency into url.Values without reflection.
 func (r *Currency) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -154,7 +148,6 @@ func (r *Currency) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes Cursor into url-encoded form bytes on dst buffer (0 B/op).
 func (r *Cursor) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -185,12 +178,10 @@ func (r *Cursor) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes Cursor into query string bytes on dst buffer (0 B/op).
 func (r *Cursor) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes Cursor into url.Values without reflection.
 func (r *Cursor) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -206,7 +197,6 @@ func (r *Cursor) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes Entity into url-encoded form bytes on dst buffer (0 B/op).
 func (r *Entity) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -237,12 +227,10 @@ func (r *Entity) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes Entity into query string bytes on dst buffer (0 B/op).
 func (r *Entity) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes Entity into url.Values without reflection.
 func (r *Entity) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -258,7 +246,6 @@ func (r *Entity) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes ImpersonatedUser into url-encoded form bytes on dst buffer (0 B/op).
 func (r *ImpersonatedUser) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -289,12 +276,10 @@ func (r *ImpersonatedUser) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes ImpersonatedUser into query string bytes on dst buffer (0 B/op).
 func (r *ImpersonatedUser) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes ImpersonatedUser into url.Values without reflection.
 func (r *ImpersonatedUser) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -310,7 +295,6 @@ func (r *ImpersonatedUser) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes InventoryStatus into url-encoded form bytes on dst buffer (0 B/op).
 func (r *InventoryStatus) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -355,12 +339,10 @@ func (r *InventoryStatus) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes InventoryStatus into query string bytes on dst buffer (0 B/op).
 func (r *InventoryStatus) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes InventoryStatus into url.Values without reflection.
 func (r *InventoryStatus) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -382,7 +364,6 @@ func (r *InventoryStatus) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes InventoryValues into url-encoded form bytes on dst buffer (0 B/op).
 func (r *InventoryValues) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -393,25 +374,23 @@ func (r *InventoryValues) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "market_value="...)
-		dst = append(dst, fmt.Sprint(r.MarketValue)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.MarketValue))...)
 	}
 	if r.Value != nil {
 		if len(dst) > 0 {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "value="...)
-		dst = append(dst, fmt.Sprint(r.Value)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Value))...)
 	}
 
 	return dst
 }
 
-// AppendQuery serializes InventoryValues into query string bytes on dst buffer (0 B/op).
 func (r *InventoryValues) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes InventoryValues into url.Values without reflection.
 func (r *InventoryValues) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -424,7 +403,6 @@ func (r *InventoryValues) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes ItemDocument into url-encoded form bytes on dst buffer (0 B/op).
 func (r *ItemDocument) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -442,7 +420,7 @@ func (r *ItemDocument) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "elevatedQuality="...)
-		dst = append(dst, fmt.Sprint(r.ElevatedQuality)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.ElevatedQuality))...)
 	}
 	if r.ImageURL != "" {
 		if len(dst) > 0 {
@@ -463,21 +441,21 @@ func (r *ItemDocument) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "paint="...)
-		dst = append(dst, fmt.Sprint(r.Paint)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Paint))...)
 	}
 	if r.Particle != nil {
 		if len(dst) > 0 {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "particle="...)
-		dst = append(dst, fmt.Sprint(r.Particle)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Particle))...)
 	}
 	if r.Quality != nil {
 		if len(dst) > 0 {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "quality="...)
-		dst = append(dst, fmt.Sprint(r.Quality)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Quality))...)
 	}
 	if r.Quantity != 0 {
 		if len(dst) > 0 {
@@ -491,18 +469,16 @@ func (r *ItemDocument) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "rarity="...)
-		dst = append(dst, fmt.Sprint(r.Rarity)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Rarity))...)
 	}
 
 	return dst
 }
 
-// AppendQuery serializes ItemDocument into query string bytes on dst buffer (0 B/op).
 func (r *ItemDocument) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes ItemDocument into url.Values without reflection.
 func (r *ItemDocument) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -536,7 +512,6 @@ func (r *ItemDocument) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes ItemResolvable into url-encoded form bytes on dst buffer (0 B/op).
 func (r *ItemResolvable) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -581,12 +556,10 @@ func (r *ItemResolvable) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes ItemResolvable into query string bytes on dst buffer (0 B/op).
 func (r *ItemResolvable) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes ItemResolvable into url.Values without reflection.
 func (r *ItemResolvable) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -608,7 +581,6 @@ func (r *ItemResolvable) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes Listing into url-encoded form bytes on dst buffer (0 B/op).
 func (r *Listing) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -674,7 +646,7 @@ func (r *Listing) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "item="...)
-		dst = append(dst, fmt.Sprint(r.Item)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Item))...)
 	}
 	if r.ListedAt != "" {
 		if len(dst) > 0 {
@@ -706,12 +678,10 @@ func (r *Listing) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes Listing into query string bytes on dst buffer (0 B/op).
 func (r *Listing) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes Listing into url.Values without reflection.
 func (r *Listing) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -757,7 +727,6 @@ func (r *Listing) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes ListingBatchCreateResult into url-encoded form bytes on dst buffer (0 B/op).
 func (r *ListingBatchCreateResult) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -768,25 +737,23 @@ func (r *ListingBatchCreateResult) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "error="...)
-		dst = append(dst, fmt.Sprint(r.Error)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Error))...)
 	}
 	if r.Result != nil {
 		if len(dst) > 0 {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "result="...)
-		dst = append(dst, fmt.Sprint(r.Result)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Result))...)
 	}
 
 	return dst
 }
 
-// AppendQuery serializes ListingBatchCreateResult into query string bytes on dst buffer (0 B/op).
 func (r *ListingBatchCreateResult) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes ListingBatchCreateResult into url.Values without reflection.
 func (r *ListingBatchCreateResult) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -799,8 +766,85 @@ func (r *ListingBatchCreateResult) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes ListingCurrencies into url-encoded form bytes on dst buffer (0 B/op).
 func (r *ListingCurrencies) AppendFormData(dst []byte) []byte {
+	if r == nil {
+		return dst
+	}
+
+	if r.Keys != 0 {
+		if len(dst) > 0 {
+			dst = append(dst, '&')
+		}
+		dst = append(dst, "keys="...)
+		dst = strconv.AppendFloat(dst, float64(r.Keys), 'f', -1, 64)
+	}
+	if r.Metal != 0 {
+		if len(dst) > 0 {
+			dst = append(dst, '&')
+		}
+		dst = append(dst, "metal="...)
+		dst = strconv.AppendFloat(dst, float64(r.Metal), 'f', -1, 64)
+	}
+
+	return dst
+}
+
+func (r *ListingCurrencies) AppendQuery(dst []byte) []byte {
+	return r.AppendFormData(dst)
+}
+
+func (r *ListingCurrencies) EncodeValues(vals url.Values) {
+	if r == nil {
+		return
+	}
+	if r.Keys != 0 {
+		vals.Set("keys", strconv.FormatFloat(float64(r.Keys), 'f', -1, 64))
+	}
+	if r.Metal != 0 {
+		vals.Set("metal", strconv.FormatFloat(float64(r.Metal), 'f', -1, 64))
+	}
+}
+
+func (r *ListingBatchUpdateItem) AppendFormData(dst []byte) []byte {
+	if r == nil {
+		return dst
+	}
+
+	if r.ID != "" {
+		if len(dst) > 0 {
+			dst = append(dst, '&')
+		}
+		dst = append(dst, "id="...)
+		dst = append(dst, url.QueryEscape(r.ID)...)
+	}
+	if strVal := fmt.Sprint(r.Body); strVal != "" && strVal != "0" {
+		if len(dst) > 0 {
+			dst = append(dst, '&')
+		}
+		dst = append(dst, "body="...)
+		dst = append(dst, url.QueryEscape(strVal)...)
+	}
+
+	return dst
+}
+
+func (r *ListingBatchUpdateItem) AppendQuery(dst []byte) []byte {
+	return r.AppendFormData(dst)
+}
+
+func (r *ListingBatchUpdateItem) EncodeValues(vals url.Values) {
+	if r == nil {
+		return
+	}
+	if r.ID != "" {
+		vals.Set("id", r.ID)
+	}
+	if strVal := fmt.Sprint(r.Body); strVal != "" && strVal != "0" {
+		vals.Set("body", strVal)
+	}
+}
+
+func (r *ListingBatchUpdateResponse) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
 	}
@@ -808,19 +852,143 @@ func (r *ListingCurrencies) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes ListingCurrencies into query string bytes on dst buffer (0 B/op).
-func (r *ListingCurrencies) AppendQuery(dst []byte) []byte {
+func (r *ListingBatchUpdateResponse) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes ListingCurrencies into url.Values without reflection.
-func (r *ListingCurrencies) EncodeValues(vals url.Values) {
+func (r *ListingBatchUpdateResponse) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
 	}
 }
 
-// AppendFormData serializes ListingDropRequest into url-encoded form bytes on dst buffer (0 B/op).
+func (r *ListingBatchUpdatedEntry) AppendFormData(dst []byte) []byte {
+	if r == nil {
+		return dst
+	}
+
+	if r.ID != "" {
+		if len(dst) > 0 {
+			dst = append(dst, '&')
+		}
+		dst = append(dst, "id="...)
+		dst = append(dst, url.QueryEscape(r.ID)...)
+	}
+
+	return dst
+}
+
+func (r *ListingBatchUpdatedEntry) AppendQuery(dst []byte) []byte {
+	return r.AppendFormData(dst)
+}
+
+func (r *ListingBatchUpdatedEntry) EncodeValues(vals url.Values) {
+	if r == nil {
+		return
+	}
+	if r.ID != "" {
+		vals.Set("id", r.ID)
+	}
+}
+
+func (r *ListingBatchUpdateError) AppendFormData(dst []byte) []byte {
+	if r == nil {
+		return dst
+	}
+
+	if r.ID != "" {
+		if len(dst) > 0 {
+			dst = append(dst, '&')
+		}
+		dst = append(dst, "id="...)
+		dst = append(dst, url.QueryEscape(r.ID)...)
+	}
+	if r.Index != 0 {
+		if len(dst) > 0 {
+			dst = append(dst, '&')
+		}
+		dst = append(dst, "index="...)
+		dst = strconv.AppendInt(dst, int64(r.Index), 10)
+	}
+	if r.Message != "" {
+		if len(dst) > 0 {
+			dst = append(dst, '&')
+		}
+		dst = append(dst, "message="...)
+		dst = append(dst, url.QueryEscape(r.Message)...)
+	}
+
+	return dst
+}
+
+func (r *ListingBatchUpdateError) AppendQuery(dst []byte) []byte {
+	return r.AppendFormData(dst)
+}
+
+func (r *ListingBatchUpdateError) EncodeValues(vals url.Values) {
+	if r == nil {
+		return
+	}
+	if r.ID != "" {
+		vals.Set("id", r.ID)
+	}
+	if r.Index != 0 {
+		vals.Set("index", strconv.FormatInt(int64(r.Index), 10))
+	}
+	if r.Message != "" {
+		vals.Set("message", r.Message)
+	}
+}
+
+func (r *ItemAttribute) AppendFormData(dst []byte) []byte {
+	if r == nil {
+		return dst
+	}
+
+	if r.Defindex != 0 {
+		if len(dst) > 0 {
+			dst = append(dst, '&')
+		}
+		dst = append(dst, "defindex="...)
+		dst = strconv.AppendInt(dst, int64(r.Defindex), 10)
+	}
+	if r.Value != nil {
+		if len(dst) > 0 {
+			dst = append(dst, '&')
+		}
+		dst = append(dst, "value="...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Value))...)
+	}
+	if r.FloatValue != 0 {
+		if len(dst) > 0 {
+			dst = append(dst, '&')
+		}
+		dst = append(dst, "float_value="...)
+		dst = strconv.AppendFloat(dst, float64(r.FloatValue), 'f', -1, 64)
+	}
+
+	return dst
+}
+
+func (r *ItemAttribute) AppendQuery(dst []byte) []byte {
+	return r.AppendFormData(dst)
+}
+
+func (r *ItemAttribute) EncodeValues(vals url.Values) {
+	if r == nil {
+		return
+	}
+	if r.Defindex != 0 {
+		vals.Set("defindex", strconv.FormatInt(int64(r.Defindex), 10))
+	}
+	if r.Value != nil {
+		vals.Set("value", fmt.Sprint(r.Value))
+	}
+	if r.FloatValue != 0 {
+		vals.Set("float_value", strconv.FormatFloat(float64(r.FloatValue), 'f', -1, 64))
+	}
+}
+
 func (r *ListingDropRequest) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -837,12 +1005,10 @@ func (r *ListingDropRequest) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes ListingDropRequest into query string bytes on dst buffer (0 B/op).
 func (r *ListingDropRequest) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes ListingDropRequest into url.Values without reflection.
 func (r *ListingDropRequest) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -852,7 +1018,6 @@ func (r *ListingDropRequest) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes ListingPatchRequest into url-encoded form bytes on dst buffer (0 B/op).
 func (r *ListingPatchRequest) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -883,12 +1048,10 @@ func (r *ListingPatchRequest) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes ListingPatchRequest into query string bytes on dst buffer (0 B/op).
 func (r *ListingPatchRequest) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes ListingPatchRequest into url.Values without reflection.
 func (r *ListingPatchRequest) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -904,7 +1067,6 @@ func (r *ListingPatchRequest) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes ListingResolvable into url-encoded form bytes on dst buffer (0 B/op).
 func (r *ListingResolvable) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -936,18 +1098,16 @@ func (r *ListingResolvable) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "item="...)
-		dst = append(dst, fmt.Sprint(r.Item)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Item))...)
 	}
 
 	return dst
 }
 
-// AppendQuery serializes ListingResolvable into query string bytes on dst buffer (0 B/op).
 func (r *ListingResolvable) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes ListingResolvable into url.Values without reflection.
 func (r *ListingResolvable) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -966,7 +1126,6 @@ func (r *ListingResolvable) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes ListingScrollable into url-encoded form bytes on dst buffer (0 B/op).
 func (r *ListingScrollable) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -977,18 +1136,16 @@ func (r *ListingScrollable) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "cursor="...)
-		dst = append(dst, fmt.Sprint(r.Cursor)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Cursor))...)
 	}
 
 	return dst
 }
 
-// AppendQuery serializes ListingScrollable into query string bytes on dst buffer (0 B/op).
 func (r *ListingScrollable) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes ListingScrollable into url.Values without reflection.
 func (r *ListingScrollable) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -998,7 +1155,6 @@ func (r *ListingScrollable) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes NotificationMarkState into url-encoded form bytes on dst buffer (0 B/op).
 func (r *NotificationMarkState) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1015,12 +1171,10 @@ func (r *NotificationMarkState) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes NotificationMarkState into query string bytes on dst buffer (0 B/op).
 func (r *NotificationMarkState) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes NotificationMarkState into url.Values without reflection.
 func (r *NotificationMarkState) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1030,7 +1184,6 @@ func (r *NotificationMarkState) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes ResponseError into url-encoded form bytes on dst buffer (0 B/op).
 func (r *ResponseError) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1054,12 +1207,10 @@ func (r *ResponseError) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes ResponseError into query string bytes on dst buffer (0 B/op).
 func (r *ResponseError) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes ResponseError into url.Values without reflection.
 func (r *ResponseError) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1072,7 +1223,6 @@ func (r *ResponseError) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes SchemaItem into url-encoded form bytes on dst buffer (0 B/op).
 func (r *SchemaItem) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1081,19 +1231,16 @@ func (r *SchemaItem) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes SchemaItem into query string bytes on dst buffer (0 B/op).
 func (r *SchemaItem) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes SchemaItem into url.Values without reflection.
 func (r *SchemaItem) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
 	}
 }
 
-// AppendFormData serializes SpecialItemsResponse into url-encoded form bytes on dst buffer (0 B/op).
 func (r *SpecialItemsResponse) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1102,19 +1249,16 @@ func (r *SpecialItemsResponse) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes SpecialItemsResponse into query string bytes on dst buffer (0 B/op).
 func (r *SpecialItemsResponse) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes SpecialItemsResponse into url.Values without reflection.
 func (r *SpecialItemsResponse) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
 	}
 }
 
-// AppendFormData serializes UserAgentStatus into url-encoded form bytes on dst buffer (0 B/op).
 func (r *UserAgentStatus) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1152,12 +1296,10 @@ func (r *UserAgentStatus) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes UserAgentStatus into query string bytes on dst buffer (0 B/op).
 func (r *UserAgentStatus) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes UserAgentStatus into url.Values without reflection.
 func (r *UserAgentStatus) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1176,7 +1318,6 @@ func (r *UserAgentStatus) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes V1priceHistoryNode into url-encoded form bytes on dst buffer (0 B/op).
 func (r *V1priceHistoryNode) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1214,12 +1355,10 @@ func (r *V1priceHistoryNode) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes V1priceHistoryNode into query string bytes on dst buffer (0 B/op).
 func (r *V1priceHistoryNode) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes V1priceHistoryNode into url.Values without reflection.
 func (r *V1priceHistoryNode) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1238,7 +1377,6 @@ func (r *V1priceHistoryNode) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes V1priceHistoryResponse into url-encoded form bytes on dst buffer (0 B/op).
 func (r *V1priceHistoryResponse) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1249,18 +1387,16 @@ func (r *V1priceHistoryResponse) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "success="...)
-		dst = append(dst, fmt.Sprint(r.Success)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Success))...)
 	}
 
 	return dst
 }
 
-// AppendQuery serializes V1priceHistoryResponse into query string bytes on dst buffer (0 B/op).
 func (r *V1priceHistoryResponse) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes V1priceHistoryResponse into url.Values without reflection.
 func (r *V1priceHistoryResponse) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1270,7 +1406,6 @@ func (r *V1priceHistoryResponse) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes V1user into url-encoded form bytes on dst buffer (0 B/op).
 func (r *V1user) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1351,25 +1486,23 @@ func (r *V1user) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "trust="...)
-		dst = append(dst, fmt.Sprint(r.Trust)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Trust))...)
 	}
 	if r.Voting != nil {
 		if len(dst) > 0 {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "voting="...)
-		dst = append(dst, fmt.Sprint(r.Voting)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Voting))...)
 	}
 
 	return dst
 }
 
-// AppendQuery serializes V1user into query string bytes on dst buffer (0 B/op).
 func (r *V1user) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes V1user into url.Values without reflection.
 func (r *V1user) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1412,7 +1545,6 @@ func (r *V1user) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes V1userTrust into url-encoded form bytes on dst buffer (0 B/op).
 func (r *V1userTrust) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1436,12 +1568,10 @@ func (r *V1userTrust) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes V1userTrust into query string bytes on dst buffer (0 B/op).
 func (r *V1userTrust) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes V1userTrust into url.Values without reflection.
 func (r *V1userTrust) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1454,7 +1584,6 @@ func (r *V1userTrust) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes V1userVoting into url-encoded form bytes on dst buffer (0 B/op).
 func (r *V1userVoting) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1463,19 +1592,16 @@ func (r *V1userVoting) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes V1userVoting into query string bytes on dst buffer (0 B/op).
 func (r *V1userVoting) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes V1userVoting into url.Values without reflection.
 func (r *V1userVoting) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
 	}
 }
 
-// AppendFormData serializes V4craftableDict into url-encoded form bytes on dst buffer (0 B/op).
 func (r *V4craftableDict) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1499,12 +1625,10 @@ func (r *V4craftableDict) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes V4craftableDict into query string bytes on dst buffer (0 B/op).
 func (r *V4craftableDict) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes V4craftableDict into url.Values without reflection.
 func (r *V4craftableDict) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1517,7 +1641,6 @@ func (r *V4craftableDict) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes V4priceindexDict into url-encoded form bytes on dst buffer (0 B/op).
 func (r *V4priceindexDict) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1526,19 +1649,16 @@ func (r *V4priceindexDict) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes V4priceindexDict into query string bytes on dst buffer (0 B/op).
 func (r *V4priceindexDict) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes V4priceindexDict into url.Values without reflection.
 func (r *V4priceindexDict) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
 	}
 }
 
-// AppendFormData serializes V4pricesBaseItemDoc into url-encoded form bytes on dst buffer (0 B/op).
 func (r *V4pricesBaseItemDoc) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1555,12 +1675,10 @@ func (r *V4pricesBaseItemDoc) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes V4pricesBaseItemDoc into query string bytes on dst buffer (0 B/op).
 func (r *V4pricesBaseItemDoc) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes V4pricesBaseItemDoc into url.Values without reflection.
 func (r *V4pricesBaseItemDoc) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1570,7 +1688,6 @@ func (r *V4pricesBaseItemDoc) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes V4pricesEntry into url-encoded form bytes on dst buffer (0 B/op).
 func (r *V4pricesEntry) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1636,12 +1753,10 @@ func (r *V4pricesEntry) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes V4pricesEntry into query string bytes on dst buffer (0 B/op).
 func (r *V4pricesEntry) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes V4pricesEntry into url.Values without reflection.
 func (r *V4pricesEntry) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1672,7 +1787,6 @@ func (r *V4pricesEntry) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes V4pricesResponse into url-encoded form bytes on dst buffer (0 B/op).
 func (r *V4pricesResponse) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1724,12 +1838,10 @@ func (r *V4pricesResponse) AppendFormData(dst []byte) []byte {
 	return dst
 }
 
-// AppendQuery serializes V4pricesResponse into query string bytes on dst buffer (0 B/op).
 func (r *V4pricesResponse) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes V4pricesResponse into url.Values without reflection.
 func (r *V4pricesResponse) EncodeValues(vals url.Values) {
 	if r == nil {
 		return
@@ -1754,7 +1866,6 @@ func (r *V4pricesResponse) EncodeValues(vals url.Values) {
 	}
 }
 
-// AppendFormData serializes V4tradableDict into url-encoded form bytes on dst buffer (0 B/op).
 func (r *V4tradableDict) AppendFormData(dst []byte) []byte {
 	if r == nil {
 		return dst
@@ -1765,25 +1876,23 @@ func (r *V4tradableDict) AppendFormData(dst []byte) []byte {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "Non-Tradable="...)
-		dst = append(dst, fmt.Sprint(r.NonTradable)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.NonTradable))...)
 	}
 	if r.Tradable != nil {
 		if len(dst) > 0 {
 			dst = append(dst, '&')
 		}
 		dst = append(dst, "Tradable="...)
-		dst = append(dst, fmt.Sprint(r.Tradable)...)
+		dst = append(dst, url.QueryEscape(fmt.Sprint(r.Tradable))...)
 	}
 
 	return dst
 }
 
-// AppendQuery serializes V4tradableDict into query string bytes on dst buffer (0 B/op).
 func (r *V4tradableDict) AppendQuery(dst []byte) []byte {
 	return r.AppendFormData(dst)
 }
 
-// EncodeValues serializes V4tradableDict into url.Values without reflection.
 func (r *V4tradableDict) EncodeValues(vals url.Values) {
 	if r == nil {
 		return

@@ -8,7 +8,7 @@ import (
 	"context"
 
 	"github.com/lemon4ksan/aoni"
-	"github.com/lemon4ksan/miyako/yumi"
+	"github.com/lemon4ksan/foundation/async/pipeline"
 )
 
 // Client is an alias for API.
@@ -41,7 +41,7 @@ func GetItemsBulk(ctx context.Context, client API, skus []string, mods ...aoni.R
 		batches = append(batches, validSKUs[i:end])
 	}
 
-	results, err := yumi.Map(ctx, yumi.PipelineConfig{
+	results, err := pipeline.Map(ctx, pipeline.PipelineConfig{
 		Workers: 3,
 		RPS:     5,
 		Burst:   2,

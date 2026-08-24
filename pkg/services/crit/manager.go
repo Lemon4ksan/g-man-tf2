@@ -18,7 +18,7 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 	"github.com/lemon4ksan/g-man/pkg/steam/module"
 	"github.com/lemon4ksan/g-man/pkg/steam/social/chat/commands"
-	"github.com/lemon4ksan/miyako/log"
+	"github.com/lemon4ksan/foundation/async/log"
 	"golang.org/x/time/rate"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"

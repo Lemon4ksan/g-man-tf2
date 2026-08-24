@@ -13,7 +13,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	pb "github.com/lemon4ksan/g-man-tf2/pkg/protobuf/tf2"
+	pb "github.com/lemon4ksan/g-man-tf2/protobuf/tf2"
 )
 
 func (t *TF2) RemoveItemName(ctx context.Context, itemID uint64) error {
@@ -398,4 +398,22 @@ func (t *TF2) ConsumePaintkit(ctx context.Context, warpaintID uint64, weaponDefI
 	}
 
 	return t.gc.Send(ctx, AppID, uint32(pb.ETFGCMsg_k_EMsgGCConsumePaintKit), req)
+}
+
+// TradeUp submits items to a collection upgrade recipe (Trade-Up).
+func (t *TF2) TradeUp(ctx context.Context, itemIDs []uint64) error {
+	req := &pb.CMsgCraftCollectionUpgrade{
+		ItemId: itemIDs,
+	}
+
+	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCCraftCollectionUpgrade), req)
+}
+
+// SendProfessorSpeks thanks a helpful friend for a free trial account.
+func (t *TF2) SendProfessorSpeks(ctx context.Context, helperAccountID uint32) error {
+	req := &pb.CMsgTFFreeTrialChooseMostHelpfulFriend{
+		AccountIdFriend: proto.Uint32(helperAccountID),
+	}
+
+	return t.gc.Send(ctx, AppID, uint32(pb.ETFGCMsg_k_EMsgGCFreeTrial_ChooseMostHelpfulFriend), req)
 }

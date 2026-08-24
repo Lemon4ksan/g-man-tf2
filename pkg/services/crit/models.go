@@ -8,8 +8,8 @@ import (
 	"errors"
 	"fmt"
 
-	json "github.com/goccy/go-json"
 	"github.com/lemon4ksan/aoni/codec/values"
+	"github.com/lemon4ksan/foundation/codec/json"
 )
 
 // critResponse implements [aoni.BaseResponse] to automatically parse API wrappers.

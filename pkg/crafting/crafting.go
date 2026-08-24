@@ -178,3 +178,26 @@ func (cm *Manager) SmeltClassWeapons(ctx context.Context, class string) ([]uint6
 
 	return cm.gc.Craft(ctx, []uint64{weapons[0].ID, weapons[1].ID}, RecipeSmeltWeapons)
 }
+
+// CraftClassToken crafts a class token from 3 weapons of the same class (Recipe 6).
+func (cm *Manager) CraftClassToken(ctx context.Context, weaponIDs []uint64) ([]uint64, error) {
+	if len(weaponIDs) < 3 {
+		return nil, fmt.Errorf("craft: need 3 weapons to craft class token (got %d)", len(weaponIDs))
+	}
+
+	return cm.gc.Craft(ctx, weaponIDs[:3], RecipeFabricateToken)
+}
+
+// CraftSlotToken crafts a slot token from 3 weapons of the same slot (Recipe 7).
+func (cm *Manager) CraftSlotToken(ctx context.Context, weaponIDs []uint64) ([]uint64, error) {
+	if len(weaponIDs) < 3 {
+		return nil, fmt.Errorf("craft: need 3 weapons to craft slot token (got %d)", len(weaponIDs))
+	}
+
+	return cm.gc.Craft(ctx, weaponIDs[:3], RecipeFabricateSlotToken)
+}
+
+// RebuildHeadgear crafts 2 craft hats into 1 random new craft hat (Recipe 8).
+func (cm *Manager) RebuildHeadgear(ctx context.Context, hatID1, hatID2 uint64) ([]uint64, error) {
+	return cm.gc.Craft(ctx, []uint64{hatID1, hatID2}, RecipeRebuildHeadgear)
+}

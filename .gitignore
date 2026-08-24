@@ -23,3 +23,11 @@ profile.cov
 # Generated code
 **/cache/**
 storage.json
+
+# Vortex Test Artifacts & Diagnostics
+*_mock.gen.go
+*_harness.gen.go
+*_harness_test.go
+*.prof
+*.sarif
+.vortex/

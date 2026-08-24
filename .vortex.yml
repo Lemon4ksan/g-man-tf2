@@ -2,64 +2,20 @@
 # Documentation: https://github.com/lemon4ksan/aoni
 
 version: 1
-
 defaults:
-  casing: snake_case
-  engine: fast
-
+    casing: snake_case
+    engine: fast
 contracts:
-  - name: BptfAPI
-    package: bptf
-    file: pkg/services/bptf/api.go
-    gen: pkg/services/bptf/api.gen.go
-    models: pkg/services/bptf/models.gen.go
-    upstream:
-      source: swagger.json
-      format: openapi
-
-  - name: CritAPI
-    package: crit
-    file: pkg/services/crit/api.go
-    gen: pkg/services/crit/api.gen.go
-    models: pkg/services/crit/models.gen.go
-
-  - name: ExpressAPI
-    package: express
-    file: pkg/services/express/api.go
-    gen: pkg/services/express/api.gen.go
-    upstream:
-      source: express.json
-      format: openapi
-
-  - name: ManncoAPI
-    package: mannco
-    file: pkg/services/mannco/api.go
-    gen: pkg/services/mannco/api.gen.go
-    models: pkg/services/mannco/models.gen.go
-    upstream:
-      source: mannco_openapi.json
-      format: openapi
-
-  - name: PriceDBAPI
-    package: pricedb
-    file: pkg/services/pricedb/api.go
-    gen: pkg/services/pricedb/api.gen.go
-    upstream:
-      source: pricedb_openapi.json
-      format: openapi
-
-  - name: PriceDBSKUClient
-    package: pricedb
-    file: pkg/services/pricedb/api.go
-    gen: pkg/services/pricedb/api.gen.go
-    upstream:
-      source: pricedb_sku.json
-      format: openapi
-
-  - name: PriceDBSpellClient
-    package: pricedb
-    file: pkg/services/pricedb/api.go
-    gen: pkg/services/pricedb/api.gen.go
-    upstream:
-      source: pricedb_spells.json
-      format: openapi
+    - name: Bptf
+      file: pkg/services/bptf/api.go
+      upstream:
+        source: https://api.backpack.tf/api/swagger.json
+        format: openapi
+    - name: Crit
+      file: pkg/services/crit/api.go
+    - name: Express
+      file: pkg/services/express/api.go
+    - name: Mannco
+      file: pkg/services/mannco/api.go
+    - name: Pricedb
+      file: pkg/services/pricedb/api.go

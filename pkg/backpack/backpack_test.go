@@ -14,14 +14,14 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/gc"
 	"github.com/lemon4ksan/g-man/pkg/test/mock"
 	"github.com/lemon4ksan/g-man/pkg/trading"
-	"github.com/lemon4ksan/miyako/bus"
-	"github.com/lemon4ksan/miyako/generic"
-	"github.com/lemon4ksan/miyako/log"
+	"github.com/lemon4ksan/foundation/async/event"
+	"github.com/lemon4ksan/foundation/async/log"
+	"github.com/lemon4ksan/foundation/generic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
-	pb "github.com/lemon4ksan/g-man-tf2/pkg/protobuf/tf2"
+	pb "github.com/lemon4ksan/g-man-tf2/protobuf/tf2"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
@@ -811,7 +811,7 @@ func TestBackpack_EventLoopCancel(t *testing.T) {
 	t.Parallel()
 
 	bp := New()
-	bp.Bus = bus.New()
+	bp.Bus = event.New()
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
