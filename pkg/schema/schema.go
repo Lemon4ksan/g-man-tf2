@@ -17,6 +17,7 @@ import (
 
 	"github.com/lemon4ksan/foundation/codec/json"
 	"github.com/lemon4ksan/foundation/generic"
+	"github.com/lemon4ksan/foundation/silicon/trie"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 
 	"github.com/lemon4ksan/g-man-tf2/internal/bytesconv"
@@ -340,8 +341,28 @@ func (s *Schema) indexItem(item *Item) {
 
 	s.itemsByDef[item.Defindex] = item
 
+	if item.ItemClass != "" && strings.HasPrefix(item.Name, "Upgradeable ") {
+		if _, ok := s.upgradeableByClass[item.ItemClass]; !ok {
+			s.upgradeableByClass[item.ItemClass] = item.Defindex
+		}
+	}
+
+	if s.IsPromoItem(item) {
+		if _, ok := s.promoByItemName[item.ItemName]; !ok {
+			s.promoByItemName[item.ItemName] = item.Defindex
+		}
+	} else {
+		if _, ok := s.nonPromoByItemName[item.ItemName]; !ok {
+			s.nonPromoByItemName[item.ItemName] = item.Defindex
+		}
+	}
+
 	if lowName == "" || (item.ItemName == "Name Tag" && item.Defindex == 2093) {
 		return
+	}
+
+	if s.itemsTrie != nil {
+		s.itemsTrie.Insert(lowName, item)
 	}
 
 	if _, exists := s.itemsByName[lowName]; !exists {
@@ -349,13 +370,17 @@ func (s *Schema) indexItem(item *Item) {
 	}
 
 	stripped := strings.TrimPrefix(lowName, "the ")
+	if s.itemsTrie != nil {
+		s.itemsTrie.Insert(stripped, item)
+	}
+
 	if _, exists := s.itemsByNameStripped[stripped]; !exists {
 		s.itemsByNameStripped[stripped] = item
 	}
 }
 
 func (s *Schema) ItemByNameWithThe(loweredName string) *Item {
-	if s == nil {
+	if s == nil || len(loweredName) == 0 {
 		return nil
 	}
 
@@ -396,6 +421,15 @@ func (s *Schema) ItemByNameWithThe(loweredName string) *Item {
 
 	if s.itemsByNameStripped != nil {
 		if item, ok := s.itemsByNameStripped[withThe]; ok {
+			return item
+		}
+	}
+
+	if s.itemsTrie != nil {
+		if item, ok := s.itemsTrie.Get(loweredName); ok {
+			return item
+		}
+		if item, ok := s.itemsTrie.Get(stripped); ok {
 			return item
 		}
 	}
@@ -525,6 +559,11 @@ type Schema struct {
 	}
 	paintableItemDefindexesCache []int
 	recipes                      map[int]*RecipeDefinition
+
+	upgradeableByClass map[string]int
+	promoByItemName    map[string]int
+	nonPromoByItemName map[string]int
+	itemsTrie          *trie.RadixTree[*Item]
 }
 
 func New(raw *Raw) *Schema {
@@ -549,6 +588,10 @@ func (s *Schema) buildIndices() {
 	s.itemsByDef = make(map[int]*Item, numItems)
 	s.itemsByName = make(map[string]*Item, numItems)
 	s.itemsByNameStripped = make(map[string]*Item, numItems)
+	s.itemsTrie = trie.New[*Item]()
+	s.upgradeableByClass = make(map[string]int)
+	s.promoByItemName = make(map[string]int)
+	s.nonPromoByItemName = make(map[string]int)
 	s.attrsByDef = make(map[int]*AttributeSchema, numAttrs)
 	s.qualByID = make(map[int]string, numQual)
 	s.qualByName = make(map[string]int, numQual)
@@ -580,6 +623,10 @@ func (s *Schema) buildIndices() {
 	s.buildRecipes()
 
 	s.strangePartsCache = s.buildStrangePartsCache()
+
+	if s.Raw != nil {
+		s.Raw.ItemsGame = nil // Free heavy VDF AST tree to GC immediately
+	}
 }
 
 func (s *Schema) indexQualities() {
@@ -1068,28 +1115,46 @@ func (s *Schema) NormalizeItem(item *sku.Item) {
 	}
 
 	if schemaItem.ItemClass != "" && strings.Contains(schemaItem.Name, strings.ToUpper(schemaItem.ItemClass)) {
-		for _, it := range s.itemList {
-			if it.ItemClass != "" && it.ItemClass == schemaItem.ItemClass &&
-				strings.HasPrefix(it.Name, "Upgradeable ") {
-				item.Defindex = it.Defindex
-				break
+		if s.upgradeableByClass != nil {
+			if upDef, ok := s.upgradeableByClass[schemaItem.ItemClass]; ok {
+				item.Defindex = upDef
+			}
+		} else {
+			for _, it := range s.itemList {
+				if it.ItemClass != "" && it.ItemClass == schemaItem.ItemClass &&
+					strings.HasPrefix(it.Name, "Upgradeable ") {
+					item.Defindex = it.Defindex
+					break
+				}
 			}
 		}
 	}
 
 	isPromo := s.IsPromoItem(schemaItem)
 	if isPromo && item.Quality != QualityGenuine {
-		for _, it := range s.itemList {
-			if !s.IsPromoItem(it) && it.ItemName == schemaItem.ItemName {
-				item.Defindex = it.Defindex
-				break
+		if s.nonPromoByItemName != nil {
+			if nonPromoDef, ok := s.nonPromoByItemName[schemaItem.ItemName]; ok {
+				item.Defindex = nonPromoDef
+			}
+		} else {
+			for _, it := range s.itemList {
+				if !s.IsPromoItem(it) && it.ItemName == schemaItem.ItemName {
+					item.Defindex = it.Defindex
+					break
+				}
 			}
 		}
 	} else if !isPromo && item.Quality == QualityGenuine {
-		for _, it := range s.itemList {
-			if s.IsPromoItem(it) && it.ItemName == schemaItem.ItemName {
-				item.Defindex = it.Defindex
-				break
+		if s.promoByItemName != nil {
+			if promoDef, ok := s.promoByItemName[schemaItem.ItemName]; ok {
+				item.Defindex = promoDef
+			}
+		} else {
+			for _, it := range s.itemList {
+				if s.IsPromoItem(it) && it.ItemName == schemaItem.ItemName {
+					item.Defindex = it.Defindex
+					break
+				}
 			}
 		}
 	}

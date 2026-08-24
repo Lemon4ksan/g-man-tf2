@@ -1108,16 +1108,8 @@ func createMockSchema() *Schema {
 	raw := &Raw{}
 	raw.Schema.Items = items
 
-	s := &Schema{
-		Raw:             raw,
-		itemList:        items,
-		itemsByDef:      make(map[int]*Item),
-		crateSeriesList: map[int]int{5022: 42},
-	}
-
-	for _, item := range items {
-		s.itemsByDef[item.Defindex] = item
-	}
+	s := New(raw)
+	s.crateSeriesList = map[int]int{5022: 42}
 
 	return s
 }
@@ -2195,4 +2187,28 @@ func TestSchema_StaticHelpers(t *testing.T) {
 	assert.Equal(t, 5021, s.NormalizeDefindex(5049))
 	assert.True(t, s.IsAustraliumDefindex(13))
 	assert.True(t, s.IsNativeFestive(654))
+}
+
+func BenchmarkSchema_NormalizeItem(b *testing.B) {
+	s := createMockSchema()
+	item := sku.Item{Defindex: 13, Quality: QualityUnique}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		target := item
+		s.NormalizeItem(&target)
+	}
+}
+
+func BenchmarkSchema_ItemByNameWithThe(b *testing.B) {
+	s := createMockSchema()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_ = s.ItemByNameWithThe("The Scattergun")
+	}
 }
