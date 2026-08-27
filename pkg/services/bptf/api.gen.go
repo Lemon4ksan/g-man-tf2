@@ -14,11 +14,10 @@ import (
 	"github.com/lemon4ksan/aoni/fast"
 	"github.com/lemon4ksan/aoni/mod"
 	"github.com/lemon4ksan/aoni/option"
-	"github.com/lemon4ksan/aoni/request"
 )
 
 type apiClient struct {
-	r request.Requester
+	r *aoni.Client
 }
 
 func newAPI(doer any, opts ...aoni.ClientOption) *apiClient {
@@ -29,7 +28,7 @@ func newAPI(doer any, opts ...aoni.ClientOption) *apiClient {
 	var baseOpts []aoni.ClientOption
 	baseOpts = append(baseOpts, opts...)
 
-	targetReq := request.Configure(doer, append([]aoni.ClientOption{option.WithBaseURL("https://backpack.tf/api")}, baseOpts...)...)
+	targetReq := aoni.NewClient(doer, append([]aoni.ClientOption{option.WithBaseURL("https://backpack.tf/api")}, baseOpts...)...)
 
 	return &apiClient{
 		r: targetReq,
@@ -46,8 +45,8 @@ func New(doer any, opts ...aoni.ClientOption) API {
 	return newAPI(doer, opts...)
 }
 
-// R returns the underlying request.Requester used by the client.
-func (c *apiClient) R() request.Requester {
+// R returns the underlying *aoni.Client used by the client.
+func (c *apiClient) R() *aoni.Client {
 	return c.r
 }
 
@@ -59,7 +58,7 @@ func (c *apiClient) Get(ctx context.Context, mods ...aoni.RequestModifier) (map[
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[map[string]any](ctx, c.r, "", allMods...)
+	resp, err := c.r.GetTo[map[string]any](ctx, "", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +79,7 @@ func (c *apiClient) GetIgetCurrenciesV1(ctx context.Context, raw int, mods ...ao
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[map[string]any](ctx, c.r, "IGetCurrencies/v1", allMods...)
+	resp, err := c.r.GetTo[map[string]any](ctx, "IGetCurrencies/v1", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +110,7 @@ func (c *apiClient) GetIgetPriceHistoryV1(ctx context.Context, appid string, ite
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[V1priceHistoryResponse](ctx, c.r, "IGetPriceHistory/v1", allMods...)
+	resp, err := c.r.GetTo[V1priceHistoryResponse](ctx, "IGetPriceHistory/v1", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +133,7 @@ func (c *apiClient) GetIgetPricesV4(ctx context.Context, raw int, since int, mod
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[V4pricesResponse](ctx, c.r, "IGetPrices/v4", allMods...)
+	resp, err := c.r.GetTo[V4pricesResponse](ctx, "IGetPrices/v4", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +154,7 @@ func (c *apiClient) GetIgetSpecialItemsV1(ctx context.Context, appid int, mods .
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[SpecialItemsResponse](ctx, c.r, "IGetSpecialItems/v1", allMods...)
+	resp, err := c.r.GetTo[SpecialItemsResponse](ctx, "IGetSpecialItems/v1", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +177,7 @@ func (c *apiClient) GetIgetUsersGetImpersonatedUsers(ctx context.Context, limit 
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[map[string]any](ctx, c.r, "IGetUsers/GetImpersonatedUsers", allMods...)
+	resp, err := c.r.GetTo[map[string]any](ctx, "IGetUsers/GetImpersonatedUsers", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +210,7 @@ func (c *apiClient) GetIgetUsersV3(ctx context.Context, steamid []string, steami
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[any](ctx, c.r, "IGetUsers/v3", allMods...)
+	resp, err := c.r.GetTo[any](ctx, "IGetUsers/v3", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -226,7 +225,7 @@ func (c *apiClient) PostAgentPulse(ctx context.Context, mods ...aoni.RequestModi
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[UserAgentStatus](ctx, c.r, "agent/pulse", nil, allMods...)
+	resp, err := c.r.PostTo[UserAgentStatus](ctx, "agent/pulse", nil, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +240,7 @@ func (c *apiClient) PostAgentStatus(ctx context.Context, mods ...aoni.RequestMod
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[UserAgentStatus](ctx, c.r, "agent/status", nil, allMods...)
+	resp, err := c.r.PostTo[UserAgentStatus](ctx, "agent/status", nil, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +255,7 @@ func (c *apiClient) PostAgentStop(ctx context.Context, mods ...aoni.RequestModif
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[UserAgentStatus](ctx, c.r, "agent/stop", nil, allMods...)
+	resp, err := c.r.PostTo[UserAgentStatus](ctx, "agent/stop", nil, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -279,7 +278,7 @@ func (c *apiClient) GetClassifiedsAlerts(ctx context.Context, limit int, skip in
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[map[string]any](ctx, c.r, "classifieds/alerts", allMods...)
+	resp, err := c.r.GetTo[map[string]any](ctx, "classifieds/alerts", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -310,7 +309,7 @@ func (c *apiClient) PostClassifiedsAlerts(ctx context.Context, blanket int, curr
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[map[string]any](ctx, c.r, "classifieds/alerts", nil, allMods...)
+	resp, err := c.r.PostTo[map[string]any](ctx, "classifieds/alerts", nil, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -333,7 +332,7 @@ func (c *apiClient) DeleteClassifiedsAlerts(ctx context.Context, intent string, 
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.DeleteTo[map[string]any](ctx, c.r, "classifieds/alerts", nil, allMods...)
+	resp, err := c.r.DeleteTo[map[string]any](ctx, "classifieds/alerts", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -349,7 +348,7 @@ func (c *apiClient) GetClassifiedsAlertsByID(ctx context.Context, iD string, mod
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[map[string]any](ctx, c.r, "classifieds/alerts/{id}", allMods...)
+	resp, err := c.r.GetTo[map[string]any](ctx, "classifieds/alerts/{id}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -365,7 +364,7 @@ func (c *apiClient) DeleteClassifiedsAlertsByID(ctx context.Context, iD string, 
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.DeleteTo[map[string]any](ctx, c.r, "classifieds/alerts/{id}", nil, allMods...)
+	resp, err := c.r.DeleteTo[map[string]any](ctx, "classifieds/alerts/{id}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -391,7 +390,7 @@ func (c *apiClient) DeleteClassifiedsDeleteV1(ctx context.Context, req []string,
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.DeleteTo[map[string]any](ctx, c.r, "classifieds/delete/v1", nil, allMods...)
+	resp, err := c.r.DeleteTo[map[string]any](ctx, "classifieds/delete/v1", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -406,7 +405,7 @@ func (c *apiClient) PostClassifiedsListV1(ctx context.Context, mods ...aoni.Requ
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[map[string]any](ctx, c.r, "classifieds/list/v1", nil, allMods...)
+	resp, err := c.r.PostTo[map[string]any](ctx, "classifieds/list/v1", nil, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -421,7 +420,7 @@ func (c *apiClient) GetClassifiedsListingsV1(ctx context.Context, mods ...aoni.R
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[map[string]any](ctx, c.r, "classifieds/listings/v1", allMods...)
+	resp, err := c.r.GetTo[map[string]any](ctx, "classifieds/listings/v1", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -437,7 +436,7 @@ func (c *apiClient) PostInventoryBySteamidRefresh(ctx context.Context, steamid s
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[InventoryStatus](ctx, c.r, "inventory/{steamid}/refresh", nil, allMods...)
+	resp, err := c.r.PostTo[InventoryStatus](ctx, "inventory/{steamid}/refresh", nil, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -453,7 +452,7 @@ func (c *apiClient) GetInventoryBySteamidStatus(ctx context.Context, steamid str
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[InventoryStatus](ctx, c.r, "inventory/{steamid}/status", allMods...)
+	resp, err := c.r.GetTo[InventoryStatus](ctx, "inventory/{steamid}/status", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -469,7 +468,7 @@ func (c *apiClient) GetInventoryBySteamidValues(ctx context.Context, steamid str
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[InventoryValues](ctx, c.r, "inventory/{steamid}/values", allMods...)
+	resp, err := c.r.GetTo[InventoryValues](ctx, "inventory/{steamid}/values", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -494,7 +493,7 @@ func (c *apiClient) GetNotifications(ctx context.Context, limit int, skip int, u
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[map[string]any](ctx, c.r, "notifications", allMods...)
+	resp, err := c.r.GetTo[map[string]any](ctx, "notifications", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -509,7 +508,7 @@ func (c *apiClient) PostNotificationsMark(ctx context.Context, mods ...aoni.Requ
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[NotificationMarkState](ctx, c.r, "notifications/mark", nil, allMods...)
+	resp, err := c.r.PostTo[NotificationMarkState](ctx, "notifications/mark", nil, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -524,7 +523,7 @@ func (c *apiClient) PostNotificationsUnread(ctx context.Context, mods ...aoni.Re
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[map[string]any](ctx, c.r, "notifications/unread", nil, allMods...)
+	resp, err := c.r.PostTo[map[string]any](ctx, "notifications/unread", nil, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -540,7 +539,7 @@ func (c *apiClient) GetNotificationsByID(ctx context.Context, iD string, mods ..
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[map[string]any](ctx, c.r, "notifications/{id}", allMods...)
+	resp, err := c.r.GetTo[map[string]any](ctx, "notifications/{id}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -556,7 +555,7 @@ func (c *apiClient) DeleteNotificationsByID(ctx context.Context, iD string, mods
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.DeleteTo[map[string]any](ctx, c.r, "notifications/{id}", nil, allMods...)
+	resp, err := c.r.DeleteTo[map[string]any](ctx, "notifications/{id}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -577,7 +576,7 @@ func (c *apiClient) GetUsersInfoV1(ctx context.Context, steamids string, mods ..
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[map[string]any](ctx, c.r, "users/info/v1", allMods...)
+	resp, err := c.r.GetTo[map[string]any](ctx, "users/info/v1", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -600,7 +599,7 @@ func (c *apiClient) GetV2ClassifiedsArchive(ctx context.Context, limit int, skip
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[ListingScrollable](ctx, c.r, "v2/classifieds/archive", allMods...)
+	resp, err := c.r.GetTo[ListingScrollable](ctx, "v2/classifieds/archive", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -617,7 +616,7 @@ func (c *apiClient) DeleteV2ClassifiedsArchive(ctx context.Context, req ListingD
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.DeleteTo[map[string]any](ctx, c.r, "v2/classifieds/archive", nil, allMods...)
+	resp, err := c.r.DeleteTo[map[string]any](ctx, "v2/classifieds/archive", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -632,7 +631,7 @@ func (c *apiClient) GetV2ClassifiedsArchiveBatch(ctx context.Context, mods ...ao
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[map[string]any](ctx, c.r, "v2/classifieds/archive/batch", allMods...)
+	resp, err := c.r.GetTo[map[string]any](ctx, "v2/classifieds/archive/batch", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -647,7 +646,7 @@ func (c *apiClient) DeleteV2ClassifiedsArchiveBatch(ctx context.Context, mods ..
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.DeleteTo[map[string]any](ctx, c.r, "v2/classifieds/archive/batch", nil, allMods...)
+	resp, err := c.r.DeleteTo[map[string]any](ctx, "v2/classifieds/archive/batch", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -663,7 +662,7 @@ func (c *apiClient) GetV2ClassifiedsArchiveByListingID(ctx context.Context, list
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[Listing](ctx, c.r, "v2/classifieds/archive/{listingId}", allMods...)
+	resp, err := c.r.GetTo[Listing](ctx, "v2/classifieds/archive/{listingId}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -679,7 +678,7 @@ func (c *apiClient) DeleteV2ClassifiedsArchiveByListingID(ctx context.Context, l
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.DeleteTo[map[string]any](ctx, c.r, "v2/classifieds/archive/{listingId}", nil, allMods...)
+	resp, err := c.r.DeleteTo[map[string]any](ctx, "v2/classifieds/archive/{listingId}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -695,7 +694,7 @@ func (c *apiClient) PatchV2ClassifiedsArchiveByListingID(ctx context.Context, li
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PatchTo[Listing](ctx, c.r, "v2/classifieds/archive/{listingId}", req, allMods...)
+	resp, err := c.r.PatchTo[Listing](ctx, "v2/classifieds/archive/{listingId}", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -711,7 +710,7 @@ func (c *apiClient) PostV2ClassifiedsArchiveByListingIDPublish(ctx context.Conte
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[Listing](ctx, c.r, "v2/classifieds/archive/{listingId}/publish", nil, allMods...)
+	resp, err := c.r.PostTo[Listing](ctx, "v2/classifieds/archive/{listingId}/publish", nil, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -738,7 +737,7 @@ func (c *apiClient) GetV2ClassifiedsListings(ctx context.Context, bumpedSince in
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[ListingScrollable](ctx, c.r, "v2/classifieds/listings", allMods...)
+	resp, err := c.r.GetTo[ListingScrollable](ctx, "v2/classifieds/listings", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -753,7 +752,7 @@ func (c *apiClient) PostV2ClassifiedsListings(ctx context.Context, req ListingRe
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[Listing](ctx, c.r, "v2/classifieds/listings", req, allMods...)
+	resp, err := c.r.PostTo[Listing](ctx, "v2/classifieds/listings", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -770,7 +769,7 @@ func (c *apiClient) DeleteV2ClassifiedsListings(ctx context.Context, req Listing
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.DeleteTo[map[string]any](ctx, c.r, "v2/classifieds/listings", nil, allMods...)
+	resp, err := c.r.DeleteTo[map[string]any](ctx, "v2/classifieds/listings", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -785,7 +784,7 @@ func (c *apiClient) PostV2ClassifiedsListingsArchiveAll(ctx context.Context, mod
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[map[string]any](ctx, c.r, "v2/classifieds/listings/archiveAll", nil, allMods...)
+	resp, err := c.r.PostTo[map[string]any](ctx, "v2/classifieds/listings/archiveAll", nil, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -800,7 +799,7 @@ func (c *apiClient) GetV2ClassifiedsListingsBatch(ctx context.Context, mods ...a
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[map[string]any](ctx, c.r, "v2/classifieds/listings/batch", allMods...)
+	resp, err := c.r.GetTo[map[string]any](ctx, "v2/classifieds/listings/batch", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -815,7 +814,7 @@ func (c *apiClient) PostV2ClassifiedsListingsBatch(ctx context.Context, req []Li
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[[]*ListingBatchCreateResult](ctx, c.r, "v2/classifieds/listings/batch", req, allMods...)
+	resp, err := c.r.PostTo[[]*ListingBatchCreateResult](ctx, "v2/classifieds/listings/batch", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -830,7 +829,7 @@ func (c *apiClient) PatchV2ClassifiedsListingsBatch(ctx context.Context, req []L
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PatchTo[ListingBatchUpdateResponse](ctx, c.r, "v2/classifieds/listings/batch", req, allMods...)
+	resp, err := c.r.PatchTo[ListingBatchUpdateResponse](ctx, "v2/classifieds/listings/batch", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -845,7 +844,7 @@ func (c *apiClient) DeleteV2ClassifiedsListingsBatch(ctx context.Context, mods .
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.DeleteTo[map[string]any](ctx, c.r, "v2/classifieds/listings/batch", nil, allMods...)
+	resp, err := c.r.DeleteTo[map[string]any](ctx, "v2/classifieds/listings/batch", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -860,7 +859,7 @@ func (c *apiClient) PostV2ClassifiedsListingsPublishAll(ctx context.Context, mod
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[map[string]any](ctx, c.r, "v2/classifieds/listings/publishAll", nil, allMods...)
+	resp, err := c.r.PostTo[map[string]any](ctx, "v2/classifieds/listings/publishAll", nil, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -876,7 +875,7 @@ func (c *apiClient) GetV2ClassifiedsListingsByListingID(ctx context.Context, lis
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[Listing](ctx, c.r, "v2/classifieds/listings/{listingId}", allMods...)
+	resp, err := c.r.GetTo[Listing](ctx, "v2/classifieds/listings/{listingId}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -892,7 +891,7 @@ func (c *apiClient) DeleteV2ClassifiedsListingsByListingID(ctx context.Context, 
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.DeleteTo[map[string]any](ctx, c.r, "v2/classifieds/listings/{listingId}", nil, allMods...)
+	resp, err := c.r.DeleteTo[map[string]any](ctx, "v2/classifieds/listings/{listingId}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -908,7 +907,7 @@ func (c *apiClient) PatchV2ClassifiedsListingsByListingID(ctx context.Context, l
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PatchTo[Listing](ctx, c.r, "v2/classifieds/listings/{listingId}", req, allMods...)
+	resp, err := c.r.PatchTo[Listing](ctx, "v2/classifieds/listings/{listingId}", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -924,7 +923,7 @@ func (c *apiClient) PostV2ClassifiedsListingsByListingIDArchive(ctx context.Cont
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[Listing](ctx, c.r, "v2/classifieds/listings/{listingId}/archive", nil, allMods...)
+	resp, err := c.r.PostTo[Listing](ctx, "v2/classifieds/listings/{listingId}/archive", nil, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -940,7 +939,7 @@ func (c *apiClient) PostV2ClassifiedsListingsByListingIDDemote(ctx context.Conte
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[Listing](ctx, c.r, "v2/classifieds/listings/{listingId}/demote", nil, allMods...)
+	resp, err := c.r.PostTo[Listing](ctx, "v2/classifieds/listings/{listingId}/demote", nil, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -956,7 +955,7 @@ func (c *apiClient) PostV2ClassifiedsListingsByListingIDPromote(ctx context.Cont
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[Listing](ctx, c.r, "v2/classifieds/listings/{listingId}/promote", nil, allMods...)
+	resp, err := c.r.PostTo[Listing](ctx, "v2/classifieds/listings/{listingId}/promote", nil, allMods...)
 	if err != nil {
 		return nil, err
 	}

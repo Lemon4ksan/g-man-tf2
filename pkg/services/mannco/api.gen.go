@@ -15,11 +15,10 @@ import (
 	"github.com/lemon4ksan/aoni/fast"
 	"github.com/lemon4ksan/aoni/mod"
 	"github.com/lemon4ksan/aoni/option"
-	"github.com/lemon4ksan/aoni/request"
 )
 
 type apiClient struct {
-	r request.Requester
+	r *aoni.Client
 }
 
 func newAPI(doer any, opts ...aoni.ClientOption) *apiClient {
@@ -30,7 +29,7 @@ func newAPI(doer any, opts ...aoni.ClientOption) *apiClient {
 	var baseOpts []aoni.ClientOption
 	baseOpts = append(baseOpts, opts...)
 
-	targetReq := request.Configure(doer, append([]aoni.ClientOption{option.WithBaseURL("https://api.mannco.store/")}, baseOpts...)...)
+	targetReq := aoni.NewClient(doer, append([]aoni.ClientOption{option.WithBaseURL("https://api.mannco.store/")}, baseOpts...)...)
 
 	return &apiClient{
 		r: targetReq,
@@ -47,8 +46,8 @@ func New(doer any, opts ...aoni.ClientOption) API {
 	return newAPI(doer, opts...)
 }
 
-// R returns the underlying request.Requester used by the client.
-func (c *apiClient) R() request.Requester {
+// R returns the underlying *aoni.Client used by the client.
+func (c *apiClient) R() *aoni.Client {
 	return c.r
 }
 
@@ -66,7 +65,7 @@ func (c *apiClient) PostLogin(ctx context.Context, req LoginRequest, mods ...aon
 		ErrorMsg string        `json:"error,omitempty"`
 	}
 
-	resp, err := request.PostTo[envelope](ctx, c.r, "user/login", req, allMods...)
+	resp, err := c.r.PostTo[envelope](ctx, "user/login", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +89,7 @@ func (c *apiClient) Disconnect(ctx context.Context, mods ...aoni.RequestModifier
 		ErrorMsg string              `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "user/disconnect", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "user/disconnect", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +113,7 @@ func (c *apiClient) GetUserInfo(ctx context.Context, mods ...aoni.RequestModifie
 		ErrorMsg string            `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "user/infos", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "user/infos", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +137,7 @@ func (c *apiClient) GetBalance(ctx context.Context, mods ...aoni.RequestModifier
 		ErrorMsg string               `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "user/balance", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "user/balance", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +161,7 @@ func (c *apiClient) GetNotifications(ctx context.Context, mods ...aoni.RequestMo
 		ErrorMsg string                 `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "user/notifications", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "user/notifications", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +187,7 @@ func (c *apiClient) GetIPSessionList(ctx context.Context, query IPSessionListQue
 		ErrorMsg string                 `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "user/ipList", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "user/ipList", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +212,7 @@ func (c *apiClient) GetPublicStoreProfile(ctx context.Context, identifier string
 		ErrorMsg string              `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "user/store/{identifier}", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "user/store/{identifier}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +236,7 @@ func (c *apiClient) GetSalesInfos(ctx context.Context, mods ...aoni.RequestModif
 		ErrorMsg string              `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "user/getSalesInfos", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "user/getSalesInfos", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +262,7 @@ func (c *apiClient) GetSalesChartInfos(ctx context.Context, query SalesChartQuer
 		ErrorMsg string              `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "user/getSalesChartInfos", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "user/getSalesChartInfos", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +288,7 @@ func (c *apiClient) GetBalanceHistory(ctx context.Context, query BalanceHistoryQ
 		ErrorMsg string                  `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "user/getBalanceHistory", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "user/getBalanceHistory", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +314,7 @@ func (c *apiClient) GetPurchaseHistory(ctx context.Context, query PurchaseHistor
 		ErrorMsg string                   `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "user/getPurchaseHistory", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "user/getPurchaseHistory", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -341,7 +340,7 @@ func (c *apiClient) GetSalesHistory(ctx context.Context, query SalesHistoryQuery
 		ErrorMsg string                `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "user/getSalesHistory", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "user/getSalesHistory", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +367,7 @@ func (c *apiClient) GetSalesHistoryForUser(ctx context.Context, userid string, q
 		ErrorMsg string                `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "user/getSalesHistory/{userid}", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "user/getSalesHistory/{userid}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -394,7 +393,7 @@ func (c *apiClient) GetCashoutHistory(ctx context.Context, query CashoutHistoryQ
 		ErrorMsg string                  `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "user/getCashoutHistory", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "user/getCashoutHistory", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -420,7 +419,7 @@ func (c *apiClient) GetTransactionHistory(ctx context.Context, query Transaction
 		ErrorMsg string                      `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "user/getTransactionHistory", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "user/getTransactionHistory", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -450,7 +449,7 @@ func (c *apiClient) GetTransactionDetails(ctx context.Context, transactionID str
 		ErrorMsg string                      `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "user/getTransactionDetails", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "user/getTransactionDetails", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -476,7 +475,7 @@ func (c *apiClient) GetCryptoDepositHistory(ctx context.Context, query CryptoDep
 		ErrorMsg string                        `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "user/getCryptoDepositHistory", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "user/getCryptoDepositHistory", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -501,7 +500,7 @@ func (c *apiClient) GetItemDetails(ctx context.Context, item string, mods ...aon
 		ErrorMsg string       `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "item/details/{item}", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "item/details/{item}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -532,7 +531,7 @@ func (c *apiClient) GetItemSalesGraph(ctx context.Context, item string, period s
 		ErrorMsg string          `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "item/salesGraph/{item}", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "item/salesGraph/{item}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -557,7 +556,7 @@ func (c *apiClient) GetListingCountDirect(ctx context.Context, item string, mods
 		ErrorMsg string        `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "item/listing/count/{item}", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "item/listing/count/{item}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -583,7 +582,7 @@ func (c *apiClient) GetListingCountForUser(ctx context.Context, item string, use
 		ErrorMsg string        `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "item/listing/count/{item}/{userid}", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "item/listing/count/{item}/{userid}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -610,7 +609,7 @@ func (c *apiClient) GetItemListingsDirect(ctx context.Context, item string, quer
 		ErrorMsg string    `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "item/listing/{item}", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "item/listing/{item}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -638,7 +637,7 @@ func (c *apiClient) GetItemListingsForUser(ctx context.Context, item string, use
 		ErrorMsg string    `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "item/listing/{item}/{userid}", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "item/listing/{item}/{userid}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -663,7 +662,7 @@ func (c *apiClient) GetBuyOrderList(ctx context.Context, item string, mods ...ao
 		ErrorMsg string        `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "item/buyorderList/{item}", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "item/buyorderList/{item}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -688,7 +687,7 @@ func (c *apiClient) GetItemPricing(ctx context.Context, item string, mods ...aon
 		ErrorMsg string       `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "item/pricing/{item}", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "item/pricing/{item}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -718,7 +717,7 @@ func (c *apiClient) GetBulkPricingDirect(ctx context.Context, items string, mods
 		ErrorMsg string       `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "item/pricing/bulk", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "item/pricing/bulk", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -743,7 +742,7 @@ func (c *apiClient) GetBackpackDetailsTF2(ctx context.Context, backpackid string
 		ErrorMsg string                   `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "item/details/fromid/{backpackid}", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "item/details/fromid/{backpackid}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -768,7 +767,7 @@ func (c *apiClient) GetBackpackDetailsCS2(ctx context.Context, backpackid string
 		ErrorMsg string                   `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "item/cs/details/fromid/{backpackid}", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "item/cs/details/fromid/{backpackid}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -792,7 +791,7 @@ func (c *apiClient) GetItemsOnSale(ctx context.Context, mods ...aoni.RequestModi
 		ErrorMsg string                `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "inventory/onSale", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "inventory/onSale", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -816,7 +815,7 @@ func (c *apiClient) GetItemsInInventory(ctx context.Context, mods ...aoni.Reques
 		ErrorMsg string                `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "inventory/onInventory", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "inventory/onInventory", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -840,7 +839,7 @@ func (c *apiClient) SetPriceDirect(ctx context.Context, req SetPriceReq, mods ..
 		ErrorMsg string                    `json:"error,omitempty"`
 	}
 
-	resp, err := request.PostTo[envelope](ctx, c.r, "inventory/price", req, allMods...)
+	resp, err := c.r.PostTo[envelope](ctx, "inventory/price", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -864,7 +863,7 @@ func (c *apiClient) WithdrawDirect(ctx context.Context, req WithdrawReq, mods ..
 		ErrorMsg string            `json:"error,omitempty"`
 	}
 
-	resp, err := request.PostTo[envelope](ctx, c.r, "inventory/withdraw", req, allMods...)
+	resp, err := c.r.PostTo[envelope](ctx, "inventory/withdraw", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -888,7 +887,7 @@ func (c *apiClient) CreateBuyOrderDirect(ctx context.Context, req CreateBuyOrder
 		ErrorMsg string           `json:"error,omitempty"`
 	}
 
-	resp, err := request.PostTo[envelope](ctx, c.r, "item/buyorder", req, allMods...)
+	resp, err := c.r.PostTo[envelope](ctx, "item/buyorder", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -912,7 +911,7 @@ func (c *apiClient) UpdateBuyOrderDirect(ctx context.Context, req UpdateBuyOrder
 		ErrorMsg string `json:"error,omitempty"`
 	}
 
-	resp, err := request.PostTo[envelope](ctx, c.r, "item/buyorder/update", req, allMods...)
+	resp, err := c.r.PostTo[envelope](ctx, "item/buyorder/update", req, allMods...)
 	if err != nil {
 		return "", err
 	}
@@ -936,7 +935,7 @@ func (c *apiClient) RemoveBuyOrderDirect(ctx context.Context, req RemoveBuyOrder
 		ErrorMsg string           `json:"error,omitempty"`
 	}
 
-	resp, err := request.PostTo[envelope](ctx, c.r, "item/buyorder/remove", req, allMods...)
+	resp, err := c.r.PostTo[envelope](ctx, "item/buyorder/remove", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -961,7 +960,7 @@ func (c *apiClient) GetUserBuyOrdersForItem(ctx context.Context, item string, mo
 		ErrorMsg string                `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "user/buyorder/{item}", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "user/buyorder/{item}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -987,7 +986,7 @@ func (c *apiClient) GetUserBuyOrders(ctx context.Context, query GetUserBuyOrders
 		ErrorMsg string                    `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "user/getBuyorder", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "user/getBuyorder", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -1011,7 +1010,7 @@ func (c *apiClient) GetCart(ctx context.Context, mods ...aoni.RequestModifier) (
 		ErrorMsg string           `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "cart/get", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "cart/get", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -1035,7 +1034,7 @@ func (c *apiClient) AddToCartDirect(ctx context.Context, req AddCartReq, mods ..
 		ErrorMsg string           `json:"error,omitempty"`
 	}
 
-	resp, err := request.PostTo[envelope](ctx, c.r, "cart/add", req, allMods...)
+	resp, err := c.r.PostTo[envelope](ctx, "cart/add", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -1059,7 +1058,7 @@ func (c *apiClient) BulkAddToCartDirect(ctx context.Context, req BulkAddCartReq,
 		ErrorMsg string           `json:"error,omitempty"`
 	}
 
-	resp, err := request.PostTo[envelope](ctx, c.r, "cart/bulk", req, allMods...)
+	resp, err := c.r.PostTo[envelope](ctx, "cart/bulk", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -1083,7 +1082,7 @@ func (c *apiClient) RemoveFromCartDirect(ctx context.Context, req RemoveCartReq,
 		ErrorMsg string           `json:"error,omitempty"`
 	}
 
-	resp, err := request.PostTo[envelope](ctx, c.r, "cart/remove", req, allMods...)
+	resp, err := c.r.PostTo[envelope](ctx, "cart/remove", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -1107,7 +1106,7 @@ func (c *apiClient) UpdateCart(ctx context.Context, mods ...aoni.RequestModifier
 		ErrorMsg string              `json:"error,omitempty"`
 	}
 
-	resp, err := request.PostTo[envelope](ctx, c.r, "cart/update", nil, allMods...)
+	resp, err := c.r.PostTo[envelope](ctx, "cart/update", nil, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -1132,7 +1131,7 @@ func (c *apiClient) GetDepositInfo(ctx context.Context, game int, mods ...aoni.R
 		ErrorMsg string                  `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "deposit/{game}", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "deposit/{game}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -1157,7 +1156,7 @@ func (c *apiClient) GetInstantSellInfo(ctx context.Context, game int, mods ...ao
 		ErrorMsg string                  `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "deposit/instantSell/{game}", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "deposit/instantSell/{game}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -1181,7 +1180,7 @@ func (c *apiClient) CreateDepositTrade(ctx context.Context, req CreateDepositTra
 		ErrorMsg string                      `json:"error,omitempty"`
 	}
 
-	resp, err := request.PostTo[envelope](ctx, c.r, "deposit/trade", req, allMods...)
+	resp, err := c.r.PostTo[envelope](ctx, "deposit/trade", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -1205,7 +1204,7 @@ func (c *apiClient) CreateInstantSellTrade(ctx context.Context, req CreateInstan
 		ErrorMsg string                      `json:"error,omitempty"`
 	}
 
-	resp, err := request.PostTo[envelope](ctx, c.r, "deposit/trade/instant", req, allMods...)
+	resp, err := c.r.PostTo[envelope](ctx, "deposit/trade/instant", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -1230,7 +1229,7 @@ func (c *apiClient) GetDepositTradeStatus(ctx context.Context, tradeid int, mods
 		ErrorMsg string               `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "deposit/tradeStatus/{tradeid}", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "deposit/tradeStatus/{tradeid}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -1254,7 +1253,7 @@ func (c *apiClient) GetActiveTrades(ctx context.Context, mods ...aoni.RequestMod
 		ErrorMsg string             `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "trades/active", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "trades/active", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -1278,7 +1277,7 @@ func (c *apiClient) GetAllTrades(ctx context.Context, mods ...aoni.RequestModifi
 		ErrorMsg string             `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "trades/all", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "trades/all", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -1308,7 +1307,7 @@ func (c *apiClient) ResendTrade(ctx context.Context, id int, mods ...aoni.Reques
 		ErrorMsg string               `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "trade/resend", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "trade/resend", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -1332,7 +1331,7 @@ func (c *apiClient) GetReceivedOffers(ctx context.Context, mods ...aoni.RequestM
 		ErrorMsg string                     `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "offers/received", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "offers/received", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -1356,7 +1355,7 @@ func (c *apiClient) GetMyOffers(ctx context.Context, mods ...aoni.RequestModifie
 		ErrorMsg string  `json:"error,omitempty"`
 	}
 
-	resp, err := request.GetTo[envelope](ctx, c.r, "offers/my", allMods...)
+	resp, err := c.r.GetTo[envelope](ctx, "offers/my", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -1380,7 +1379,7 @@ func (c *apiClient) CreateOfferDirect(ctx context.Context, req CreateOfferReq, m
 		ErrorMsg string                `json:"error,omitempty"`
 	}
 
-	resp, err := request.PostTo[envelope](ctx, c.r, "offers/create", req, allMods...)
+	resp, err := c.r.PostTo[envelope](ctx, "offers/create", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -1404,7 +1403,7 @@ func (c *apiClient) AcceptOfferDirect(ctx context.Context, req OfferActionReq, m
 		ErrorMsg string                `json:"error,omitempty"`
 	}
 
-	resp, err := request.PostTo[envelope](ctx, c.r, "offers/accept", req, allMods...)
+	resp, err := c.r.PostTo[envelope](ctx, "offers/accept", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -1428,7 +1427,7 @@ func (c *apiClient) DeclineOfferDirect(ctx context.Context, req OfferActionReq, 
 		ErrorMsg string                `json:"error,omitempty"`
 	}
 
-	resp, err := request.PostTo[envelope](ctx, c.r, "offers/decline", req, allMods...)
+	resp, err := c.r.PostTo[envelope](ctx, "offers/decline", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -1452,7 +1451,7 @@ func (c *apiClient) RemoveOfferDirect(ctx context.Context, req OfferActionReq, m
 		ErrorMsg string                `json:"error,omitempty"`
 	}
 
-	resp, err := request.PostTo[envelope](ctx, c.r, "offers/remove", req, allMods...)
+	resp, err := c.r.PostTo[envelope](ctx, "offers/remove", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -1477,7 +1476,7 @@ func (c *apiClient) InitiatePayment(ctx context.Context, provider string, req Pa
 		ErrorMsg string           `json:"error,omitempty"`
 	}
 
-	resp, err := request.PostTo[envelope](ctx, c.r, "payment/{provider}", req, allMods...)
+	resp, err := c.r.PostTo[envelope](ctx, "payment/{provider}", req, allMods...)
 	if err != nil {
 		return nil, err
 	}

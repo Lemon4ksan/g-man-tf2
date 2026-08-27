@@ -13,9 +13,10 @@ import (
 	"slices"
 	"time"
 
+	"github.com/lemon4ksan/foundation/async/event"
+	"github.com/lemon4ksan/foundation/async/fsm"
+	"github.com/lemon4ksan/foundation/async/task"
 	"github.com/lemon4ksan/g-man/pkg/behavior/achievements"
-	"github.com/lemon4ksan/g-man/protobuf/custom"
-	pb_steam "github.com/lemon4ksan/g-man/protobuf/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 	"github.com/lemon4ksan/g-man/pkg/steam/module"
@@ -24,14 +25,13 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/steam/service"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/apps"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/gc"
-	"github.com/lemon4ksan/foundation/async/event"
-	"github.com/lemon4ksan/foundation/async/fsm"
-	"github.com/lemon4ksan/foundation/async/task"
+	"github.com/lemon4ksan/g-man/protobuf/custom"
+	pb_steam "github.com/lemon4ksan/g-man/protobuf/steam"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/protoadapt"
 
-	pb "github.com/lemon4ksan/g-man-tf2/protobuf/tf2"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
+	pb "github.com/lemon4ksan/g-man-tf2/protobuf/tf2"
 )
 
 const (

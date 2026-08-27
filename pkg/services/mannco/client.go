@@ -11,9 +11,7 @@ import (
 	"sync"
 
 	"github.com/lemon4ksan/aoni"
-	"github.com/lemon4ksan/aoni/fast"
 	"github.com/lemon4ksan/aoni/option"
-	"github.com/lemon4ksan/aoni/request"
 )
 
 // BaseURL is the default endpoint host for the Mannco.store API.
@@ -71,26 +69,12 @@ type Client struct {
 	API
 	mu    sync.Mutex
 	token string
-	r     request.Requester
+	r     *aoni.Client
 }
 
 // NewClient initializes a new client with the predefined Mannco.store host,
 // standard User-Agent, and BaseResponse envelope configurations, backed by fast.Client by default.
 func NewClient(rest any, opts ...aoni.ClientOption) *Client {
-	var doer aoni.RequestDoer
-	if rest != nil {
-		if d, ok := rest.(aoni.RequestDoer); ok {
-			doer = d
-		} else if r, ok := rest.(request.Requester); ok {
-			if d, ok := any(r).(aoni.RequestDoer); ok {
-				doer = d
-			}
-		}
-	}
-	if doer == nil {
-		doer = fast.NewClient()
-	}
-
 	c := &Client{}
 
 	defaultOpts := []aoni.ClientOption{
@@ -100,7 +84,7 @@ func NewClient(rest any, opts ...aoni.ClientOption) *Client {
 	}
 
 	allOpts := append(defaultOpts, opts...)
-	r := request.AsRequester(aoni.Configure(doer, allOpts...))
+	r := aoni.NewClient(rest, allOpts...)
 	c.r = r
 	c.API = New(r)
 
@@ -146,8 +130,8 @@ func (c *Client) Login(ctx context.Context, apiKey string, mods ...aoni.RequestM
 	return nil
 }
 
-// R returns the underlying request.Requester used by the client.
-func (c *Client) R() request.Requester {
+// R returns the underlying *aoni.Client used by the client.
+func (c *Client) R() *aoni.Client {
 	return c.r
 }
 

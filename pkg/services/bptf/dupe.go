@@ -15,7 +15,6 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/codec/decode"
-	"github.com/lemon4ksan/aoni/request"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 )
@@ -23,12 +22,12 @@ import (
 // BackpackTFChecker implements duplicate checking via the backpack.tf website.
 // Even though this is scraping, we use the transport and settings from the configured requester.
 type BackpackTFChecker struct {
-	r request.Requester
+	r *aoni.Client
 }
 
 // NewBackpackTFChecker creates a new checker instance.
-// It takes a request.Requester, which already contains HTTP transport and middleware settings.
-func NewBackpackTFChecker(r request.Requester) *BackpackTFChecker {
+// It takes a *aoni.Client, which already contains HTTP transport and middleware settings.
+func NewBackpackTFChecker(r *aoni.Client) *BackpackTFChecker {
 	return &BackpackTFChecker{
 		r: r,
 	}
@@ -44,7 +43,7 @@ func (c *BackpackTFChecker) CheckHistory(
 
 	allMods := append([]aoni.RequestModifier{decode.WithRaw()}, mods...)
 
-	resp, err := request.GetTo[[]byte](ctx, c.r, path, allMods...)
+	resp, err := c.r.GetTo[[]byte](ctx, path, allMods...)
 	if err != nil {
 		var apiErr *aoni.APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {

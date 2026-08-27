@@ -201,9 +201,9 @@ type IPSessionListResponse struct {
 // IPSessionListQuery holds filtering queries for GetIPSessionList.
 // @aoni:dto casing=camel_case omitempty=true
 type IPSessionListQuery struct {
-	Page    int    `url:"page,omitempty"`
-	PerPage int    `url:"perPage,omitempty"`
-	Expire  string `url:"expire,omitempty"`
+	Page    int    `query:"page,omitempty"`
+	PerPage int    `query:"perPage,omitempty"`
+	Expire  string `query:"expire,omitempty"`
 }
 
 // PublicStoreProfile contains public metadata for user store lookup.
@@ -237,9 +237,9 @@ type SalesInfosResponse map[string]any
 // SalesChartQuery holds query parameters for GetSalesChartInfos.
 // @aoni:dto casing=snake_case omitempty=true
 type SalesChartQuery struct {
-	Period    string `url:"period,omitempty"`
-	Chart     any    `url:"chart,omitempty"`
-	ChartOnly any    `url:"chart_only,omitempty"`
+	Period    string `query:"period,omitempty"`
+	Chart     any    `query:"chart,omitempty"`
+	ChartOnly any    `query:"chart_only,omitempty"`
 }
 
 // SalesChartResponse contains chart data points.
@@ -258,8 +258,8 @@ type BalanceHistoryResponse struct {
 // BalanceHistoryQuery holds query parameters for GetBalanceHistory.
 // @aoni:dto casing=camel_case omitempty=true
 type BalanceHistoryQuery struct {
-	Page  int `url:"page,omitempty"`
-	Limit int `url:"limit,omitempty"`
+	Page  int `query:"page,omitempty"`
+	Limit int `query:"limit,omitempty"`
 }
 
 // PurchaseHistoryRow represents purchase history entry.
@@ -275,17 +275,17 @@ type PurchaseHistoryResponse struct {
 // PurchaseHistoryQuery holds query parameters for GetPurchaseHistory.
 // @aoni:dto casing=camel_case omitempty=true
 type PurchaseHistoryQuery struct {
-	Page  int `url:"page,omitempty"`
-	Count int `url:"count,omitempty"`
+	Page  int `query:"page,omitempty"`
+	Count int `query:"count,omitempty"`
 }
 
 // SalesHistoryQuery holds search and paging parameters for GetSalesHistory.
 // @aoni:dto casing=camel_case omitempty=true
 type SalesHistoryQuery struct {
-	Page    int    `url:"page,omitempty"`
-	PerPage int    `url:"perPage,omitempty"`
-	Range   string `url:"range,omitempty"`
-	Search  string `url:"search,omitempty"`
+	Page    int    `query:"page,omitempty"`
+	PerPage int    `query:"perPage,omitempty"`
+	Range   string `query:"range,omitempty"`
+	Search  string `query:"search,omitempty"`
 }
 
 // SalesHistoryRow represents item sales checkout entry.
@@ -311,10 +311,10 @@ type CashoutHistoryResponse struct {
 // CashoutHistoryQuery holds paging configuration for GetCashoutHistory.
 // @aoni:dto casing=camel_case omitempty=true
 type CashoutHistoryQuery struct {
-	Page    int `url:"page,omitempty"`
-	Count   int `url:"count,omitempty"`
-	PerPage int `url:"perpage,omitempty"`
-	Limit   int `url:"limit,omitempty"`
+	Page    int `query:"page,omitempty"`
+	Count   int `query:"count,omitempty"`
+	PerPage int `query:"perpage,omitempty"`
+	Limit   int `query:"limit,omitempty"`
 }
 
 // TransactionHistoryRow represents general ledger transaction.
@@ -330,15 +330,15 @@ type TransactionHistoryResponse struct {
 // TransactionHistoryQuery holds query configurations for GetTransactionHistory.
 // @aoni:dto casing=camel_case omitempty=true
 type TransactionHistoryQuery struct {
-	Page   int    `url:"page,omitempty"`
-	Limit  int    `url:"limit,omitempty"`
-	Search string `url:"search,omitempty"`
+	Page   int    `query:"page,omitempty"`
+	Limit  int    `query:"limit,omitempty"`
+	Search string `query:"search,omitempty"`
 }
 
 // TransactionDetailsQuery represents query params for GetTransactionDetails.
 // @aoni:dto casing=camel_case omitempty=true
 type TransactionDetailsQuery struct {
-	TransactionID string `url:"transactionId"`
+	TransactionID string `query:"transactionId"`
 }
 
 // TransactionDetailsResponse wraps ledger entry transaction details.
@@ -360,10 +360,10 @@ type CryptoDepositHistoryResponse struct {
 // CryptoDepositHistoryQuery holds query parameters for GetCryptoDepositHistory.
 // @aoni:dto casing=camel_case omitempty=true
 type CryptoDepositHistoryQuery struct {
-	Page    int `url:"page,omitempty"`
-	Count   int `url:"count,omitempty"`
-	PerPage int `url:"perpage,omitempty"`
-	Limit   int `url:"limit,omitempty"`
+	Page    int `query:"page,omitempty"`
+	Count   int `query:"count,omitempty"`
+	PerPage int `query:"perpage,omitempty"`
+	Limit   int `query:"limit,omitempty"`
 }
 
 // ItemInfo represents the metadata of a catalog item in the database.
@@ -470,7 +470,7 @@ type ItemSalesGraph struct {
 // SalesGraphReq contains query parameters for GetItemSalesGraph.
 // @aoni:dto casing=snake_case omitempty=true
 type SalesGraphReq struct {
-	Period string `url:"period"`
+	Period string `query:"period"`
 }
 
 // ListingCount returns the number of active sales listings for an item.
@@ -549,9 +549,9 @@ func (l *Listing) UnmarshalJSON(data []byte) error {
 // ListingsReq holds query arguments for GetItemListings.
 // @aoni:dto casing=camel_case omitempty=true
 type ListingsReq struct {
-	Count int `url:"count,omitempty"`
-	Page  int `url:"page,omitempty"`
-	Game  int `url:"game,omitempty"`
+	Count int `query:"count,omitempty"`
+	Page  int `query:"page,omitempty"`
+	Game  int `query:"game,omitempty"`
 }
 
 // BuyOrderTier represents a single buy order grouping at a specific price point.
@@ -614,7 +614,7 @@ type BulkPricing struct {
 // BulkPricingReq contains query parameters for GetBulkPricing.
 // @aoni:dto casing=camel_case omitempty=true
 type BulkPricingReq struct {
-	Items string `url:"items"`
+	Items string `query:"items"`
 }
 
 // BackpackItemDetails contains full properties of a TF2 or CS2 inventory item.
@@ -947,10 +947,10 @@ type UserAllBuyOrdersResponse struct {
 // GetUserBuyOrdersQuery holds filtering arguments for GetUserBuyOrders.
 // @aoni:dto casing=camel_case omitempty=true
 type GetUserBuyOrdersQuery struct {
-	Page     int    `url:"page,omitempty"`
-	Count    int    `url:"count,omitempty"`
-	Search   string `url:"search,omitempty"`
-	Undercut any    `url:"undercut,omitempty"`
+	Page     int    `query:"page,omitempty"`
+	Count    int    `query:"count,omitempty"`
+	Search   string `query:"search,omitempty"`
+	Undercut any    `query:"undercut,omitempty"`
 }
 
 // CartItem represents an item row currently inside the user's cart.
@@ -1418,5 +1418,5 @@ func (r *ResendTradeResponse) UnmarshalJSON(data []byte) error {
 // ResendTradeQuery holds query arguments for ResendTrade.
 // @aoni:dto casing=camel_case omitempty=true
 type ResendTradeQuery struct {
-	ID int `url:"id"`
+	ID int `query:"id"`
 }

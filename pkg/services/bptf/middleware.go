@@ -7,7 +7,7 @@ package bptf
 import (
 	"time"
 
-	"github.com/lemon4ksan/foundation/async/log"
+	log "github.com/lemon4ksan/foundation/async/logkit"
 	"github.com/lemon4ksan/foundation/generic"
 	"github.com/lemon4ksan/g-man/pkg/trading/engine"
 

@@ -541,9 +541,10 @@ func TestManager_HandleUpdateRequested_Skipping(t *testing.T) {
 
 	sm, _ := setupSchema(t, Config{})
 	raw := minimalRawSchema()
-	sm.schema = New(raw)
-	sm.schema.Version = "http://example.com/items_game.txt"
-	sm.lastGCVersion = 1234
+	schema := New(raw)
+	schema.Version = "http://example.com/items_game.txt"
+	sm.schema.Store(schema)
+	sm.lastGCVersion.Store(1234)
 
 	sm.handleUpdateRequested(&UpdateRequestedEvent{
 		Version:      1234,
@@ -554,7 +555,7 @@ func TestManager_HandleUpdateRequested_Skipping(t *testing.T) {
 		Version:      5678,
 		ItemsGameURL: "http://example.com/items_game.txt",
 	})
-	assert.Equal(t, uint32(5678), sm.lastGCVersion)
+	assert.Equal(t, uint32(5678), sm.lastGCVersion.Load())
 }
 
 func TestManager_RefreshLoop_Error(t *testing.T) {
@@ -682,7 +683,7 @@ func TestCoverage_ManagerCache(t *testing.T) {
 	assert.NoError(t, err)
 
 	raw := minimalRawSchema()
-	sm.schema = New(raw)
+	sm.schema.Store(New(raw))
 
 	err = sm.saveToCache()
 	assert.NoError(t, err)
@@ -691,7 +692,7 @@ func TestCoverage_ManagerCache(t *testing.T) {
 	err = sm2.loadFromCache()
 	assert.NoError(t, err)
 	assert.NotNil(t, sm2.Get())
-	assert.Equal(t, len(sm.schema.Raw.Schema.Items), len(sm2.schema.Raw.Schema.Items))
+	assert.Equal(t, len(sm.Get().Raw.Schema.Items), len(sm2.Get().Raw.Schema.Items))
 
 	err = os.WriteFile(cacheFile, []byte(`{"version":"1"}`), 0o644)
 	assert.NoError(t, err)

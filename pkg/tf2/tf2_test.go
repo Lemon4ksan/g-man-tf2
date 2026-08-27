@@ -13,22 +13,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lemon4ksan/foundation/async/event"
+	log "github.com/lemon4ksan/foundation/async/logkit"
+	"github.com/lemon4ksan/foundation/async/task"
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	bm "github.com/lemon4ksan/g-man/pkg/steam/module"
 	"github.com/lemon4ksan/g-man/pkg/steam/protocol"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/apps"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/gc"
 	module "github.com/lemon4ksan/g-man/pkg/test/mock"
-	"github.com/lemon4ksan/foundation/async/event"
-	"github.com/lemon4ksan/foundation/async/log"
-	"github.com/lemon4ksan/foundation/async/task"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	pb "github.com/lemon4ksan/g-man-tf2/protobuf/tf2"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
+	pb "github.com/lemon4ksan/g-man-tf2/protobuf/tf2"
 )
 
 const (

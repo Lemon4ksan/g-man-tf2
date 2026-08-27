@@ -16,11 +16,10 @@ import (
 	"github.com/lemon4ksan/aoni/fast"
 	"github.com/lemon4ksan/aoni/mod"
 	"github.com/lemon4ksan/aoni/option"
-	"github.com/lemon4ksan/aoni/request"
 )
 
 type apiClient struct {
-	r request.Requester
+	r *aoni.Client
 }
 
 func newAPI(doer any, opts ...aoni.ClientOption) *apiClient {
@@ -31,7 +30,7 @@ func newAPI(doer any, opts ...aoni.ClientOption) *apiClient {
 	var baseOpts []aoni.ClientOption
 	baseOpts = append(baseOpts, opts...)
 
-	targetReq := request.Configure(doer, append([]aoni.ClientOption{option.WithBaseURL("https://pricedb.io/api/")}, baseOpts...)...)
+	targetReq := aoni.NewClient(doer, append([]aoni.ClientOption{option.WithBaseURL("https://pricedb.io/api/")}, baseOpts...)...)
 
 	return &apiClient{
 		r: targetReq,
@@ -48,8 +47,8 @@ func New(doer any, opts ...aoni.ClientOption) API {
 	return newAPI(doer, opts...)
 }
 
-// R returns the underlying request.Requester used by the client.
-func (c *apiClient) R() request.Requester {
+// R returns the underlying *aoni.Client used by the client.
+func (c *apiClient) R() *aoni.Client {
 	return c.r
 }
 
@@ -62,7 +61,7 @@ func (c *apiClient) GetItem(ctx context.Context, sku string, mods ...aoni.Reques
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[Price](ctx, c.r, "item/{sku}", allMods...)
+	resp, err := c.r.GetTo[Price](ctx, "item/{sku}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +76,7 @@ func (c *apiClient) PostItemsBulk(ctx context.Context, req bulkRequest, mods ...
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[[]*Price](ctx, c.r, "items-bulk", req, allMods...)
+	resp, err := c.r.PostTo[[]*Price](ctx, "items-bulk", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +99,7 @@ func (c *apiClient) Search(ctx context.Context, q string, limit int, mods ...aon
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[SearchResult](ctx, c.r, "search", allMods...)
+	resp, err := c.r.GetTo[SearchResult](ctx, "search", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +123,7 @@ func (c *apiClient) GetHistory(ctx context.Context, sku string, start int64, end
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[[]*Price](ctx, c.r, "item-history/{sku}", allMods...)
+	resp, err := c.r.GetTo[[]*Price](ctx, "item-history/{sku}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +139,7 @@ func (c *apiClient) GetStats(ctx context.Context, sku string, mods ...aoni.Reque
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[ItemStats](ctx, c.r, "item-stats/{sku}", allMods...)
+	resp, err := c.r.GetTo[ItemStats](ctx, "item-stats/{sku}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +156,7 @@ func (c *apiClient) Compare(ctx context.Context, sku1 string, sku2 string, mods 
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[CompareResult](ctx, c.r, "compare/{sku1}/{sku2}", allMods...)
+	resp, err := c.r.GetTo[CompareResult](ctx, "compare/{sku1}/{sku2}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +172,7 @@ func (c *apiClient) TriggerPriceCheck(ctx context.Context, sku string, mods ...a
 		allMods = append(allMods, mods...)
 	}
 
-	_, err := request.PostTo[request.NoResponse](ctx, c.r, "autob/items/{sku}", nil, allMods...)
+	_, err := c.r.PostTo[aoni.NoResponse](ctx, "autob/items/{sku}", nil, allMods...)
 	return err
 }
 
@@ -185,7 +184,7 @@ func (c *apiClient) HealthCheck(ctx context.Context, mods ...aoni.RequestModifie
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[CacheStats](ctx, c.r, "cache-stats", allMods...)
+	resp, err := c.r.GetTo[CacheStats](ctx, "cache-stats", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +199,7 @@ func (c *apiClient) GetHealth(ctx context.Context, mods ...aoni.RequestModifier)
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[string](ctx, c.r, "", allMods...)
+	resp, err := c.r.GetTo[string](ctx, "", allMods...)
 	if err != nil {
 		return "", err
 	}
@@ -215,7 +214,7 @@ func (c *apiClient) GetItems(ctx context.Context, mods ...aoni.RequestModifier) 
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[[]*ItemBrief](ctx, c.r, "items", allMods...)
+	resp, err := c.r.GetTo[[]*ItemBrief](ctx, "items", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +229,7 @@ func (c *apiClient) GetLatestPrices(ctx context.Context, mods ...aoni.RequestMod
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[[]*Price](ctx, c.r, "latest-prices", allMods...)
+	resp, err := c.r.GetTo[[]*Price](ctx, "latest-prices", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +252,7 @@ func (c *apiClient) GetPrices(ctx context.Context, limit int, offset int, mods .
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[PriceHistoryResponse](ctx, c.r, "prices", allMods...)
+	resp, err := c.r.GetTo[PriceHistoryResponse](ctx, "prices", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +268,7 @@ func (c *apiClient) GetSnapshot(ctx context.Context, timestamp int64, mods ...ao
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[[]*Price](ctx, c.r, "snapshot/{timestamp}", allMods...)
+	resp, err := c.r.GetTo[[]*Price](ctx, "snapshot/{timestamp}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -295,7 +294,7 @@ func (c *apiClient) GetGraph(ctx context.Context, sku string, header bool, heigh
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[string](ctx, c.r, "graph/{sku}", allMods...)
+	resp, err := c.r.GetTo[string](ctx, "graph/{sku}", allMods...)
 	if err != nil {
 		return "", err
 	}
@@ -310,7 +309,7 @@ func (c *apiClient) GetAutobItems(ctx context.Context, mods ...aoni.RequestModif
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[AutobItemsResponse](ctx, c.r, "autob/items", allMods...)
+	resp, err := c.r.GetTo[AutobItemsResponse](ctx, "autob/items", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +325,7 @@ func (c *apiClient) GetAutobItem(ctx context.Context, sku string, mods ...aoni.R
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[Price](ctx, c.r, "autob/items/{sku}", allMods...)
+	resp, err := c.r.GetTo[Price](ctx, "autob/items/{sku}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -334,7 +333,7 @@ func (c *apiClient) GetAutobItem(ctx context.Context, sku string, mods ...aoni.R
 }
 
 type skuClientClient struct {
-	r request.Requester
+	r *aoni.Client
 }
 
 func newSKUClient(doer any, opts ...aoni.ClientOption) *skuClientClient {
@@ -345,7 +344,7 @@ func newSKUClient(doer any, opts ...aoni.ClientOption) *skuClientClient {
 	var baseOpts []aoni.ClientOption
 	baseOpts = append(baseOpts, opts...)
 
-	targetReq := request.Configure(doer, append([]aoni.ClientOption{option.WithBaseURL("https://sku.pricedb.io/api/")}, baseOpts...)...)
+	targetReq := aoni.NewClient(doer, append([]aoni.ClientOption{option.WithBaseURL("https://sku.pricedb.io/api/")}, baseOpts...)...)
 
 	return &skuClientClient{
 		r: targetReq,
@@ -357,8 +356,8 @@ func NewSKUClient(doer any, opts ...aoni.ClientOption) SKUClient {
 	return newSKUClient(doer, opts...)
 }
 
-// R returns the underlying request.Requester used by the client.
-func (c *skuClientClient) R() request.Requester {
+// R returns the underlying *aoni.Client used by the client.
+func (c *skuClientClient) R() *aoni.Client {
 	return c.r
 }
 
@@ -371,7 +370,7 @@ func (c *skuClientClient) ResolveName(ctx context.Context, name string, mods ...
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[ResolvedItem](ctx, c.r, "name/{name}", allMods...)
+	resp, err := c.r.GetTo[ResolvedItem](ctx, "name/{name}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -387,7 +386,7 @@ func (c *skuClientClient) ResolveSKU(ctx context.Context, sku string, mods ...ao
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[ResolvedItem](ctx, c.r, "sku/{sku}", allMods...)
+	resp, err := c.r.GetTo[ResolvedItem](ctx, "sku/{sku}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -402,7 +401,7 @@ func (c *skuClientClient) GetSchema(ctx context.Context, mods ...aoni.RequestMod
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[map[string]any](ctx, c.r, "schema", allMods...)
+	resp, err := c.r.GetTo[map[string]any](ctx, "schema", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -451,7 +450,7 @@ func (c *skuClientClient) ListEffects(ctx context.Context, mods ...aoni.RequestM
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[EffectsResponse](ctx, c.r, "effect/list", allMods...)
+	resp, err := c.r.GetTo[EffectsResponse](ctx, "effect/list", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -467,7 +466,7 @@ func (c *skuClientClient) GetEffectByID(ctx context.Context, id int, mods ...aon
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[EffectResponse](ctx, c.r, "effect/{id}", allMods...)
+	resp, err := c.r.GetTo[EffectResponse](ctx, "effect/{id}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -483,7 +482,7 @@ func (c *skuClientClient) GetEffectByName(ctx context.Context, name string, mods
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[EffectResponse](ctx, c.r, "effect/name/{name}", allMods...)
+	resp, err := c.r.GetTo[EffectResponse](ctx, "effect/name/{name}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -498,7 +497,7 @@ func (c *skuClientClient) ListPaints(ctx context.Context, mods ...aoni.RequestMo
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[PaintsResponse](ctx, c.r, "paint/list", allMods...)
+	resp, err := c.r.GetTo[PaintsResponse](ctx, "paint/list", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -514,7 +513,7 @@ func (c *skuClientClient) GetPaintByID(ctx context.Context, id int, mods ...aoni
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[PaintResponse](ctx, c.r, "paint/{id}", allMods...)
+	resp, err := c.r.GetTo[PaintResponse](ctx, "paint/{id}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -530,7 +529,7 @@ func (c *skuClientClient) GetPaintByName(ctx context.Context, name string, mods 
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[PaintResponse](ctx, c.r, "paint/name/{name}", allMods...)
+	resp, err := c.r.GetTo[PaintResponse](ctx, "paint/name/{name}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -545,7 +544,7 @@ func (c *skuClientClient) ListWears(ctx context.Context, mods ...aoni.RequestMod
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[WearsResponse](ctx, c.r, "wear/list", allMods...)
+	resp, err := c.r.GetTo[WearsResponse](ctx, "wear/list", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -561,7 +560,7 @@ func (c *skuClientClient) GetWearByID(ctx context.Context, id int, mods ...aoni.
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[WearResponse](ctx, c.r, "wear/{id}", allMods...)
+	resp, err := c.r.GetTo[WearResponse](ctx, "wear/{id}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -576,7 +575,7 @@ func (c *skuClientClient) ListPaintKits(ctx context.Context, mods ...aoni.Reques
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[PaintKitsResponse](ctx, c.r, "paintkit/list", allMods...)
+	resp, err := c.r.GetTo[PaintKitsResponse](ctx, "paintkit/list", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -592,7 +591,7 @@ func (c *skuClientClient) GetPaintKitByID(ctx context.Context, id int, mods ...a
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[PaintKitResponse](ctx, c.r, "paintkit/{id}", allMods...)
+	resp, err := c.r.GetTo[PaintKitResponse](ctx, "paintkit/{id}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -608,7 +607,7 @@ func (c *skuClientClient) GetPaintKitByName(ctx context.Context, name string, mo
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[PaintKitResponse](ctx, c.r, "paintkit/name/{name}", allMods...)
+	resp, err := c.r.GetTo[PaintKitResponse](ctx, "paintkit/name/{name}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -623,7 +622,7 @@ func (c *skuClientClient) ListStrangeParts(ctx context.Context, mods ...aoni.Req
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[StrangePartsResponse](ctx, c.r, "strangepart/list", allMods...)
+	resp, err := c.r.GetTo[StrangePartsResponse](ctx, "strangepart/list", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -638,7 +637,7 @@ func (c *skuClientClient) ListCrateSeries(ctx context.Context, mods ...aoni.Requ
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[CrateSeriesResponse](ctx, c.r, "crateseries/list", allMods...)
+	resp, err := c.r.GetTo[CrateSeriesResponse](ctx, "crateseries/list", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -653,7 +652,7 @@ func (c *skuClientClient) ListCraftWeapons(ctx context.Context, mods ...aoni.Req
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[WeaponsResponse](ctx, c.r, "craftweapon/list", allMods...)
+	resp, err := c.r.GetTo[WeaponsResponse](ctx, "craftweapon/list", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -668,7 +667,7 @@ func (c *skuClientClient) ListUncraftWeapons(ctx context.Context, mods ...aoni.R
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[WeaponsResponse](ctx, c.r, "uncraftweapon/list", allMods...)
+	resp, err := c.r.GetTo[WeaponsResponse](ctx, "uncraftweapon/list", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -683,7 +682,7 @@ func (c *skuClientClient) ListQualities(ctx context.Context, mods ...aoni.Reques
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[QualitiesResponse](ctx, c.r, "quality/list", allMods...)
+	resp, err := c.r.GetTo[QualitiesResponse](ctx, "quality/list", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -698,7 +697,7 @@ func (c *skuClientClient) DownloadSchema(ctx context.Context, mods ...aoni.Reque
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[map[string]any](ctx, c.r, "download", allMods...)
+	resp, err := c.r.GetTo[map[string]any](ctx, "download", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -706,7 +705,7 @@ func (c *skuClientClient) DownloadSchema(ctx context.Context, mods ...aoni.Reque
 }
 
 type spellClientClient struct {
-	r request.Requester
+	r *aoni.Client
 }
 
 func newSpellClient(doer any, opts ...aoni.ClientOption) *spellClientClient {
@@ -717,7 +716,7 @@ func newSpellClient(doer any, opts ...aoni.ClientOption) *spellClientClient {
 	var baseOpts []aoni.ClientOption
 	baseOpts = append(baseOpts, opts...)
 
-	targetReq := request.Configure(doer, append([]aoni.ClientOption{option.WithBaseURL("https://spell.pricedb.io/api/")}, baseOpts...)...)
+	targetReq := aoni.NewClient(doer, append([]aoni.ClientOption{option.WithBaseURL("https://spell.pricedb.io/api/")}, baseOpts...)...)
 
 	return &spellClientClient{
 		r: targetReq,
@@ -729,8 +728,8 @@ func NewSpellClient(doer any, opts ...aoni.ClientOption) SpellClient {
 	return newSpellClient(doer, opts...)
 }
 
-// R returns the underlying request.Requester used by the client.
-func (c *spellClientClient) R() request.Requester {
+// R returns the underlying *aoni.Client used by the client.
+func (c *spellClientClient) R() *aoni.Client {
 	return c.r
 }
 
@@ -750,7 +749,7 @@ func (c *spellClientClient) PredictSpellPrice(ctx context.Context, spells string
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[SpellPredictionResponse](ctx, c.r, "spell/predict", allMods...)
+	resp, err := c.r.GetTo[SpellPredictionResponse](ctx, "spell/predict", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -765,7 +764,7 @@ func (c *spellClientClient) PredictSpellItem(ctx context.Context, req PredictSpe
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[PredictSpellItemResponse](ctx, c.r, "spell/predict-spell-item", req, allMods...)
+	resp, err := c.r.PostTo[PredictSpellItemResponse](ctx, "spell/predict-spell-item", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -786,7 +785,7 @@ func (c *spellClientClient) GetSpellValue(ctx context.Context, ids string, mods 
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[SpellValueResponse](ctx, c.r, "spell/spell-value", allMods...)
+	resp, err := c.r.GetTo[SpellValueResponse](ctx, "spell/spell-value", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -801,7 +800,7 @@ func (c *spellClientClient) GetSpellAnalytics(ctx context.Context, mods ...aoni.
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[[]*SpellAnalyticsEntry](ctx, c.r, "spell/spell-analytics", allMods...)
+	resp, err := c.r.GetTo[[]*SpellAnalyticsEntry](ctx, "spell/spell-analytics", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -824,7 +823,7 @@ func (c *spellClientClient) GetItemSpellPremium(ctx context.Context, item string
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[ItemSpellPremiumResponse](ctx, c.r, "spell/item-spell-premium", allMods...)
+	resp, err := c.r.GetTo[ItemSpellPremiumResponse](ctx, "spell/item-spell-premium", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -845,7 +844,7 @@ func (c *spellClientClient) GetSpellByID(ctx context.Context, id int, mods ...ao
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[SpellMetadata](ctx, c.r, "spell/spell-id-to-name", allMods...)
+	resp, err := c.r.GetTo[SpellMetadata](ctx, "spell/spell-id-to-name", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -866,7 +865,7 @@ func (c *spellClientClient) GetSpellByName(ctx context.Context, name string, mod
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[SpellMetadata](ctx, c.r, "spell/spell-name-to-id", allMods...)
+	resp, err := c.r.GetTo[SpellMetadata](ctx, "spell/spell-name-to-id", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -881,7 +880,7 @@ func (c *spellClientClient) ListSpells(ctx context.Context, mods ...aoni.Request
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[[]*SpellMetadata](ctx, c.r, "spell/spells", allMods...)
+	resp, err := c.r.GetTo[[]*SpellMetadata](ctx, "spell/spells", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -896,7 +895,7 @@ func (c *spellClientClient) GetSpellFetcherStatus(ctx context.Context, mods ...a
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[FetcherStatusResponse](ctx, c.r, "spell/fetcher-status", allMods...)
+	resp, err := c.r.GetTo[FetcherStatusResponse](ctx, "spell/fetcher-status", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -911,7 +910,7 @@ func (c *spellClientClient) GetSpellHealth(ctx context.Context, mods ...aoni.Req
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[SpellHealthResponse](ctx, c.r, "spell/health", allMods...)
+	resp, err := c.r.GetTo[SpellHealthResponse](ctx, "spell/health", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -926,7 +925,7 @@ func (c *spellClientClient) GetServiceStats(ctx context.Context, mods ...aoni.Re
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[ServiceStatsResponse](ctx, c.r, "stats", allMods...)
+	resp, err := c.r.GetTo[ServiceStatsResponse](ctx, "stats", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -941,7 +940,7 @@ func (c *spellClientClient) GetUnifiedStatus(ctx context.Context, mods ...aoni.R
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[UnifiedStatusResponse](ctx, c.r, "spell/status-proxy", allMods...)
+	resp, err := c.r.GetTo[UnifiedStatusResponse](ctx, "spell/status-proxy", allMods...)
 	if err != nil {
 		return nil, err
 	}

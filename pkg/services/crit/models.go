@@ -234,4 +234,3 @@ type AuthTokenResponse struct {
 	Token  string `json:"token"`
 	Reason string `json:"reason,omitempty"`
 }
-

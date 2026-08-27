@@ -18,14 +18,14 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/andygrunwald/vdf"
 	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/codec/decode"
 	"github.com/lemon4ksan/aoni/option"
-	"github.com/lemon4ksan/aoni/request"
-	"github.com/lemon4ksan/foundation/async/log"
+	log "github.com/lemon4ksan/foundation/async/logkit"
 	"github.com/lemon4ksan/foundation/codec/json"
 	"github.com/lemon4ksan/foundation/generic"
 	"github.com/lemon4ksan/g-man/pkg/steam"
@@ -154,14 +154,13 @@ type Manager struct {
 
 	config  Config
 	service service.Doer
-	rest    request.Requester
+	rest    *aoni.Client
 	pricedb pricedb.SKUClient
 
-	mu            sync.RWMutex
-	schema        *Schema
+	schema        atomic.Pointer[Schema]
 	refreshMu     sync.Mutex
 	refreshChan   chan struct{}
-	lastGCVersion uint32
+	lastGCVersion atomic.Uint32
 }
 
 func NewManager(cfg Config) *Manager {
@@ -185,8 +184,8 @@ func (m *Manager) Init(init module.InitContext) error {
 	m.service = init.Service()
 	m.rest = init.Rest()
 
-	if aoniClient := request.UnwrapClient(m.rest); aoniClient != nil {
-		unlimitedClient := aoniClient.With(option.WithMaxResponseSize(0))
+	if m.rest != nil {
+		unlimitedClient := m.rest.With(option.WithMaxResponseSize(0))
 		m.rest = unlimitedClient
 		m.pricedb = pricedb.NewSKUClient(unlimitedClient)
 	} else {
@@ -226,10 +225,10 @@ func (m *Manager) StartAuthed(ctx context.Context, _ module.AuthContext) error {
 		if err := m.Refresh(ctx); err != nil {
 			return fmt.Errorf("initial schema fetch failed: %w", err)
 		}
-	} else {
+	} else if s := m.schema.Load(); s != nil {
 		m.Logger.InfoContext(ctx, "Schema loaded from cache",
-			log.Time("time", m.schema.Time),
-			log.Int("items", m.schema.ItemCount()),
+			log.Time("time", s.Time),
+			log.Int("items", s.ItemCount()),
 		)
 	}
 
@@ -243,23 +242,20 @@ func (m *Manager) StartAuthed(ctx context.Context, _ module.AuthContext) error {
 }
 
 func (m *Manager) handleUpdateRequested(req *UpdateRequestedEvent) {
-	m.mu.Lock()
-	hasSchema := m.schema != nil
+	currentSchema := m.schema.Load()
+	hasSchema := currentSchema != nil
 	currentVersion := ""
 
 	if hasSchema {
-		currentVersion = m.schema.Version
+		currentVersion = currentSchema.Version
 	}
 
-	lastGC := m.lastGCVersion
-	m.mu.Unlock()
+	lastGC := m.lastGCVersion.Load()
 
 	if hasSchema {
 		if req.ItemsGameURL != "" && currentVersion == req.ItemsGameURL {
 			if req.Version != 0 && lastGC != req.Version {
-				m.mu.Lock()
-				m.lastGCVersion = req.Version
-				m.mu.Unlock()
+				m.lastGCVersion.Store(req.Version)
 			}
 
 			return
@@ -272,18 +268,13 @@ func (m *Manager) handleUpdateRequested(req *UpdateRequestedEvent) {
 
 	m.Go(func(ctx context.Context) {
 		if err := m.doRefresh(ctx, req.ItemsGameURL); err == nil {
-			m.mu.Lock()
-			m.lastGCVersion = req.Version
-			m.mu.Unlock()
+			m.lastGCVersion.Store(req.Version)
 		}
 	})
 }
 
 func (m *Manager) Get() *Schema {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	return m.schema
+	return m.schema.Load()
 }
 
 func (m *Manager) Refresh(ctx context.Context) error {
@@ -387,16 +378,15 @@ func (m *Manager) refreshPriceDB(ctx context.Context) error {
 		return err
 	}
 
-	m.mu.Lock()
-	if v, ok := resp["version"].(string); ok && v != "" {
-		m.schema.Version = stringpool.Intern(v)
-	}
+	if s := m.schema.Load(); s != nil {
+		if v, ok := resp["version"].(string); ok && v != "" {
+			s.Version = stringpool.Intern(v)
+		}
 
-	if t, ok := resp["time"].(float64); ok && t > 0 {
-		m.schema.Time = time.Unix(0, int64(t)*int64(time.Millisecond))
+		if t, ok := resp["time"].(float64); ok && t > 0 {
+			s.Time = time.Unix(0, int64(t)*int64(time.Millisecond))
+		}
 	}
-
-	m.mu.Unlock()
 
 	_ = m.saveToCache()
 	m.Bus.Publish(&UpdatedEvent{Timestamp: time.Now()})
@@ -455,7 +445,7 @@ func (m *Manager) refreshFromGame(ctx context.Context, itemsGameURL string) erro
 
 func (m *Manager) downloadRawURL(ctx context.Context, rawURL string) ([]byte, error) {
 	if m != nil && m.rest != nil {
-		resp, err := request.GetTo[[]byte](ctx, m.rest, rawURL, decode.WithRaw())
+		resp, err := m.rest.GetTo[[]byte](ctx, rawURL, decode.WithRaw())
 		if err == nil && resp != nil {
 			return *resp, nil
 		}
@@ -857,9 +847,7 @@ func (m *Manager) buildSchemaDirect(
 	newSchema.Version = overview.ItemsGameURL
 	newSchema.Time = time.Now()
 
-	m.mu.Lock()
-	m.schema = newSchema
-	m.mu.Unlock()
+	m.schema.Store(newSchema)
 
 	debug.FreeOSMemory()
 
@@ -906,7 +894,7 @@ func (m *Manager) shouldExcludeItem(item *Item) bool {
 
 func (m *Manager) getSchemaOverviewDirect(ctx context.Context) (*OverviewResponse, error) {
 	params := struct {
-		Language string `url:"language"`
+		Language string `query:"language"`
 	}{"English"}
 
 	resp, err := service.WebAPI[OverviewResponse](
@@ -926,8 +914,8 @@ func (m *Manager) getSchemaItemsDirect(ctx context.Context) ([]*Item, error) {
 
 	for {
 		params := struct {
-			Language string `url:"language"`
-			Start    int    `url:"start"`
+			Language string `query:"language"`
+			Start    int    `query:"start"`
 		}{"English", next}
 
 		resp, err := service.WebAPI[ItemsResponse](
@@ -1160,10 +1148,7 @@ func (m *Manager) saveToCache() error {
 		return nil
 	}
 
-	m.mu.RLock()
-	s := m.schema
-	m.mu.RUnlock()
-
+	s := m.schema.Load()
 	if s == nil {
 		return nil
 	}
@@ -1225,10 +1210,7 @@ func (m *Manager) loadFromCache() error {
 	}
 
 	loadedSchema := New(&raw)
-
-	m.mu.Lock()
-	m.schema = loadedSchema
-	m.mu.Unlock()
+	m.schema.Store(loadedSchema)
 
 	return nil
 }

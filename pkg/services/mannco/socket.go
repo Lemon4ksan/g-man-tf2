@@ -13,8 +13,7 @@ import (
 	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/mod"
 	"github.com/lemon4ksan/aoni/realtime/ws"
-	"github.com/lemon4ksan/aoni/request"
-	"github.com/lemon4ksan/foundation/async/log"
+	log "github.com/lemon4ksan/foundation/async/logkit"
 	"github.com/lemon4ksan/foundation/codec/json"
 	"github.com/lemon4ksan/foundation/generic"
 )
@@ -183,7 +182,7 @@ type SocketManager struct {
 // NewSocketManager creates a new WebSocket client for Mannco.store Market Stream.
 func NewSocketManager(rawURL string, r aoni.WebSocketDialer, logger log.Logger) *SocketManager {
 	if r == nil {
-		r = request.DefaultClient
+		r = aoni.DefaultClient
 	}
 
 	if logger == nil {

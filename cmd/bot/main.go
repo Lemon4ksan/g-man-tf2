@@ -17,6 +17,11 @@ import (
 	"time"
 
 	"github.com/lemon4ksan/aoni"
+	"github.com/lemon4ksan/aoni/option"
+	"github.com/lemon4ksan/aoni/x/otel"
+	"github.com/lemon4ksan/foundation/async/event"
+	log "github.com/lemon4ksan/foundation/async/logkit"
+	"github.com/lemon4ksan/foundation/generic"
 	"github.com/lemon4ksan/g-man/pkg/behavior"
 	"github.com/lemon4ksan/g-man/pkg/behavior/achievements"
 	"github.com/lemon4ksan/g-man/pkg/behavior/guard"
@@ -32,9 +37,6 @@ import (
 	"github.com/lemon4ksan/g-man/pkg/storage/jsonfile"
 	"github.com/lemon4ksan/g-man/pkg/trading/engine"
 	webtrading "github.com/lemon4ksan/g-man/pkg/trading/web"
-	"github.com/lemon4ksan/foundation/async/event"
-	"github.com/lemon4ksan/foundation/async/log"
-	"github.com/lemon4ksan/foundation/generic"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/backpack"
 	"github.com/lemon4ksan/g-man-tf2/pkg/crafting"
@@ -94,8 +96,23 @@ func NewBot(cfg Config, store storage.Provider, logger log.Logger) (*Bot, error)
 
 	logger = logger.With(log.String("module", "bot"))
 
-	// Setup standard HTTP clients and TF2 API services
-	r := aoni.NewClient(&http.Client{Timeout: 30 * time.Second})
+	// Setup standard HTTP clients with Zero-Dependency OpenTelemetry distributed tracing
+	tracer := otel.NewTracer("gman-tf2-bot",
+		otel.WithTracerServiceName("g-man-tf2"),
+		otel.WithExporter(otel.NewOTLPHTTPExporter("http://localhost:4318")),
+	)
+
+	r := aoni.NewClient(&http.Client{Timeout: 30 * time.Second},
+		option.WithMiddleware(otel.NewMiddleware(
+			otel.WithTracer(tracer),
+			otel.WithTraceEvents(true),
+			otel.WithCustomAttributes(func(req aoni.Request) []otel.Attribute {
+				return []otel.Attribute{
+					otel.StringAttr("bot.username", cfg.Username),
+				}
+			}),
+		)),
+	)
 	bptfClient := bptf.NewAPI(r)
 	pdbClient := pricedb.NewClient(r)
 	critClient := crit.NewClient(r, cfg.CritAPIKey)

@@ -9,7 +9,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/lemon4ksan/aoni/request"
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/bptf"
@@ -17,13 +17,13 @@ import (
 
 // BansManager handles checking users against various ban lists.
 type BansManager struct {
-	rest       request.Requester
+	rest       *aoni.Client
 	bptfClient bptf.API
 	mptfAPIKey string
 }
 
 // NewBansManager creates a new bans manager.
-func NewBansManager(r request.Requester, bptfClient bptf.API, mptfAPIKey string) *BansManager {
+func NewBansManager(r *aoni.Client, bptfClient bptf.API, mptfAPIKey string) *BansManager {
 	return &BansManager{
 		rest:       r,
 		bptfClient: bptfClient,
@@ -90,8 +90,8 @@ func (m *BansManager) checkMarketplaceTF(ctx context.Context, steamID id.ID) (bo
 	url := "https://marketplace.tf/api/Bans/GetUserBan/v2"
 
 	req := struct {
-		Key     string `url:"key"`
-		SteamID string `url:"steamid"`
+		Key     string `query:"key"`
+		SteamID string `query:"steamid"`
 	}{
 		Key:     m.mptfAPIKey,
 		SteamID: steamID.String(),
@@ -105,7 +105,7 @@ func (m *BansManager) checkMarketplaceTF(ctx context.Context, steamID id.ID) (bo
 		} `json:"results"`
 	}
 
-	resp, err := request.PostTo[MPTFResponse](ctx, m.rest, url, req)
+	resp, err := m.rest.PostTo[MPTFResponse](ctx, url, req)
 	if err != nil {
 		return false, err
 	}

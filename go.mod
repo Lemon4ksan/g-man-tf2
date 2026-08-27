@@ -11,7 +11,7 @@ require (
 	github.com/lemon4ksan/g-man v0.14.0-rc.1
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/time v0.15.0
-	google.golang.org/protobuf v1.36.11
+	google.golang.org/protobuf v1.36.12
 )
 
 require (
@@ -25,7 +25,9 @@ require (
 	github.com/andybalholm/brotli v1.2.2 // indirect
 	github.com/andybalholm/cascadia v1.3.4 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/goccy/go-json v0.10.6 // indirect
 	github.com/klauspost/compress v1.19.1 // indirect
+	github.com/lemon4ksan/miyako v0.3.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/refraction-networking/utls v1.8.2 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect

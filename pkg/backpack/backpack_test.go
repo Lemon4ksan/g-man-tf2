@@ -9,22 +9,22 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/lemon4ksan/foundation/async/event"
+	log "github.com/lemon4ksan/foundation/async/logkit"
+	"github.com/lemon4ksan/foundation/generic"
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/apps"
 	"github.com/lemon4ksan/g-man/pkg/steam/sys/gc"
 	"github.com/lemon4ksan/g-man/pkg/test/mock"
 	"github.com/lemon4ksan/g-man/pkg/trading"
-	"github.com/lemon4ksan/foundation/async/event"
-	"github.com/lemon4ksan/foundation/async/log"
-	"github.com/lemon4ksan/foundation/generic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/currency"
-	pb "github.com/lemon4ksan/g-man-tf2/protobuf/tf2"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
 	"github.com/lemon4ksan/g-man-tf2/pkg/tf2"
+	pb "github.com/lemon4ksan/g-man-tf2/protobuf/tf2"
 )
 
 // Shared mock definitions used across all backpack tests

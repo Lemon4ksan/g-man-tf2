@@ -2270,10 +2270,10 @@ func BenchmarkSchema_ItemFromName(b *testing.B) {
 func BenchmarkSchema_SKUFromItem(b *testing.B) {
 	s := createMockSchema()
 	item := &sku.Item{
-		Defindex:   13,
-		Quality:    QualityUnique,
-		Tradable:   true,
-		Craftable:  true,
+		Defindex:  13,
+		Quality:   QualityUnique,
+		Tradable:  true,
+		Craftable: true,
 	}
 
 	b.ResetTimer()

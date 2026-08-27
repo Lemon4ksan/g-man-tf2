@@ -13,8 +13,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/lemon4ksan/aoni/request"
-	"github.com/lemon4ksan/foundation/async/log"
+	log "github.com/lemon4ksan/foundation/async/logkit"
 	"github.com/lemon4ksan/foundation/codec/json"
 	"github.com/lemon4ksan/foundation/generic"
 	"github.com/lemon4ksan/g-man/pkg/steam/community"
@@ -137,8 +136,12 @@ func (r *Remote) CanTradeWithoutHold(ctx context.Context, token string) (bool, e
 		MyHold    int `json:"my_escrow"`
 	}
 
-	query := fmt.Sprintf("steamid_target=%d&trade_offer_access_token=%s", r.steamID, url.QueryEscape(token))
-	resp, err := request.GetTo[respType](ctx, request.AsRequester(r.client), "IEconService/GetTradeHoldDurations/v1?"+query)
+	params := url.Values{
+		"steamid_target":           {strconv.FormatUint(r.steamID, 10)},
+		"trade_offer_access_token": {token},
+	}
+
+	resp, err := service.WebAPI[respType](ctx, r.client, "GET", "IEconService", "GetTradeHoldDurations", 1, params)
 	if err != nil {
 		return false, err
 	}

@@ -27,15 +27,15 @@ type V2ErrorResponse = V2errorResponse
 
 // GetSteamUsersInventoryV2Query wraps query parameters for inventory requests.
 type GetSteamUsersInventoryV2Query struct {
-	Cursor   string        `url:"cursor,omitempty"`
-	Language SteamLanguage `url:"language,omitempty"`
+	Cursor   string        `query:"cursor,omitempty"`
+	Language SteamLanguage `query:"language,omitempty"`
 }
 
 // GetSteamMarketPriceV2Query wraps query parameters for market price requests.
 type GetSteamMarketPriceV2Query struct {
-	MarketHashName string        `url:"market_hash_name,omitempty"`
-	AppID          int           `url:"app_id,omitempty"`
-	Currency       SteamCurrency `url:"currency,omitempty"`
+	MarketHashName string        `query:"market_hash_name,omitempty"`
+	AppID          int           `query:"app_id,omitempty"`
+	Currency       SteamCurrency `query:"currency,omitempty"`
 }
 
 // Client wraps API with optional client-level ergonomics.

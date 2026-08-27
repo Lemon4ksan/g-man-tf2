@@ -16,7 +16,6 @@ import (
 	"github.com/lemon4ksan/aoni/mod"
 	"github.com/lemon4ksan/aoni/option"
 	"github.com/lemon4ksan/aoni/realtime/stream"
-	"github.com/lemon4ksan/aoni/request"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
@@ -36,7 +35,7 @@ type Client struct {
 	API
 	mu    sync.Mutex
 	token string
-	r     request.Requester
+	r     *aoni.Client
 }
 
 // NewClient creates a new crit.tf API client targeting v2 endpoints by default using fast.Client.
@@ -61,7 +60,7 @@ func NewClient(doer aoni.RequestDoer, apiKey string, opts ...aoni.ClientOption) 
 	}
 
 	allOpts := append(defaultOpts, opts...)
-	r := request.AsRequester(aoni.Configure(doer, allOpts...))
+	r := aoni.NewClient(doer, allOpts...)
 	c.r = r
 	c.API = New(r)
 
@@ -88,14 +87,15 @@ func (c *Client) With(opts ...aoni.ClientOption) *Client {
 		return c
 	}
 
+	r := c.r.With(opts...)
 	return &Client{
-		r:   request.AsRequester(aoni.Configure(c.r, opts...)),
-		API: New(request.AsRequester(aoni.Configure(c.r, opts...))),
+		r:   r,
+		API: New(r),
 	}
 }
 
-// R yields the underlying low-level Requester.
-func (c *Client) R() request.Requester {
+// R yields the underlying low-level Client.
+func (c *Client) R() *aoni.Client {
 	return c.r
 }
 
@@ -251,7 +251,7 @@ func (c *Client) StreamEvents(
 	var allMods []aoni.RequestModifier
 	if token != "" {
 		req := struct {
-			Token string `url:"token"`
+			Token string `query:"token"`
 		}{Token: token}
 		allMods = append(allMods, mod.WithQuery(req))
 	}
@@ -270,7 +270,7 @@ func (c *Client) StreamEvents(
 func (c *Client) SendDeadMansRequest(ctx context.Context, mods ...aoni.RequestModifier) (bool, error) {
 	payload := map[string]bool{"alive": true}
 
-	resp, err := request.Post(ctx, c.r, "bot-api/alive", payload, mods...)
+	resp, err := c.r.Raw().Post(ctx, "bot-api/alive", append(mods, mod.WithJSON(payload))...)
 	if err != nil {
 		return false, fmt.Errorf("crit: dead man request failed: %w", err)
 	}

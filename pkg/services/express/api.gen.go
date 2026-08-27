@@ -18,11 +18,10 @@ import (
 	"github.com/lemon4ksan/aoni/fast"
 	"github.com/lemon4ksan/aoni/mod"
 	"github.com/lemon4ksan/aoni/option"
-	"github.com/lemon4ksan/aoni/request"
 )
 
 type apiClient struct {
-	r request.Requester
+	r *aoni.Client
 }
 
 func newAPI(doer any, opts ...aoni.ClientOption) *apiClient {
@@ -33,7 +32,7 @@ func newAPI(doer any, opts ...aoni.ClientOption) *apiClient {
 	var baseOpts []aoni.ClientOption
 	baseOpts = append(baseOpts, opts...)
 
-	targetReq := request.Configure(doer, append([]aoni.ClientOption{option.WithBaseURL("https://api.express-load.com/")}, baseOpts...)...)
+	targetReq := aoni.NewClient(doer, append([]aoni.ClientOption{option.WithBaseURL("https://api.express-load.com/")}, baseOpts...)...)
 
 	return &apiClient{
 		r: targetReq,
@@ -50,8 +49,8 @@ func New(doer any, opts ...aoni.ClientOption) API {
 	return newAPI(doer, opts...)
 }
 
-// R returns the underlying request.Requester used by the client.
-func (c *apiClient) R() request.Requester {
+// R returns the underlying *aoni.Client used by the client.
+func (c *apiClient) R() *aoni.Client {
 	return c.r
 }
 
@@ -63,7 +62,7 @@ func (c *apiClient) GetLiveHealth(ctx context.Context, mods ...aoni.RequestModif
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[map[string]any](ctx, c.r, "health/live", allMods...)
+	resp, err := c.r.GetTo[map[string]any](ctx, "health/live", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +77,7 @@ func (c *apiClient) GetReadyHealth(ctx context.Context, mods ...aoni.RequestModi
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[map[string]any](ctx, c.r, "health/ready", allMods...)
+	resp, err := c.r.GetTo[map[string]any](ctx, "health/ready", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +92,7 @@ func (c *apiClient) GetPublicStatus(ctx context.Context, mods ...aoni.RequestMod
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[PublicStatus](ctx, c.r, "v1/status", allMods...)
+	resp, err := c.r.GetTo[PublicStatus](ctx, "v1/status", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +107,7 @@ func (c *apiClient) GetAccount(ctx context.Context, mods ...aoni.RequestModifier
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[V2accountResponse](ctx, c.r, "v2/account", allMods...)
+	resp, err := c.r.GetTo[V2accountResponse](ctx, "v2/account", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +132,7 @@ func (c *apiClient) GetSteamMarketPrice(ctx context.Context, marketHashName stri
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[V2marketPriceResponse](ctx, c.r, "v2/steam/market/price", allMods...)
+	resp, err := c.r.GetTo[V2marketPriceResponse](ctx, "v2/steam/market/price", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +158,7 @@ func (c *apiClient) GetSteamInventory(ctx context.Context, steamID id.ID, appID 
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[V2inventoryResponse](ctx, c.r, "v2/steam/users/{steam_id}/inventory/{app_id}/{context_id}", allMods...)
+	resp, err := c.r.GetTo[V2inventoryResponse](ctx, "v2/steam/users/{steam_id}/inventory/{app_id}/{context_id}", allMods...)
 	if err != nil {
 		return nil, err
 	}

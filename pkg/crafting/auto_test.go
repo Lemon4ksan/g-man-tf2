@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/lemon4ksan/foundation/async/event"
-	"github.com/lemon4ksan/foundation/async/log"
+	log "github.com/lemon4ksan/foundation/async/logkit"
 	"github.com/lemon4ksan/g-man/pkg/behavior"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"

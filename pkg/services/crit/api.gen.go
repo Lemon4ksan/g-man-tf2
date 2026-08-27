@@ -12,11 +12,10 @@ import (
 	"github.com/lemon4ksan/aoni/fast"
 	"github.com/lemon4ksan/aoni/mod"
 	"github.com/lemon4ksan/aoni/option"
-	"github.com/lemon4ksan/aoni/request"
 )
 
 type apiClient struct {
-	r request.Requester
+	r *aoni.Client
 }
 
 func newAPI(doer any, opts ...aoni.ClientOption) *apiClient {
@@ -27,7 +26,7 @@ func newAPI(doer any, opts ...aoni.ClientOption) *apiClient {
 	var baseOpts []aoni.ClientOption
 	baseOpts = append(baseOpts, opts...)
 
-	targetReq := request.Configure(doer, append([]aoni.ClientOption{option.WithBaseURL("https://crit.tf/api/v2/")}, baseOpts...)...)
+	targetReq := aoni.NewClient(doer, append([]aoni.ClientOption{option.WithBaseURL("https://crit.tf/api/v2/")}, baseOpts...)...)
 
 	return &apiClient{
 		r: targetReq,
@@ -44,8 +43,8 @@ func New(doer any, opts ...aoni.ClientOption) API {
 	return newAPI(doer, opts...)
 }
 
-// R returns the underlying request.Requester used by the client.
-func (c *apiClient) R() request.Requester {
+// R returns the underlying *aoni.Client used by the client.
+func (c *apiClient) R() *aoni.Client {
 	return c.r
 }
 
@@ -57,7 +56,7 @@ func (c *apiClient) FetchMyListings(ctx context.Context, mods ...aoni.RequestMod
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[ListingsResponse](ctx, c.r, "listings/my", allMods...)
+	resp, err := c.r.GetTo[ListingsResponse](ctx, "listings/my", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +71,7 @@ func (c *apiClient) CreateListingDirect(ctx context.Context, req CreateListingRe
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[ListingsResponse](ctx, c.r, "listings", req, allMods...)
+	resp, err := c.r.PostTo[ListingsResponse](ctx, "listings", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +87,7 @@ func (c *apiClient) UpdateListingDirect(ctx context.Context, listingID string, r
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PutTo[ListingsResponse](ctx, c.r, "listings/{listing_id}", req, allMods...)
+	resp, err := c.r.PutTo[ListingsResponse](ctx, "listings/{listing_id}", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +103,7 @@ func (c *apiClient) DeleteListing(ctx context.Context, listingID string, mods ..
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.DeleteTo[Response](ctx, c.r, "listings/{listing_id}", nil, allMods...)
+	resp, err := c.r.DeleteTo[Response](ctx, "listings/{listing_id}", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +118,7 @@ func (c *apiClient) RefreshInventory(ctx context.Context, mods ...aoni.RequestMo
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[InventoryResponse](ctx, c.r, "inventory/refresh", nil, allMods...)
+	resp, err := c.r.PostTo[InventoryResponse](ctx, "inventory/refresh", nil, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +133,7 @@ func (c *apiClient) GetMyGroup(ctx context.Context, mods ...aoni.RequestModifier
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[GroupResponse](ctx, c.r, "groups/my", allMods...)
+	resp, err := c.r.GetTo[GroupResponse](ctx, "groups/my", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +149,7 @@ func (c *apiClient) InviteToGroupDirect(ctx context.Context, groupID int, req In
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[Response](ctx, c.r, "groups/{group_id}/invite", req, allMods...)
+	resp, err := c.r.PostTo[Response](ctx, "groups/{group_id}/invite", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +164,7 @@ func (c *apiClient) GetPendingInvites(ctx context.Context, mods ...aoni.RequestM
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[InvitesResponse](ctx, c.r, "groups/invites", allMods...)
+	resp, err := c.r.GetTo[InvitesResponse](ctx, "groups/invites", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +180,7 @@ func (c *apiClient) AcceptGroupInvite(ctx context.Context, groupID int, mods ...
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[Response](ctx, c.r, "groups/{group_id}/accept", nil, allMods...)
+	resp, err := c.r.PostTo[Response](ctx, "groups/{group_id}/accept", nil, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +196,7 @@ func (c *apiClient) LeaveGroup(ctx context.Context, groupID int, mods ...aoni.Re
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[Response](ctx, c.r, "groups/{group_id}/leave", nil, allMods...)
+	resp, err := c.r.PostTo[Response](ctx, "groups/{group_id}/leave", nil, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -212,7 +211,7 @@ func (c *apiClient) FetchAuthTokenDirect(ctx context.Context, mods ...aoni.Reque
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[AuthTokenResponse](ctx, c.r, "bot-api/auth-token", allMods...)
+	resp, err := c.r.GetTo[AuthTokenResponse](ctx, "bot-api/auth-token", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +226,7 @@ func (c *apiClient) SendDeadMansRequestDirect(ctx context.Context, req DeadMansR
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PostTo[Response](ctx, c.r, "bot-api/alive", req, allMods...)
+	resp, err := c.r.PostTo[Response](ctx, "bot-api/alive", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +241,7 @@ func (c *apiClient) GetInventory(ctx context.Context, mods ...aoni.RequestModifi
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[InventoryResponse](ctx, c.r, "inventory", allMods...)
+	resp, err := c.r.GetTo[InventoryResponse](ctx, "inventory", allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +256,7 @@ func (c *apiClient) UpdateTradeURLDirect(ctx context.Context, req UpdateTradeURL
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.PutTo[Response](ctx, c.r, "user/trade-url", req, allMods...)
+	resp, err := c.r.PutTo[Response](ctx, "user/trade-url", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -272,7 +271,7 @@ func (c *apiClient) GetUserInfo(ctx context.Context, mods ...aoni.RequestModifie
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := request.GetTo[UserResponse](ctx, c.r, "user", allMods...)
+	resp, err := c.r.GetTo[UserResponse](ctx, "user", allMods...)
 	if err != nil {
 		return nil, err
 	}

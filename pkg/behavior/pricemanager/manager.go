@@ -15,9 +15,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/mod"
-	"github.com/lemon4ksan/aoni/request"
-	"github.com/lemon4ksan/foundation/async/log"
+	log "github.com/lemon4ksan/foundation/async/logkit"
 	"github.com/lemon4ksan/foundation/codec/json"
 	"github.com/lemon4ksan/g-man/pkg/behavior"
 
@@ -30,7 +30,7 @@ const BehaviorName = "bptf_prices"
 
 var ErrCachePathNotConfigured = errors.New("pricemanager: cache path not configured")
 
-func WithPriceManager(orch *behavior.Orchestrator, r request.Requester, cfg Config) {
+func WithPriceManager(orch *behavior.Orchestrator, r *aoni.Client, cfg Config) {
 	orch.Register(NewPriceManager(r, orch.Logger(), cfg))
 }
 
@@ -52,14 +52,14 @@ func DefaultConfig() Config {
 //   - Fully thread-safe. Reads are guarded by RWMutex, mutations acquire exclusive Lock.
 type PriceManager struct {
 	config Config
-	r      request.Requester
+	r      *aoni.Client
 	logger log.Logger
 
 	mu    sync.RWMutex
 	index map[string]bptf.V4PricesEntry
 }
 
-func NewPriceManager(r request.Requester, l log.Logger, cfg Config) *PriceManager {
+func NewPriceManager(r *aoni.Client, l log.Logger, cfg Config) *PriceManager {
 	return &PriceManager{
 		config: cfg,
 		r:      r,
@@ -104,7 +104,7 @@ func (m *PriceManager) isIndexEmpty() bool {
 func (m *PriceManager) Update(ctx context.Context) error {
 	m.logger.Debug("Fetching full pricelist from backpack.tf...")
 
-	resp, err := request.GetTo[bptf.V4PricesResponseExt](ctx, m.r, "IGetPrices/v4", mod.WithQuery("raw=1"))
+	resp, err := m.r.GetTo[bptf.V4PricesResponseExt](ctx, "IGetPrices/v4", mod.WithQuery("raw=1"))
 	if err != nil {
 		return fmt.Errorf("bptf update failed: %w", err)
 	}

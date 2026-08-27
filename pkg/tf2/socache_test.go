@@ -10,15 +10,15 @@ import (
 	"testing"
 	"time"
 
+	log "github.com/lemon4ksan/foundation/async/logkit"
 	"github.com/lemon4ksan/g-man/pkg/steam/protocol"
-	"github.com/lemon4ksan/foundation/async/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	pb "github.com/lemon4ksan/g-man-tf2/protobuf/tf2"
 	"github.com/lemon4ksan/g-man-tf2/pkg/schema"
 	"github.com/lemon4ksan/g-man-tf2/pkg/sku"
+	pb "github.com/lemon4ksan/g-man-tf2/protobuf/tf2"
 )
 
 func createItemPayload(id uint64, defIndex uint32) []byte {
