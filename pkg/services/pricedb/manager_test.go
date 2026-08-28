@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/lemon4ksan/aoni"
+	"github.com/lemon4ksan/aoni/realtime/ws"
 	"github.com/lemon4ksan/foundation/async/event"
 	log "github.com/lemon4ksan/foundation/async/logkit"
 	"github.com/lemon4ksan/g-man/pkg/behavior"
@@ -168,19 +168,17 @@ func TestPriceManager_OrchestratorOption(t *testing.T) {
 func TestPriceManager_RealtimeWebsocketHandshake(t *testing.T) {
 	t.Parallel()
 
-	upgrader := websocket.Upgrader{}
-
 	var mockPriceSent sync.WaitGroup
 	mockPriceSent.Add(1)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
+		conn, err := testUpgradeToWS(w, r)
 		if err != nil {
 			return
 		}
 		defer conn.Close()
 
-		err = conn.WriteMessage(websocket.TextMessage, []byte(`0{"sid":"123"}`))
+		err = conn.WriteMessage(ws.OpcodeText, []byte(`0{"sid":"123"}`))
 		if err != nil {
 			return
 		}
@@ -192,7 +190,7 @@ func TestPriceManager_RealtimeWebsocketHandshake(t *testing.T) {
 
 		priceUpdatePayload := `42["price",{"sku":"5021;6","name":"Key","buy":{"metal":82},"sell":{"metal":82.11},"time":1800000000}]`
 
-		err = conn.WriteMessage(websocket.TextMessage, []byte(priceUpdatePayload))
+		err = conn.WriteMessage(ws.OpcodeText, []byte(priceUpdatePayload))
 		if err != nil {
 			return
 		}

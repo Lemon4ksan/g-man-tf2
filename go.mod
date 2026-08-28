@@ -5,7 +5,6 @@ go 1.27.0
 require (
 	github.com/PuerkitoBio/goquery v1.13.0
 	github.com/andygrunwald/vdf v1.1.0
-	github.com/gorilla/websocket v1.5.3
 	github.com/lemon4ksan/aoni v0.7.0-rc.1
 	github.com/lemon4ksan/aoni/x v0.0.0-20260828082233-689a59512a17
 	github.com/lemon4ksan/foundation v0.0.0-20260828071503-e6feb1d2bf04

@@ -6,6 +6,9 @@ package pricedb
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/base64"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,11 +16,45 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/lemon4ksan/aoni/realtime/ws"
 	log "github.com/lemon4ksan/foundation/async/logkit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func testUpgradeToWS(w http.ResponseWriter, r *http.Request) (ws.Conn, error) {
+	hj, ok := w.(http.Hijacker)
+	if !ok {
+		http.Error(w, "hijack not supported", http.StatusInternalServerError)
+		return nil, errors.New("hijack failed")
+	}
+
+	conn, bufrw, err := hj.Hijack()
+	if err != nil {
+		return nil, err
+	}
+
+	key := r.Header.Get("Sec-WebSocket-Key")
+	h := sha1.New()
+	h.Write([]byte(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+	acceptKey := base64.StdEncoding.EncodeToString(h.Sum(nil))
+
+	resp := "HTTP/1.1 101 Switching Protocols\r\n" +
+		"Upgrade: websocket\r\n" +
+		"Connection: Upgrade\r\n" +
+		"Sec-WebSocket-Accept: " + acceptKey + "\r\n\r\n"
+
+	if _, err := bufrw.WriteString(resp); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	if err := bufrw.Flush(); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+
+	return ws.WrapRawConnWithReader(conn, bufrw.Reader, false, 4096), nil
+}
 
 // Helper mock logger to capture warning messages
 type mockLogRecorder struct {
@@ -65,18 +102,17 @@ func TestSocketManager_DialFail(t *testing.T) {
 func TestSocketManager_PingPong(t *testing.T) {
 	t.Parallel()
 
-	upgrader := websocket.Upgrader{}
 	pongReceived := make(chan struct{})
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
+		conn, err := testUpgradeToWS(w, r)
 		if err != nil {
 			return
 		}
 		defer conn.Close()
 
 		// 1. Send Engine.IO Open Packet "0"
-		if err := conn.WriteMessage(websocket.TextMessage, []byte(`0{"sid":"123"}`)); err != nil {
+		if err := conn.WriteMessage(ws.OpcodeText, []byte(`0{"sid":"123"}`)); err != nil {
 			return
 		}
 
@@ -87,7 +123,7 @@ func TestSocketManager_PingPong(t *testing.T) {
 		}
 
 		// 3. Send Ping "2"
-		if err := conn.WriteMessage(websocket.TextMessage, []byte("2")); err != nil {
+		if err := conn.WriteMessage(ws.OpcodeText, []byte("2")); err != nil {
 			return
 		}
 
@@ -173,34 +209,33 @@ func TestSocketManager_HandleEvent_EdgeCases(t *testing.T) {
 func TestSocketManager_PacketParsing_EdgeCases(t *testing.T) {
 	t.Parallel()
 
-	upgrader := websocket.Upgrader{}
 	sequenceDone := make(chan struct{})
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
+		conn, err := testUpgradeToWS(w, r)
 		if err != nil {
 			return
 		}
 		defer conn.Close()
 
-		if err := conn.WriteMessage(websocket.TextMessage, []byte(`0{"sid":"123"}`)); err != nil {
+		if err := conn.WriteMessage(ws.OpcodeText, []byte(`0{"sid":"123"}`)); err != nil {
 			return
 		}
 
 		_, _, _ = conn.ReadMessage() // Read 40
 
 		// Send empty packet (should be skipped)
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(""))
+		_ = conn.WriteMessage(ws.OpcodeText, []byte(""))
 
 		// Send short Socket.IO packet "4" (should be skipped since len < 2)
-		_ = conn.WriteMessage(websocket.TextMessage, []byte("4"))
+		_ = conn.WriteMessage(ws.OpcodeText, []byte("4"))
 
 		// Send non-event Socket.IO packet "43" (should be skipped since second char is not '2')
-		_ = conn.WriteMessage(websocket.TextMessage, []byte("43"))
+		_ = conn.WriteMessage(ws.OpcodeText, []byte("43"))
 
 		// Finally send valid event "42"
 		priceUpdatePayload := `42["price",{"sku":"5021;6","name":"Key","buy":{"metal":82},"sell":{"metal":82.11}}]`
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(priceUpdatePayload))
+		_ = conn.WriteMessage(ws.OpcodeText, []byte(priceUpdatePayload))
 
 		close(sequenceDone)
 	}))
@@ -246,12 +281,10 @@ func TestSocketManager_URLErr(t *testing.T) {
 func TestSocketManager_HandshakeErr(t *testing.T) {
 	t.Parallel()
 
-	upgrader := websocket.Upgrader{}
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
+		conn, err := testUpgradeToWS(w, r)
 		if err == nil {
-			_ = conn.WriteMessage(websocket.TextMessage, []byte(`invalid_handshake`))
+			_ = conn.WriteMessage(ws.OpcodeText, []byte(`invalid_handshake`))
 			conn.Close()
 		}
 	}))

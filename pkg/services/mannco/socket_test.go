@@ -6,6 +6,9 @@ package mannco
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/base64"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,11 +16,45 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/lemon4ksan/aoni/realtime/ws"
 	log "github.com/lemon4ksan/foundation/async/logkit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func testUpgradeToWS(w http.ResponseWriter, r *http.Request) (ws.Conn, error) {
+	hj, ok := w.(http.Hijacker)
+	if !ok {
+		http.Error(w, "hijack not supported", http.StatusInternalServerError)
+		return nil, errors.New("hijack failed")
+	}
+
+	conn, bufrw, err := hj.Hijack()
+	if err != nil {
+		return nil, err
+	}
+
+	key := r.Header.Get("Sec-WebSocket-Key")
+	h := sha1.New()
+	h.Write([]byte(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+	acceptKey := base64.StdEncoding.EncodeToString(h.Sum(nil))
+
+	resp := "HTTP/1.1 101 Switching Protocols\r\n" +
+		"Upgrade: websocket\r\n" +
+		"Connection: Upgrade\r\n" +
+		"Sec-WebSocket-Accept: " + acceptKey + "\r\n\r\n"
+
+	if _, err := bufrw.WriteString(resp); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	if err := bufrw.Flush(); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+
+	return ws.WrapRawConnWithReader(conn, bufrw.Reader, false, 4096), nil
+}
 
 type mockLogRecorder struct {
 	log.Logger
@@ -71,18 +108,17 @@ func TestSocketManager_URLErr(t *testing.T) {
 func TestSocketManager_Events(t *testing.T) {
 	t.Parallel()
 
-	upgrader := websocket.Upgrader{}
 	eventsSent := make(chan struct{})
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
+		conn, err := testUpgradeToWS(w, r)
 		if err != nil {
 			return
 		}
 		defer conn.Close()
 
 		// Send price_changed event
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{
+		_ = conn.WriteMessage(ws.OpcodeText, []byte(`{
 			"event": "price_changed",
 			"ts": 1782403724,
 			"data": {
@@ -95,7 +131,7 @@ func TestSocketManager_Events(t *testing.T) {
 		}`))
 
 		// Send listing_added event
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{
+		_ = conn.WriteMessage(ws.OpcodeText, []byte(`{
 			"event": "listing_added",
 			"ts": 1782403704,
 			"data": {
@@ -107,7 +143,7 @@ func TestSocketManager_Events(t *testing.T) {
 		}`))
 
 		// Send listing_removed event
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{
+		_ = conn.WriteMessage(ws.OpcodeText, []byte(`{
 			"event": "listing_removed",
 			"ts": 1782403724,
 			"data": {
@@ -116,7 +152,7 @@ func TestSocketManager_Events(t *testing.T) {
 		}`))
 
 		// Send buyorder_added event
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{
+		_ = conn.WriteMessage(ws.OpcodeText, []byte(`{
 			"event": "buyorder_added",
 			"ts": 1782403724,
 			"data": {
@@ -128,7 +164,7 @@ func TestSocketManager_Events(t *testing.T) {
 		}`))
 
 		// Send buyorder_removed event
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{
+		_ = conn.WriteMessage(ws.OpcodeText, []byte(`{
 			"event": "buyorder_removed",
 			"ts": 1782403724,
 			"data": {
@@ -139,7 +175,7 @@ func TestSocketManager_Events(t *testing.T) {
 		}`))
 
 		// Send buyorder_updated event
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{
+		_ = conn.WriteMessage(ws.OpcodeText, []byte(`{
 			"event": "buyorder_updated",
 			"ts": 1782403724,
 			"data": {
@@ -153,7 +189,7 @@ func TestSocketManager_Events(t *testing.T) {
 		}`))
 
 		// Send buyorder_activated event
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{
+		_ = conn.WriteMessage(ws.OpcodeText, []byte(`{
 			"event": "buyorder_activated",
 			"ts": 1782403724,
 			"data": {
@@ -165,7 +201,7 @@ func TestSocketManager_Events(t *testing.T) {
 		}`))
 
 		// Send buyorder_deactivated event
-		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{
+		_ = conn.WriteMessage(ws.OpcodeText, []byte(`{
 			"event": "buyorder_deactivated",
 			"ts": 1782403724,
 			"data": {
