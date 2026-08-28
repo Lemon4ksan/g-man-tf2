@@ -57,7 +57,7 @@ func DefaultConfig() Config {
 		LiteMode:           false,
 		ExcludeMedals:      true,
 		ExcludeUntradable:  false,
-		CachePath:          "cache/tf2/json",
+		CachePath:          "cache/tf2/schema.json",
 		PaintKitURL:        "https://raw.githubusercontent.com/SteamDatabase/GameTracking-TF2/master/tf/resource/tf_proto_obj_defs_english.txt",
 		ItemsGameMirrorURL: "https://raw.githubusercontent.com/SteamDatabase/GameTracking-TF2/master/tf/scripts/items/items_game.txt",
 	}
@@ -439,6 +439,7 @@ func (m *Manager) refreshFromGame(ctx context.Context, itemsGameURL string) erro
 
 	_ = m.saveToCache()
 	m.Bus.Publish(&UpdatedEvent{Timestamp: time.Now()})
+	debug.FreeOSMemory()
 
 	return nil
 }
@@ -1211,6 +1212,9 @@ func (m *Manager) loadFromCache() error {
 
 	loadedSchema := New(&raw)
 	m.schema.Store(loadedSchema)
+
+	// Free transient unmarshaling heap memory immediately to prevent 50MB startup peak
+	debug.FreeOSMemory()
 
 	return nil
 }

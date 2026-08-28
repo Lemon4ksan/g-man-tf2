@@ -2,32 +2,60 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: ["main", "master"]
   pull_request:
-    branches: [main, master]
+    branches: ["main", "master"]
+
+permissions:
+  contents: read
 
 jobs:
-  test:
-    name: Test and Validate
+  lint:
+    name: Lint & Code Standards
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v6
 
-      - name: Setup Go
+      - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.26.x"
+          go-version: "1.27.x"
           cache: true
 
-      - name: Install Dependencies
-        run: |
-          go mod download
-          go mod verify
+      - name: Download dependencies
+        run: go mod download
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+          args: --timeout=5m
+
+  test-matrix:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
 
       - name: Run Tests with Race Detector
-        run: go test -v -race -timeout 10m ./...
+        run: go test -race -timeout 120s ./...
 
       - name: Build Bot Binary
-        run: make build
+        if: matrix.os == 'ubuntu-latest'
+        run: go build -o bin/g-man-tf2-bot ./cmd/bot/main.go
