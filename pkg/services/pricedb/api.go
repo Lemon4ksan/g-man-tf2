@@ -30,7 +30,7 @@ type API interface {
 
 	// GetHistory returns the price history for a specific SKU.
 	// @get "item-history/{sku}"
-	GetHistory(ctx context.Context, sku string, start int64, end int64, mods ...aoni.RequestModifier) ([]*Price, error)
+	GetHistory(ctx context.Context, sku string, start, end int64, mods ...aoni.RequestModifier) ([]*Price, error)
 
 	// GetStats returns statistics (min, max, avg) for an item's price history.
 	// @get "item-stats/{sku}"
@@ -38,7 +38,7 @@ type API interface {
 
 	// Compare compares two items side by side, returning the price differences.
 	// @get "compare/{sku1}/{sku2}"
-	Compare(ctx context.Context, sku1 string, sku2 string, mods ...aoni.RequestModifier) (*CompareResult, error)
+	Compare(ctx context.Context, sku1, sku2 string, mods ...aoni.RequestModifier) (*CompareResult, error)
 
 	// TriggerPriceCheck requests PriceDB to update the price for a specific SKU.
 	// @post "autob/items/{sku}"
@@ -62,7 +62,7 @@ type API interface {
 
 	// GetPrices returns paginated price history.
 	// @get "prices"
-	GetPrices(ctx context.Context, limit int, offset int, mods ...aoni.RequestModifier) (*PriceHistoryResponse, error)
+	GetPrices(ctx context.Context, limit, offset int, mods ...aoni.RequestModifier) (*PriceHistoryResponse, error)
 
 	// GetSnapshot returns the most recent price for each SKU as of the given unix timestamp.
 	// @get "snapshot/{timestamp}"
@@ -70,7 +70,14 @@ type API interface {
 
 	// GetGraph returns the HTML page containing an interactive Chart.js graph.
 	// @get "graph/{sku}"
-	GetGraph(ctx context.Context, sku string, header bool, height int, width string, mods ...aoni.RequestModifier) (string, error)
+	GetGraph(
+		ctx context.Context,
+		sku string,
+		header bool,
+		height int,
+		width string,
+		mods ...aoni.RequestModifier,
+	) (string, error)
 
 	// GetAutobItems fetches the full pricelist in TF2Autobot-compatible format.
 	// @get "autob/items"
@@ -186,11 +193,19 @@ type SKUClient interface {
 type SpellClient interface {
 	// PredictSpellPrice estimates the premium values for given comma-separated spell names and item name.
 	// @get "spell/predict"
-	PredictSpellPrice(ctx context.Context, spells string, item string, mods ...aoni.RequestModifier) (*SpellPredictionResponse, error)
+	PredictSpellPrice(
+		ctx context.Context,
+		spells, item string,
+		mods ...aoni.RequestModifier,
+	) (*SpellPredictionResponse, error)
 
 	// PredictSpellItem predicts spelled item price premium via POST.
 	// @post "spell/predict-spell-item"
-	PredictSpellItem(ctx context.Context, req PredictSpellItemRequest, mods ...aoni.RequestModifier) (*PredictSpellItemResponse, error)
+	PredictSpellItem(
+		ctx context.Context,
+		req PredictSpellItemRequest,
+		mods ...aoni.RequestModifier,
+	) (*PredictSpellItemResponse, error)
 
 	// GetSpellValue returns the predicted premium for given comma-separated spell defindex IDs.
 	// @get "spell/spell-value"
@@ -202,7 +217,11 @@ type SpellClient interface {
 
 	// GetItemSpellPremium returns the detailed spell premium breakdown for a specific item and spell combination.
 	// @get "spell/item-spell-premium"
-	GetItemSpellPremium(ctx context.Context, item string, ids string, mods ...aoni.RequestModifier) (*ItemSpellPremiumResponse, error)
+	GetItemSpellPremium(
+		ctx context.Context,
+		item, ids string,
+		mods ...aoni.RequestModifier,
+	) (*ItemSpellPremiumResponse, error)
 
 	// GetSpellByID returns spell metadata for a given spell defindex ID.
 	// @get "spell/spell-id-to-name"

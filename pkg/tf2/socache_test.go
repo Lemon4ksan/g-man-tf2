@@ -23,8 +23,8 @@ import (
 
 func createItemPayload(id uint64, defIndex uint32) []byte {
 	b, _ := proto.Marshal(&pb.CSOEconItem{
-		Id:       proto.Uint64(id),
-		DefIndex: proto.Uint32(defIndex),
+		Id:       new(id),
+		DefIndex: new(defIndex),
 	})
 
 	return b
@@ -32,9 +32,9 @@ func createItemPayload(id uint64, defIndex uint32) []byte {
 
 func createItemPayloadFull(id uint64, defIndex, inventory uint32) []byte {
 	b, _ := proto.Marshal(&pb.CSOEconItem{
-		Id:        proto.Uint64(id),
-		DefIndex:  proto.Uint32(defIndex),
-		Inventory: proto.Uint32(inventory),
+		Id:        new(id),
+		DefIndex:  new(defIndex),
+		Inventory: new(inventory),
 	})
 
 	return b
@@ -51,7 +51,7 @@ func TestSOCache_Lifecycle_GCEvents_UpdatesInternalState(t *testing.T) {
 		itemBytes := createItemPayload(100, ItemScrap)
 
 		msg := &pb.CMsgSOSingleObject{
-			TypeId:     proto.Int32(SOTypeEconItem),
+			TypeId:     new(SOTypeEconItem),
 			ObjectData: itemBytes,
 		}
 		payload, _ := proto.Marshal(msg)
@@ -71,7 +71,7 @@ func TestSOCache_Lifecycle_GCEvents_UpdatesInternalState(t *testing.T) {
 		cache := tf.Cache()
 
 		msgCreate := &pb.CMsgSOSingleObject{
-			TypeId:     proto.Int32(SOTypeEconItem),
+			TypeId:     new(SOTypeEconItem),
 			ObjectData: createItemPayload(100, ItemScrap),
 		}
 		payloadCreate, _ := proto.Marshal(msgCreate)
@@ -80,7 +80,7 @@ func TestSOCache_Lifecycle_GCEvents_UpdatesInternalState(t *testing.T) {
 		itemBytes := createItemPayload(100, ItemKey)
 
 		msgUpdate := &pb.CMsgSOSingleObject{
-			TypeId:     proto.Int32(SOTypeEconItem),
+			TypeId:     new(SOTypeEconItem),
 			ObjectData: itemBytes,
 		}
 		payloadUpdate, _ := proto.Marshal(msgUpdate)
@@ -101,11 +101,11 @@ func TestSOCache_Lifecycle_GCEvents_UpdatesInternalState(t *testing.T) {
 		msg := &pb.CMsgSOMultipleObjects{
 			Objects: []*pb.CMsgSOMultipleObjects_SingleObject{
 				{
-					TypeId:     proto.Int32(SOTypeEconItem),
+					TypeId:     new(SOTypeEconItem),
 					ObjectData: createItemPayload(100, ItemScrap),
 				},
 				{
-					TypeId:     proto.Int32(SOTypeEconItem),
+					TypeId:     new(SOTypeEconItem),
 					ObjectData: createItemPayload(200, ItemKey),
 				},
 			},
@@ -124,21 +124,21 @@ func TestSOCache_Lifecycle_GCEvents_UpdatesInternalState(t *testing.T) {
 		cache := tf.Cache()
 
 		msgCreate1 := &pb.CMsgSOSingleObject{
-			TypeId:     proto.Int32(SOTypeEconItem),
+			TypeId:     new(SOTypeEconItem),
 			ObjectData: createItemPayload(100, ItemScrap),
 		}
 		payloadCreate1, _ := proto.Marshal(msgCreate1)
 		cache.handleSOUpdate(&protocol.GCPacket{MsgType: uint32(pb.ESOMsg_k_ESOMsg_Create), Payload: payloadCreate1})
 
 		msgCreate2 := &pb.CMsgSOSingleObject{
-			TypeId:     proto.Int32(SOTypeEconItem),
+			TypeId:     new(SOTypeEconItem),
 			ObjectData: createItemPayload(200, ItemKey),
 		}
 		payloadCreate2, _ := proto.Marshal(msgCreate2)
 		cache.handleSOUpdate(&protocol.GCPacket{MsgType: uint32(pb.ESOMsg_k_ESOMsg_Create), Payload: payloadCreate2})
 
 		msgDestroy := &pb.CMsgSOSingleObject{
-			TypeId:     proto.Int32(SOTypeEconItem),
+			TypeId:     new(SOTypeEconItem),
 			ObjectData: createItemPayload(100, ItemScrap),
 		}
 		payloadDestroy, _ := proto.Marshal(msgDestroy)
@@ -180,7 +180,7 @@ func TestSOCache_Getters_ValidState_ReturnsCorrectValues(t *testing.T) {
 		msg := &pb.CMsgSOCacheSubscribed{
 			Objects: []*pb.CMsgSOCacheSubscribed_SubscribedType{
 				{
-					TypeId: proto.Int32(SOTypeEconItem),
+					TypeId: new(SOTypeEconItem),
 					ObjectData: [][]byte{
 						createItemPayload(1, ItemScrap),
 						createItemPayload(2, ItemScrap),
@@ -201,7 +201,7 @@ func TestSOCache_Getters_ValidState_ReturnsCorrectValues(t *testing.T) {
 		msg := &pb.CMsgSOCacheSubscribed{
 			Objects: []*pb.CMsgSOCacheSubscribed_SubscribedType{
 				{
-					TypeId: proto.Int32(SOTypeEconItem),
+					TypeId: new(SOTypeEconItem),
 					ObjectData: [][]byte{
 						createItemPayload(1, ItemScrap),
 						createItemPayload(2, ItemScrap),
@@ -222,7 +222,7 @@ func TestSOCache_Getters_ValidState_ReturnsCorrectValues(t *testing.T) {
 		msg := &pb.CMsgSOCacheSubscribed{
 			Objects: []*pb.CMsgSOCacheSubscribed_SubscribedType{
 				{
-					TypeId: proto.Int32(SOTypeEconItem),
+					TypeId: new(SOTypeEconItem),
 					ObjectData: [][]byte{
 						createItemPayload(1, ItemScrap),
 						createItemPayload(2, ItemScrap),
@@ -247,7 +247,7 @@ func TestSOCache_ExtraGetters_ValidState_ReturnsCorrectValues(t *testing.T) {
 		msg := &pb.CMsgSOCacheSubscribed{
 			Objects: []*pb.CMsgSOCacheSubscribed_SubscribedType{
 				{
-					TypeId: proto.Int32(SOTypeEconItem),
+					TypeId: new(SOTypeEconItem),
 					ObjectData: [][]byte{
 						createItemPayload(1, ItemScrap),
 						createItemPayload(2, ItemKey),
@@ -273,7 +273,7 @@ func TestSOCache_ExtraGetters_ValidState_ReturnsCorrectValues(t *testing.T) {
 		msg := &pb.CMsgSOCacheSubscribed{
 			Objects: []*pb.CMsgSOCacheSubscribed_SubscribedType{
 				{
-					TypeId: proto.Int32(SOTypeEconItem),
+					TypeId: new(SOTypeEconItem),
 					ObjectData: [][]byte{
 						createItemPayload(1, ItemScrap),
 						createItemPayload(2, ItemKey),
@@ -292,7 +292,7 @@ func TestSOCache_ExtraGetters_ValidState_ReturnsCorrectValues(t *testing.T) {
 		msg := &pb.CMsgSOCacheSubscribed{
 			Objects: []*pb.CMsgSOCacheSubscribed_SubscribedType{
 				{
-					TypeId: proto.Int32(SOTypeEconItem),
+					TypeId: new(SOTypeEconItem),
 					ObjectData: [][]byte{
 						createItemPayload(1, ItemScrap),
 						createItemPayload(2, ItemKey),
@@ -438,43 +438,43 @@ func TestSOCache_protoToItem_Attributes_ParsedCorrectly(t *testing.T) {
 	nowUnix := uint32(time.Now().Unix())
 
 	attrs := []*pb.CSOEconItemAttribute{
-		{DefIndex: proto.Uint32(AttrCustomName), ValueBytes: []byte("My Named Weapon")},
-		{DefIndex: proto.Uint32(AttrCustomDesc), ValueBytes: []byte("Custom Description")},
-		{DefIndex: proto.Uint32(AttrMedalNumber), ValueBytes: uint32ToBytes(1234)},
-		{DefIndex: proto.Uint32(AttrUnusualEffect), ValueBytes: float32ToBytes(15.0)},
-		{DefIndex: proto.Uint32(AttrPaintPrimary), ValueBytes: float32ToBytes(456.0)},
-		{DefIndex: proto.Uint32(AttrCannotTrade), ValueBytes: uint32ToBytes(1)},
-		{DefIndex: proto.Uint32(AttrCannotCraft), ValueBytes: uint32ToBytes(1)},
-		{DefIndex: proto.Uint32(AttrCrateSeries), ValueBytes: float32ToBytes(90.0)},
-		{DefIndex: proto.Uint32(AttrAlwaysTradable), ValueBytes: uint32ToBytes(1)},
-		{DefIndex: proto.Uint32(AttrTradableAfter), ValueBytes: uint32ToBytes(nowUnix + 3600)},
-		{DefIndex: proto.Uint32(AttrKillEater), ValueBytes: uint32ToBytes(1)},
-		{DefIndex: proto.Uint32(AttrCraftNumber), ValueBytes: uint32ToBytes(42)},
-		{DefIndex: proto.Uint32(AttrStrangePart1), ValueBytes: float32ToBytes(101.0)},
-		{DefIndex: proto.Uint32(AttrStrangePart1Val), ValueBytes: uint32ToBytes(42)},
-		{DefIndex: proto.Uint32(AttrStrangePart2), ValueBytes: float32ToBytes(102.0)},
-		{DefIndex: proto.Uint32(AttrStrangePart2Val), ValueBytes: uint32ToBytes(500)},
-		{DefIndex: proto.Uint32(AttrStrangePart3), ValueBytes: float32ToBytes(103.0)},
-		{DefIndex: proto.Uint32(AttrStrangePart3Val), ValueBytes: uint32ToBytes(1337)},
-		{DefIndex: proto.Uint32(AttrEOTLEarlySupporter), ValueBytes: float32ToBytes(1.0)},
-		{DefIndex: proto.Uint32(AttrQuestLoanerIDLow), ValueBytes: uint32ToBytes(0xAA55AA55)},
-		{DefIndex: proto.Uint32(AttrQuestLoanerIDHigh), ValueBytes: uint32ToBytes(0x55AA55AA)},
-		{DefIndex: proto.Uint32(AttrWear), ValueBytes: float32ToBytes(0.123)},
-		{DefIndex: proto.Uint32(AttrPaintkit), ValueBytes: uint32ToBytes(200)},
-		{DefIndex: proto.Uint32(AttrSpell1), ValueBytes: float32ToBytes(5.0)},
-		{DefIndex: proto.Uint32(AttrSpell2), ValueBytes: float32ToBytes(6.0)},
-		{DefIndex: proto.Uint32(AttrSpell3), ValueBytes: float32ToBytes(7.0)},
-		{DefIndex: proto.Uint32(AttrSpell4), ValueBytes: float32ToBytes(8.0)},
-		{DefIndex: proto.Uint32(AttrSpell5), ValueBytes: float32ToBytes(9.0)},
-		{DefIndex: proto.Uint32(AttrSpell6), ValueBytes: float32ToBytes(10.0)},
-		{DefIndex: proto.Uint32(AttrTarget), ValueBytes: float32ToBytes(100.0)},
-		{DefIndex: proto.Uint32(AttrKillstreaker), ValueBytes: float32ToBytes(2008.0)},
-		{DefIndex: proto.Uint32(AttrSheen), ValueBytes: float32ToBytes(3.0)},
-		{DefIndex: proto.Uint32(AttrKillstreakTier), ValueBytes: float32ToBytes(3.0)},
-		{DefIndex: proto.Uint32(AttrSeries), ValueBytes: float32ToBytes(4.0)},
-		{DefIndex: proto.Uint32(AttrTauntUnusualEffect), ValueBytes: float32ToBytes(25.0)},
-		{DefIndex: proto.Uint32(AttrAustralium), ValueBytes: float32ToBytes(1.0)},
-		{DefIndex: proto.Uint32(AttrFestivized), ValueBytes: float32ToBytes(1.0)},
+		{DefIndex: new(AttrCustomName), ValueBytes: []byte("My Named Weapon")},
+		{DefIndex: new(AttrCustomDesc), ValueBytes: []byte("Custom Description")},
+		{DefIndex: new(AttrMedalNumber), ValueBytes: uint32ToBytes(1234)},
+		{DefIndex: new(AttrUnusualEffect), ValueBytes: float32ToBytes(15.0)},
+		{DefIndex: new(AttrPaintPrimary), ValueBytes: float32ToBytes(456.0)},
+		{DefIndex: new(AttrCannotTrade), ValueBytes: uint32ToBytes(1)},
+		{DefIndex: new(AttrCannotCraft), ValueBytes: uint32ToBytes(1)},
+		{DefIndex: new(AttrCrateSeries), ValueBytes: float32ToBytes(90.0)},
+		{DefIndex: new(AttrAlwaysTradable), ValueBytes: uint32ToBytes(1)},
+		{DefIndex: new(AttrTradableAfter), ValueBytes: uint32ToBytes(nowUnix + 3600)},
+		{DefIndex: new(AttrKillEater), ValueBytes: uint32ToBytes(1)},
+		{DefIndex: new(AttrCraftNumber), ValueBytes: uint32ToBytes(42)},
+		{DefIndex: new(AttrStrangePart1), ValueBytes: float32ToBytes(101.0)},
+		{DefIndex: new(AttrStrangePart1Val), ValueBytes: uint32ToBytes(42)},
+		{DefIndex: new(AttrStrangePart2), ValueBytes: float32ToBytes(102.0)},
+		{DefIndex: new(AttrStrangePart2Val), ValueBytes: uint32ToBytes(500)},
+		{DefIndex: new(AttrStrangePart3), ValueBytes: float32ToBytes(103.0)},
+		{DefIndex: new(AttrStrangePart3Val), ValueBytes: uint32ToBytes(1337)},
+		{DefIndex: new(AttrEOTLEarlySupporter), ValueBytes: float32ToBytes(1.0)},
+		{DefIndex: new(AttrQuestLoanerIDLow), ValueBytes: uint32ToBytes(0xAA55AA55)},
+		{DefIndex: new(AttrQuestLoanerIDHigh), ValueBytes: uint32ToBytes(0x55AA55AA)},
+		{DefIndex: new(AttrWear), ValueBytes: float32ToBytes(0.123)},
+		{DefIndex: new(AttrPaintkit), ValueBytes: uint32ToBytes(200)},
+		{DefIndex: new(AttrSpell1), ValueBytes: float32ToBytes(5.0)},
+		{DefIndex: new(AttrSpell2), ValueBytes: float32ToBytes(6.0)},
+		{DefIndex: new(AttrSpell3), ValueBytes: float32ToBytes(7.0)},
+		{DefIndex: new(AttrSpell4), ValueBytes: float32ToBytes(8.0)},
+		{DefIndex: new(AttrSpell5), ValueBytes: float32ToBytes(9.0)},
+		{DefIndex: new(AttrSpell6), ValueBytes: float32ToBytes(10.0)},
+		{DefIndex: new(AttrTarget), ValueBytes: float32ToBytes(100.0)},
+		{DefIndex: new(AttrKillstreaker), ValueBytes: float32ToBytes(2008.0)},
+		{DefIndex: new(AttrSheen), ValueBytes: float32ToBytes(3.0)},
+		{DefIndex: new(AttrKillstreakTier), ValueBytes: float32ToBytes(3.0)},
+		{DefIndex: new(AttrSeries), ValueBytes: float32ToBytes(4.0)},
+		{DefIndex: new(AttrTauntUnusualEffect), ValueBytes: float32ToBytes(25.0)},
+		{DefIndex: new(AttrAustralium), ValueBytes: float32ToBytes(1.0)},
+		{DefIndex: new(AttrFestivized), ValueBytes: float32ToBytes(1.0)},
 	}
 
 	p := &pb.CSOEconItem{
@@ -522,7 +522,7 @@ func TestSOCache_protoToItem_OriginsAndFlags(t *testing.T) {
 
 		p := &pb.CSOEconItem{
 			Id:     proto.Uint64(1),
-			Origin: proto.Uint32(OriginAchievement),
+			Origin: new(OriginAchievement),
 		}
 		item := cache.protoToItem(p)
 		assert.False(t, item.IsTradable)
@@ -534,7 +534,7 @@ func TestSOCache_protoToItem_OriginsAndFlags(t *testing.T) {
 
 		p := &pb.CSOEconItem{
 			Id:     proto.Uint64(2),
-			Origin: proto.Uint32(OriginLoaner),
+			Origin: new(OriginLoaner),
 			Flags:  proto.Uint32(0),
 		}
 		item := cache.protoToItem(p)
@@ -546,7 +546,7 @@ func TestSOCache_protoToItem_OriginsAndFlags(t *testing.T) {
 
 		p := &pb.CSOEconItem{
 			Id:     proto.Uint64(3),
-			Origin: proto.Uint32(OriginStorePromo),
+			Origin: new(OriginStorePromo),
 		}
 		item := cache.protoToItem(p)
 		assert.False(t, item.IsCraftable)
@@ -557,7 +557,7 @@ func TestSOCache_protoToItem_OriginsAndFlags(t *testing.T) {
 
 		p := &pb.CSOEconItem{
 			Id:      proto.Uint64(4),
-			Quality: proto.Uint32(QualitySelfMade),
+			Quality: new(QualitySelfMade),
 		}
 		item := cache.protoToItem(p)
 		assert.False(t, item.IsTradable)
@@ -569,7 +569,7 @@ func TestSOCache_protoToItem_OriginsAndFlags(t *testing.T) {
 
 		p := &pb.CSOEconItem{
 			Id:     proto.Uint64(5),
-			Origin: proto.Uint32(OriginPurchase),
+			Origin: new(OriginPurchase),
 			Flags:  proto.Uint32(0),
 		}
 		item := cache.protoToItem(p)
@@ -581,7 +581,7 @@ func TestSOCache_protoToItem_OriginsAndFlags(t *testing.T) {
 
 		p := &pb.CSOEconItem{
 			Id:    proto.Uint64(6),
-			Flags: proto.Uint32(uint32(EconItemFlagPreview)),
+			Flags: new(uint32(EconItemFlagPreview)),
 		}
 		item := cache.protoToItem(p)
 		assert.False(t, item.IsTradable)

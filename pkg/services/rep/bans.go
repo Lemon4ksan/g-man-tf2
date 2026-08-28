@@ -65,6 +65,7 @@ func (m *BansManager) CheckBans(ctx context.Context, steamID id.ID) (*BanResult,
 
 				if trust, ok := user["trust"].(map[string]any); ok {
 					pos, _ := trust["positive"].(float64)
+
 					neg, _ := trust["negative"].(float64)
 					if neg > 0 && neg > pos {
 						result.Details["trust"] = fmt.Sprintf("negative (%d/%d)", int(neg), int(pos))

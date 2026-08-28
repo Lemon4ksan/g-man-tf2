@@ -52,6 +52,7 @@ func setupSchema(t *testing.T, cfg Config) (*Manager, *mock.ServiceMock) {
 					mods = append(mods, mod.WithHeader(key, value))
 				}
 			}
+
 			if req.Body != nil {
 				mods = append(mods, mod.WithBody(req.Body))
 			}

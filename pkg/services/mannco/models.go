@@ -520,24 +520,29 @@ func (l *Listing) UnmarshalJSON(data []byte) error {
 
 	*l = Listing(aux)
 	l.AssetID = strings.TrimRight(l.AssetID, " ;")
+
 	l.User = strings.TrimRight(l.User, " ;")
 	if l.Bot != nil {
 		trimmed := strings.TrimRight(*l.Bot, " ;")
 		l.Bot = &trimmed
 	}
+
 	l.Sheen = strings.TrimRight(l.Sheen, " ;")
 	l.Killstreaker = strings.TrimRight(l.Killstreaker, " ;")
+
 	l.Spell = strings.TrimRight(l.Spell, " ;")
 	if l.Parts != nil {
 		trimmed := strings.TrimRight(*l.Parts, " ;")
 		l.Parts = &trimmed
 	}
+
 	l.HTML = strings.TrimRight(l.HTML, " ;")
 
 	if l.Paint != nil {
 		trimmed := strings.TrimRight(*l.Paint, " ;")
 		l.Paint = &trimmed
 	}
+
 	if l.GetImage != nil {
 		trimmed := strings.TrimRight(*l.GetImage, " ;")
 		l.GetImage = &trimmed

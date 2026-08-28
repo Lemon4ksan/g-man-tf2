@@ -388,7 +388,7 @@ func (c *SOCache) handleUpToDate(pkt *protocol.GCPacket) {
 }
 
 func (c *SOCache) requestRefresh(ctx context.Context, owner uint64, logger log.Logger) {
-	req := &pb.CMsgSOCacheSubscriptionRefresh{Owner: proto.Uint64(owner)}
+	req := &pb.CMsgSOCacheSubscriptionRefresh{Owner: new(owner)}
 	_ = c.coord.Send(ctx, AppID, uint32(pb.ESOMsg_k_ESOMsg_CacheSubscriptionRefresh), req)
 }
 

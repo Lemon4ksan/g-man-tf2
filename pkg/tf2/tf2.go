@@ -266,7 +266,7 @@ func (t *TF2) AwardAchievement(ctx context.Context, achievementID uint32) error 
 		GameId: proto.Uint64(AppID),
 		Achievements: []*custom.CMsgClientStoreUserStats_Achievement{
 			{
-				AchievementId: proto.Uint32(achievementID),
+				AchievementId: new(achievementID),
 				UnlockTime:    []uint32{0xFFFFFFFF},
 			},
 		},
@@ -289,8 +289,8 @@ func (t *TF2) SetStat(ctx context.Context, statID, value uint32) error {
 		GameId: proto.Uint64(AppID),
 		Stats: []*custom.CMsgClientStoreUserStats_Stat{
 			{
-				StatId:    proto.Uint32(statID),
-				StatValue: proto.Uint32(value),
+				StatId:    new(statID),
+				StatValue: new(value),
 			},
 		},
 	}
@@ -464,11 +464,13 @@ func (t *TF2) routePacket(ctx context.Context, pkt *protocol.GCPacket) {
 			blueprint := binary.LittleEndian.Uint16(pkt.Payload[0:2])
 			idCount := binary.LittleEndian.Uint16(pkt.Payload[6:8])
 			offset := 8
+
 			var items []uint64
 			for i := 0; i < int(idCount) && offset+8 <= len(pkt.Payload); i++ {
 				items = append(items, binary.LittleEndian.Uint64(pkt.Payload[offset:offset+8]))
 				offset += 8
 			}
+
 			t.Bus.Publish(&CraftResponseEvent{
 				BlueprintID:  blueprint,
 				CreatedItems: items,
@@ -478,6 +480,7 @@ func (t *TF2) routePacket(ctx context.Context, pkt *protocol.GCPacket) {
 				ItemsCreated: items,
 			})
 		}
+
 	case pb.EGCItemMsg_k_EMsgGCTrading_InitiateTradeRequest:
 		if len(pkt.Payload) >= 12 {
 			tradeID := binary.LittleEndian.Uint32(pkt.Payload[0:4])
@@ -487,6 +490,7 @@ func (t *TF2) routePacket(ctx context.Context, pkt *protocol.GCPacket) {
 				SteamID: steamID,
 			})
 		}
+
 	case pb.EGCItemMsg_k_EMsgGCBackpackSortFinished:
 		t.Bus.Publish(&BackpackSortFinishedEvent{})
 	case pb.EGCItemMsg_k_EMsgGCClientDisplayNotification:
@@ -494,16 +498,19 @@ func (t *TF2) routePacket(ctx context.Context, pkt *protocol.GCPacket) {
 		if proto.Unmarshal(pkt.Payload, &msg) == nil {
 			replacements := make(map[string]string)
 			keys := msg.GetBodySubstringKeys()
+
 			values := msg.GetBodySubstringValues()
 			for i := 0; i < len(keys) && i < len(values); i++ {
 				replacements[keys[i]] = values[i]
 			}
+
 			t.Bus.Publish(&NotificationEvent{
 				TitleLocalizationKey: msg.GetNotificationTitleLocalizationKey(),
 				BodyLocalizationKey:  msg.GetNotificationBodyLocalizationKey(),
 				ReplacementStrings:   replacements,
 			})
 		}
+
 	case pb.EGCItemMsg_k_EMsgGCTFSpecificItemBroadcast:
 		var msg pb.CMsgGCTFSpecificItemBroadcast
 		if proto.Unmarshal(pkt.Payload, &msg) == nil {

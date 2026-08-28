@@ -17,7 +17,7 @@ func setupBenchmarkRemote(itemCount int) *Remote {
 	r := NewRemote(76561198000000000, nil, nil, sch)
 
 	items := make([]TF2Item, 0, itemCount)
-	for i := 0; i < itemCount; i++ {
+	for i := range itemCount {
 		assetID := uint64(2000000000 + i)
 
 		var (

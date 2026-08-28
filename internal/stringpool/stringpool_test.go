@@ -40,13 +40,9 @@ func TestPool_Intern(t *testing.T) {
 
 		var wg sync.WaitGroup
 		for range 50 {
-			wg.Add(1)
-
-			go func() {
-				defer wg.Done()
-
+			wg.Go(func() {
 				_ = p.Intern("Rocket Launcher")
-			}()
+			})
 		}
 
 		wg.Wait()

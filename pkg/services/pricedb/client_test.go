@@ -308,7 +308,10 @@ func TestClient(t *testing.T) {
 
 		stub.SetJSONResponse("api/spell/predict-spell-item", 200, PredictSpellItemResponse{ItemName: "Rocket Launcher"})
 
-		predItem, err := spellClient.PredictSpellItem(ctx, PredictSpellItemRequest{ItemName: "Rocket Launcher", SpellIDs: []int{1009}})
+		predItem, err := spellClient.PredictSpellItem(
+			ctx,
+			PredictSpellItemRequest{ItemName: "Rocket Launcher", SpellIDs: []int{1009}},
+		)
 		require.NoError(t, err)
 		assert.Equal(t, "Rocket Launcher", predItem.ItemName)
 

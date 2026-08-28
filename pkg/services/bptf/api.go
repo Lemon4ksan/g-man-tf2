@@ -1,3 +1,7 @@
+// Copyright (c) 2026 Lemon4ksan All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package bptf
 
 import (
@@ -44,7 +48,7 @@ type API interface {
 	// GetIgetPricesV4 — Get price schema
 	//
 	// @get "IGetPrices/v4"
-	GetIgetPricesV4(ctx context.Context, raw int, since int, mods ...aoni.RequestModifier) (*V4pricesResponse, error)
+	GetIgetPricesV4(ctx context.Context, raw, since int, mods ...aoni.RequestModifier) (*V4pricesResponse, error)
 
 	// GetIgetSpecialItemsV1 — Get special internal items
 	//
@@ -54,12 +58,16 @@ type API interface {
 	// GetIgetUsersGetImpersonatedUsers — Get impersonated users
 	//
 	// @get "IGetUsers/GetImpersonatedUsers"
-	GetIgetUsersGetImpersonatedUsers(ctx context.Context, limit int, skip int, mods ...aoni.RequestModifier) (map[string]any, error)
+	GetIgetUsersGetImpersonatedUsers(
+		ctx context.Context,
+		limit, skip int,
+		mods ...aoni.RequestModifier,
+	) (map[string]any, error)
 
 	// GetIgetUsersV3 — Get user data
 	//
 	// @get "IGetUsers/v3"
-	GetIgetUsersV3(ctx context.Context, steamid []string, steamids []string, mods ...aoni.RequestModifier) (any, error)
+	GetIgetUsersV3(ctx context.Context, steamid, steamids []string, mods ...aoni.RequestModifier) (any, error)
 
 	// PostAgentPulse — (Re)-register a user agent
 	//
@@ -79,7 +87,7 @@ type API interface {
 	// GetClassifiedsAlerts — Get alerts
 	//
 	// @get "classifieds/alerts"
-	GetClassifiedsAlerts(ctx context.Context, limit int, skip int, mods ...aoni.RequestModifier) (map[string]any, error)
+	GetClassifiedsAlerts(ctx context.Context, limit, skip int, mods ...aoni.RequestModifier) (map[string]any, error)
 
 	// PostClassifiedsAlerts — Create alert
 	//
@@ -100,7 +108,11 @@ type API interface {
 	//
 	// @delete "classifieds/alerts"
 	// @query casing=snake_case
-	DeleteClassifiedsAlerts(ctx context.Context, intent string, itemName string, mods ...aoni.RequestModifier) (map[string]any, error)
+	DeleteClassifiedsAlerts(
+		ctx context.Context,
+		intent, itemName string,
+		mods ...aoni.RequestModifier,
+	) (map[string]any, error)
 
 	// GetClassifiedsAlertsByID — Get alert
 	//
@@ -131,17 +143,29 @@ type API interface {
 	// PostInventoryBySteamidRefresh — Refresh an inventory.
 	//
 	// @post "inventory/{steamid}/refresh"
-	PostInventoryBySteamidRefresh(ctx context.Context, steamid string, mods ...aoni.RequestModifier) (*InventoryStatus, error)
+	PostInventoryBySteamidRefresh(
+		ctx context.Context,
+		steamid string,
+		mods ...aoni.RequestModifier,
+	) (*InventoryStatus, error)
 
 	// GetInventoryBySteamidStatus — Get the status of an inventory.
 	//
 	// @get "inventory/{steamid}/status"
-	GetInventoryBySteamidStatus(ctx context.Context, steamid string, mods ...aoni.RequestModifier) (*InventoryStatus, error)
+	GetInventoryBySteamidStatus(
+		ctx context.Context,
+		steamid string,
+		mods ...aoni.RequestModifier,
+	) (*InventoryStatus, error)
 
 	// GetInventoryBySteamidValues — Get inventory values.
 	//
 	// @get "inventory/{steamid}/values"
-	GetInventoryBySteamidValues(ctx context.Context, steamid string, mods ...aoni.RequestModifier) (*InventoryValues, error)
+	GetInventoryBySteamidValues(
+		ctx context.Context,
+		steamid string,
+		mods ...aoni.RequestModifier,
+	) (*InventoryValues, error)
 
 	// GetNotifications — Get notifications
 	//
@@ -182,13 +206,21 @@ type API interface {
 	// GetV2ClassifiedsArchive — Get account archived listings
 	//
 	// @get "v2/classifieds/archive"
-	GetV2ClassifiedsArchive(ctx context.Context, limit int, skip int, mods ...aoni.RequestModifier) (*ListingScrollable, error)
+	GetV2ClassifiedsArchive(
+		ctx context.Context,
+		limit, skip int,
+		mods ...aoni.RequestModifier,
+	) (*ListingScrollable, error)
 
 	// DeleteV2ClassifiedsArchive — Delete all archived listings
 	//
 	// @delete "v2/classifieds/archive"
 	// @json
-	DeleteV2ClassifiedsArchive(ctx context.Context, req ListingDropRequest, mods ...aoni.RequestModifier) (map[string]any, error)
+	DeleteV2ClassifiedsArchive(
+		ctx context.Context,
+		req ListingDropRequest,
+		mods ...aoni.RequestModifier,
+	) (map[string]any, error)
 
 	// GetV2ClassifiedsArchiveBatch — Get batch operation limit
 	//
@@ -203,23 +235,40 @@ type API interface {
 	// GetV2ClassifiedsArchiveByListingID — Get one archived listing
 	//
 	// @get "v2/classifieds/archive/{listingId}"
-	GetV2ClassifiedsArchiveByListingID(ctx context.Context, listingID string, mods ...aoni.RequestModifier) (*Listing, error)
+	GetV2ClassifiedsArchiveByListingID(
+		ctx context.Context,
+		listingID string,
+		mods ...aoni.RequestModifier,
+	) (*Listing, error)
 
 	// DeleteV2ClassifiedsArchiveByListingID — Delete one archived listing
 	//
 	// @delete "v2/classifieds/archive/{listingId}"
-	DeleteV2ClassifiedsArchiveByListingID(ctx context.Context, listingID string, mods ...aoni.RequestModifier) (map[string]any, error)
+	DeleteV2ClassifiedsArchiveByListingID(
+		ctx context.Context,
+		listingID string,
+		mods ...aoni.RequestModifier,
+	) (map[string]any, error)
 
 	// PatchV2ClassifiedsArchiveByListingID — Update one archived listing
 	//
 	// @patch "v2/classifieds/archive/{listingId}"
 	// @json
-	PatchV2ClassifiedsArchiveByListingID(ctx context.Context, listingID string, req ListingPatchRequest, mods ...aoni.RequestModifier) (*Listing, error)
+	PatchV2ClassifiedsArchiveByListingID(
+		ctx context.Context,
+		listingID string,
+		req ListingPatchRequest,
+		mods ...aoni.RequestModifier,
+	) (*Listing, error)
 
 	// PostV2ClassifiedsArchiveByListingIDPublish — Publish one archived listing to the active pool
 	//
 	// @post "v2/classifieds/archive/{listingId}/publish"
-	PostV2ClassifiedsArchiveByListingIDPublish(ctx context.Context, listingID string, mods ...aoni.RequestModifier) (*Listing, error)
+	PostV2ClassifiedsArchiveByListingIDPublish(
+		ctx context.Context,
+		listingID string,
+		mods ...aoni.RequestModifier,
+	) (*Listing, error)
 
 	// GetV2ClassifiedsListings — Get account listings
 	//
@@ -237,13 +286,21 @@ type API interface {
 	//
 	// @post "v2/classifieds/listings"
 	// @json
-	PostV2ClassifiedsListings(ctx context.Context, req ListingResolvable, mods ...aoni.RequestModifier) (*Listing, error)
+	PostV2ClassifiedsListings(
+		ctx context.Context,
+		req ListingResolvable,
+		mods ...aoni.RequestModifier,
+	) (*Listing, error)
 
 	// DeleteV2ClassifiedsListings — Delete all listings
 	//
 	// @delete "v2/classifieds/listings"
 	// @json
-	DeleteV2ClassifiedsListings(ctx context.Context, req ListingDropRequest, mods ...aoni.RequestModifier) (map[string]any, error)
+	DeleteV2ClassifiedsListings(
+		ctx context.Context,
+		req ListingDropRequest,
+		mods ...aoni.RequestModifier,
+	) (map[string]any, error)
 
 	// PostV2ClassifiedsListingsArchiveAll — Archive all listings
 	//
@@ -259,13 +316,21 @@ type API interface {
 	//
 	// @post "v2/classifieds/listings/batch"
 	// @json
-	PostV2ClassifiedsListingsBatch(ctx context.Context, req []ListingResolvable, mods ...aoni.RequestModifier) ([]*ListingBatchCreateResult, error)
+	PostV2ClassifiedsListingsBatch(
+		ctx context.Context,
+		req []ListingResolvable,
+		mods ...aoni.RequestModifier,
+	) ([]*ListingBatchCreateResult, error)
 
 	// PatchV2ClassifiedsListingsBatch — Batch update listings
 	//
 	// @patch "v2/classifieds/listings/batch"
 	// @json
-	PatchV2ClassifiedsListingsBatch(ctx context.Context, req []ListingBatchUpdateItem, mods ...aoni.RequestModifier) (*ListingBatchUpdateResponse, error)
+	PatchV2ClassifiedsListingsBatch(
+		ctx context.Context,
+		req []ListingBatchUpdateItem,
+		mods ...aoni.RequestModifier,
+	) (*ListingBatchUpdateResponse, error)
 
 	// DeleteV2ClassifiedsListingsBatch — Batch delete listings
 	//
@@ -280,33 +345,58 @@ type API interface {
 	// GetV2ClassifiedsListingsByListingID — Get one listing
 	//
 	// @get "v2/classifieds/listings/{listingId}"
-	GetV2ClassifiedsListingsByListingID(ctx context.Context, listingID string, mods ...aoni.RequestModifier) (*Listing, error)
+	GetV2ClassifiedsListingsByListingID(
+		ctx context.Context,
+		listingID string,
+		mods ...aoni.RequestModifier,
+	) (*Listing, error)
 
 	// DeleteV2ClassifiedsListingsByListingID — Delete one listing
 	//
 	// @delete "v2/classifieds/listings/{listingId}"
-	DeleteV2ClassifiedsListingsByListingID(ctx context.Context, listingID string, mods ...aoni.RequestModifier) (map[string]any, error)
+	DeleteV2ClassifiedsListingsByListingID(
+		ctx context.Context,
+		listingID string,
+		mods ...aoni.RequestModifier,
+	) (map[string]any, error)
 
 	// PatchV2ClassifiedsListingsByListingID — Update one listing
 	//
 	// @patch "v2/classifieds/listings/{listingId}"
 	// @json
-	PatchV2ClassifiedsListingsByListingID(ctx context.Context, listingID string, req ListingPatchRequest, mods ...aoni.RequestModifier) (*Listing, error)
+	PatchV2ClassifiedsListingsByListingID(
+		ctx context.Context,
+		listingID string,
+		req ListingPatchRequest,
+		mods ...aoni.RequestModifier,
+	) (*Listing, error)
 
 	// PostV2ClassifiedsListingsByListingIDArchive — Move listing to the archive
 	//
 	// @post "v2/classifieds/listings/{listingId}/archive"
-	PostV2ClassifiedsListingsByListingIDArchive(ctx context.Context, listingID string, mods ...aoni.RequestModifier) (*Listing, error)
+	PostV2ClassifiedsListingsByListingIDArchive(
+		ctx context.Context,
+		listingID string,
+		mods ...aoni.RequestModifier,
+	) (*Listing, error)
 
 	// PostV2ClassifiedsListingsByListingIDDemote — Demote this listing
 	//
 	// @post "v2/classifieds/listings/{listingId}/demote"
-	PostV2ClassifiedsListingsByListingIDDemote(ctx context.Context, listingID string, mods ...aoni.RequestModifier) (*Listing, error)
+	PostV2ClassifiedsListingsByListingIDDemote(
+		ctx context.Context,
+		listingID string,
+		mods ...aoni.RequestModifier,
+	) (*Listing, error)
 
 	// PostV2ClassifiedsListingsByListingIDPromote — Promote this listing
 	//
 	// @post "v2/classifieds/listings/{listingId}/promote"
-	PostV2ClassifiedsListingsByListingIDPromote(ctx context.Context, listingID string, mods ...aoni.RequestModifier) (*Listing, error)
+	PostV2ClassifiedsListingsByListingIDPromote(
+		ctx context.Context,
+		listingID string,
+		mods ...aoni.RequestModifier,
+	) (*Listing, error)
 }
 
 // Client is an alias for API for backward compatibility.
@@ -316,13 +406,16 @@ type Client = API
 // and userToken (for Classifieds listings management).
 func NewClient(doer any, apiKey, userToken string, opts ...aoni.ClientOption) API {
 	var defaultOpts []aoni.ClientOption
+
 	defaultOpts = append(defaultOpts, option.WithBaseURL(BaseURL))
 	if userToken != "" {
 		defaultOpts = append(defaultOpts, option.WithHeader("X-Auth-Token", userToken))
 	}
+
 	if apiKey != "" {
 		defaultOpts = append(defaultOpts, option.WithHeader("token", apiKey))
 	}
+
 	defaultOpts = append(defaultOpts, opts...)
 
 	return New(doer, defaultOpts...)

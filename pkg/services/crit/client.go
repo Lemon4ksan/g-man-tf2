@@ -59,8 +59,8 @@ func NewClient(doer aoni.RequestDoer, apiKey string, opts ...aoni.ClientOption) 
 		defaultOpts = append(defaultOpts, option.WithHeader("X-API-Key", apiKey))
 	}
 
-	allOpts := append(defaultOpts, opts...)
-	r := aoni.NewClient(doer, allOpts...)
+	defaultOpts = append(defaultOpts, opts...)
+	r := aoni.NewClient(doer, defaultOpts...)
 	c.r = r
 	c.API = New(r)
 
@@ -88,6 +88,7 @@ func (c *Client) With(opts ...aoni.ClientOption) *Client {
 	}
 
 	r := c.r.With(opts...)
+
 	return &Client{
 		r:   r,
 		API: New(r),

@@ -48,6 +48,7 @@ func testUpgradeToWS(w http.ResponseWriter, r *http.Request) (ws.Conn, error) {
 		_ = conn.Close()
 		return nil, err
 	}
+
 	if err := bufrw.Flush(); err != nil {
 		_ = conn.Close()
 		return nil, err

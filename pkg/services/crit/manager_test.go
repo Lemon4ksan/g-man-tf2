@@ -102,7 +102,7 @@ func (d *statefulDoer) Do(req *http.Request) (*http.Response, error) {
 	if req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "inventory/refresh") {
 		d.refreshCount++
 		resp := InventoryResponse{
-			Response:  Response{Success: true},
+			Success:   true,
 			ItemCount: 15,
 		}
 		b, _ := json.Marshal(resp)
@@ -126,7 +126,7 @@ func (d *statefulDoer) Do(req *http.Request) (*http.Response, error) {
 		}
 
 		resp := ListingsResponse{
-			Response: Response{Success: true},
+			Success: true,
 			Listing: &Listing{
 				ID:      777,
 				AssetID: "88888",
@@ -173,7 +173,7 @@ func TestManager(t *testing.T) {
 		stub := mock.NewHTTPStub()
 
 		stub.SetJSONResponse("api/v2/listings/my", 200, ListingsResponse{
-			Response: Response{Success: true},
+			Success: true,
 			Listings: []Listing{
 				{ID: 101, AssetID: "10001", SKU: "5021;6", PriceKeys: 1, PriceMetal: 15.0},
 			},
@@ -218,7 +218,7 @@ func TestManager(t *testing.T) {
 		stub := mock.NewHTTPStub()
 
 		stub.SetJSONResponse("api/v2/listings", 200, ListingsResponse{
-			Response: Response{Success: true},
+			Success: true,
 			Listing: &Listing{
 				ID:      202,
 				AssetID: "99999",
@@ -285,7 +285,7 @@ func TestManager(t *testing.T) {
 		stub := mock.NewHTTPStub()
 
 		stub.SetJSONResponse("api/v2/groups/my", 200, GroupResponse{
-			Response: Response{Success: true},
+			Success: true,
 			Group: &Group{
 				ID:              123,
 				GroupName:       "Trading Hub",
@@ -296,8 +296,8 @@ func TestManager(t *testing.T) {
 			},
 		})
 		stub.SetJSONResponse("api/v2/groups/invites", 200, InvitesResponse{
-			Response: Response{Success: true},
-			Invites:  []Invite{{StoreGroupID: 456, GroupName: "Other Hub"}},
+			Success: true,
+			Invites: []Invite{{StoreGroupID: 456, GroupName: "Other Hub"}},
 		})
 		stub.SetJSONResponse("api/v2/groups/456/accept", 200, Response{Success: true})
 		stub.SetJSONResponse("api/v2/groups/123/leave", 200, Response{Success: true})
@@ -377,8 +377,8 @@ func TestManager(t *testing.T) {
 
 		stub := mock.NewHTTPStub()
 		stub.SetJSONResponse("api/v2/groups/my", 200, GroupResponse{
-			Response: Response{Success: true},
-			Group:    &Group{CustomStoreSlug: "new-slug"},
+			Success: true,
+			Group:   &Group{CustomStoreSlug: "new-slug"},
 		})
 		client := NewClient(aoni.NewClient(stub), "mock-api-key")
 		mgr := NewManager(client)
@@ -467,8 +467,8 @@ func TestManager(t *testing.T) {
 
 		stub.ResponseErrs["api/v2/groups/invites"] = nil
 		stub.SetJSONResponse("api/v2/groups/invites", 200, InvitesResponse{
-			Response: Response{Success: true},
-			Invites:  nil,
+			Success: true,
+			Invites: nil,
 		})
 
 		msg, err := mgr.handleAcceptInviteCommand(ctx, 123, nil)
@@ -513,7 +513,7 @@ func TestManager(t *testing.T) {
 		stub.ResponseErrs["api/v2/groups/my"] = nil
 		stub.SetJSONResponse("api/v2/listings/my", 200, map[string]any{"success": true, "listings": []any{}})
 		stub.SetJSONResponse("api/v2/groups/my", 200, GroupResponse{
-			Response: Response{Success: true},
+			Success: true,
 			Group: &Group{
 				ID:        123,
 				GroupName: "Trading Hub",
@@ -593,8 +593,8 @@ func TestManager(t *testing.T) {
 
 		stub.SetJSONResponse("api/v2/listings/my", 200, ListingsResponse{})
 		stub.SetJSONResponse("api/v2/groups/my", 200, GroupResponse{
-			Response: Response{Success: true},
-			Group:    &Group{CustomStoreSlug: "my-store"},
+			Success: true,
+			Group:   &Group{CustomStoreSlug: "my-store"},
 		})
 
 		client := NewClient(aoni.NewClient(stub), "mock-api-key")
@@ -658,7 +658,7 @@ func TestManager(t *testing.T) {
 		require.NoError(t, err)
 
 		stub.SetJSONResponse("api/v2/listings", 400, Response{Success: false, Message: "item_not_found"})
-		stub.SetJSONResponse("api/v2/inventory/refresh", 200, InventoryResponse{Response: Response{Success: true}})
+		stub.SetJSONResponse("api/v2/inventory/refresh", 200, InventoryResponse{Success: true})
 
 		// Enqueue listing creation task. This will write to txQueue (blocks until worker reads it)
 		ch := mgr.EnqueueCreateListing(ctx, "999", pricedb.Currencies{})
@@ -682,12 +682,12 @@ func TestManager(t *testing.T) {
 		ctx := t.Context()
 
 		stub.SetJSONResponse("api/v2/listings", 200, ListingsResponse{
-			Response: Response{Success: true},
-			Listing:  &Listing{ID: 111, AssetID: "999"},
+			Success: true,
+			Listing: &Listing{ID: 111, AssetID: "999"},
 		})
 		stub.SetJSONResponse("api/v2/listings/111", 200, Response{Success: true})
 		stub.SetJSONResponse("api/v2/listings/555", 200, ListingsResponse{
-			Response: Response{Success: true},
+			Success: true,
 			Listing: &Listing{
 				ID:         555,
 				AssetID:    "777",
@@ -836,7 +836,7 @@ func TestManager(t *testing.T) {
 		ctx := t.Context()
 
 		stub.SetJSONResponse("api/v2/listings/my", 200, ListingsResponse{
-			Response: Response{Success: true},
+			Success: true,
 			Listings: []Listing{
 				{ID: 111, AssetID: "999"},
 			},
@@ -890,7 +890,7 @@ func TestManager(t *testing.T) {
 
 		delete(stub.ResponseErrs, "api/v2/groups/my")
 		stub.SetJSONResponse("api/v2/groups/my", 200, GroupResponse{
-			Response: Response{Success: true},
+			Success: true,
 			Group: &Group{
 				ID:        123,
 				GroupName: "Trading Hub",

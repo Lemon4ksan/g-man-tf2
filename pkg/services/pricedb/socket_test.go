@@ -48,6 +48,7 @@ func testUpgradeToWS(w http.ResponseWriter, r *http.Request) (ws.Conn, error) {
 		_ = conn.Close()
 		return nil, err
 	}
+
 	if err := bufrw.Flush(); err != nil {
 		_ = conn.Close()
 		return nil, err
@@ -245,6 +246,7 @@ func TestSocketManager_PacketParsing_EdgeCases(t *testing.T) {
 	sm := NewSocketManager(wsURL, nil, log.Discard)
 
 	priceReceived := make(chan struct{})
+
 	var once sync.Once
 	sm.OnPrice(func(p *Price) {
 		if p.SKU == "5021;6" {

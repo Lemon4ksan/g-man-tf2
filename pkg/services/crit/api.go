@@ -23,11 +23,20 @@ type API interface {
 
 	// CreateListingDirect creates a new sell listing on crit.tf.
 	// @post "listings"
-	CreateListingDirect(ctx context.Context, req CreateListingRequest, mods ...aoni.RequestModifier) (*ListingsResponse, error)
+	CreateListingDirect(
+		ctx context.Context,
+		req CreateListingRequest,
+		mods ...aoni.RequestModifier,
+	) (*ListingsResponse, error)
 
 	// UpdateListingDirect updates an existing listing by its database ID.
 	// @put "listings/{listing_id}"
-	UpdateListingDirect(ctx context.Context, listingID string, req UpdateListingRequest, mods ...aoni.RequestModifier) (*ListingsResponse, error)
+	UpdateListingDirect(
+		ctx context.Context,
+		listingID string,
+		req UpdateListingRequest,
+		mods ...aoni.RequestModifier,
+	) (*ListingsResponse, error)
 
 	// DeleteListing deletes an active listing by its database ID.
 	// @delete "listings/{listing_id}"
@@ -43,7 +52,12 @@ type API interface {
 
 	// InviteToGroupDirect sends a store group membership invite to a user.
 	// @post "groups/{group_id}/invite"
-	InviteToGroupDirect(ctx context.Context, groupID int, req InviteGroupRequest, mods ...aoni.RequestModifier) (*Response, error)
+	InviteToGroupDirect(
+		ctx context.Context,
+		groupID int,
+		req InviteGroupRequest,
+		mods ...aoni.RequestModifier,
+	) (*Response, error)
 
 	// GetPendingInvites retrieves pending store group invitations.
 	// @get "groups/invites"
@@ -71,7 +85,11 @@ type API interface {
 
 	// UpdateTradeURLDirect updates the bot's trade URL on Crit.tf.
 	// @put "user/trade-url"
-	UpdateTradeURLDirect(ctx context.Context, req UpdateTradeURLRequest, mods ...aoni.RequestModifier) (*Response, error)
+	UpdateTradeURLDirect(
+		ctx context.Context,
+		req UpdateTradeURLRequest,
+		mods ...aoni.RequestModifier,
+	) (*Response, error)
 
 	// GetUserInfo retrieves the authenticated user information from Crit.tf.
 	// @get "user"

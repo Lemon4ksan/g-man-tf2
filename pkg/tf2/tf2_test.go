@@ -176,7 +176,7 @@ func TestTF2_SOCacheEvents_TriggerBusSignals_FiresCorrectEvents(t *testing.T) {
 		msg := &pb.CMsgSOCacheSubscribed{
 			Objects: []*pb.CMsgSOCacheSubscribed_SubscribedType{
 				{
-					TypeId: proto.Int32(SOTypeEconItem),
+					TypeId: new(SOTypeEconItem),
 					ObjectData: [][]byte{
 						createItemPayload(100, ItemKey),
 						createItemPayload(200, ItemScrap),
@@ -209,7 +209,7 @@ func TestTF2_SOCacheEvents_TriggerBusSignals_FiresCorrectEvents(t *testing.T) {
 		subAcquired := ictx.Bus().Subscribe(&ItemAcquiredEvent{})
 
 		msg := &pb.CMsgSOSingleObject{
-			TypeId:     proto.Int32(SOTypeEconItem),
+			TypeId:     new(SOTypeEconItem),
 			ObjectData: createItemPayload(300, ItemScrap),
 		}
 
@@ -292,7 +292,7 @@ func TestTF2_AcknowledgeAll_UnacknowledgedItems_TriggersGCBatchMoves(t *testing.
 	msg := &pb.CMsgSOCacheSubscribed{
 		Objects: []*pb.CMsgSOCacheSubscribed_SubscribedType{
 			{
-				TypeId: proto.Int32(SOTypeEconItem),
+				TypeId: new(SOTypeEconItem),
 				ObjectData: [][]byte{
 					createItemPayloadFull(1, ItemScrap, 1<<30),
 					createItemPayloadFull(2, ItemScrap, 0),
@@ -364,8 +364,8 @@ func TestTF2_SOCache_Metadata_RawPayloadUpdates_SavesValidMetadata(t *testing.T)
 
 		accMsg := &pb.CSOEconGameAccountClient{
 			AdditionalBackpackSlots: proto.Uint32(100),
-			TrialAccount:            proto.Bool(false),
-			CompetitiveAccess:       proto.Bool(true),
+			TrialAccount:            new(false),
+			CompetitiveAccess:       new(true),
 			TradeBanExpiration:      proto.Uint32(123456),
 		}
 		data, _ := proto.Marshal(accMsg)

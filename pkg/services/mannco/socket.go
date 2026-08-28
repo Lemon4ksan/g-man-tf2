@@ -331,6 +331,7 @@ func (s *SocketManager) connectAndListen(ctx context.Context) error {
 			_ = s.conn.Close()
 			s.conn = nil
 		}
+
 		s.mu.Unlock()
 	}()
 

@@ -56,32 +56,42 @@ func NewClient(doer any, apiKey string, opts ...aoni.ClientOption) *Client {
 
 // GetAccountV2 fetches the API account details.
 func (c *Client) GetAccountV2(ctx context.Context, mods ...aoni.RequestModifier) (*V2AccountResponse, error) {
-	return c.API.GetAccount(ctx, mods...)
+	return c.GetAccount(ctx, mods...)
 }
 
 // GetSteamMarketPriceV2 fetches the market price for an item.
-func (c *Client) GetSteamMarketPriceV2(ctx context.Context, q GetSteamMarketPriceV2Query, mods ...aoni.RequestModifier) (*V2MarketPriceResponse, error) {
-	return c.API.GetSteamMarketPrice(ctx, q.MarketHashName, q.AppID, int(q.Currency), mods...)
+func (c *Client) GetSteamMarketPriceV2(
+	ctx context.Context,
+	q GetSteamMarketPriceV2Query,
+	mods ...aoni.RequestModifier,
+) (*V2MarketPriceResponse, error) {
+	return c.GetSteamMarketPrice(ctx, q.MarketHashName, q.AppID, int(q.Currency), mods...)
 }
 
 // GetSteamUsersInventoryV2 loads a Steam user's inventory.
-func (c *Client) GetSteamUsersInventoryV2(ctx context.Context, steamID id.ID, appID, contextID int, q GetSteamUsersInventoryV2Query, mods ...aoni.RequestModifier) (*V2InventoryResponse, error) {
-	return c.API.GetSteamInventory(ctx, steamID, appID, contextID, q.Cursor, string(q.Language), mods...)
+func (c *Client) GetSteamUsersInventoryV2(
+	ctx context.Context,
+	steamID id.ID,
+	appID, contextID int,
+	q GetSteamUsersInventoryV2Query,
+	mods ...aoni.RequestModifier,
+) (*V2InventoryResponse, error) {
+	return c.GetSteamInventory(ctx, steamID, appID, contextID, q.Cursor, string(q.Language), mods...)
 }
 
 // GetStatus returns the public service status.
 func (c *Client) GetStatus(ctx context.Context, mods ...aoni.RequestModifier) (*PublicStatus, error) {
-	return c.API.GetPublicStatus(ctx, mods...)
+	return c.GetPublicStatus(ctx, mods...)
 }
 
 // CheckReady verifies service readiness.
 func (c *Client) CheckReady(ctx context.Context, mods ...aoni.RequestModifier) (map[string]any, error) {
-	return c.API.GetReadyHealth(ctx, mods...)
+	return c.GetReadyHealth(ctx, mods...)
 }
 
 // CheckLive verifies service liveness.
 func (c *Client) CheckLive(ctx context.Context, mods ...aoni.RequestModifier) (map[string]any, error) {
-	return c.API.GetLiveHealth(ctx, mods...)
+	return c.GetLiveHealth(ctx, mods...)
 }
 
 // WithIdempotencyKey returns a RequestModifier that sets the Idempotency-Key header.

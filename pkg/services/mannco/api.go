@@ -38,11 +38,19 @@ type API interface {
 
 	// GetIPSessionList retrieves active and historical login sessions.
 	// @get "user/ipList"
-	GetIPSessionList(ctx context.Context, query IPSessionListQuery, mods ...aoni.RequestModifier) (*IPSessionListResponse, error)
+	GetIPSessionList(
+		ctx context.Context,
+		query IPSessionListQuery,
+		mods ...aoni.RequestModifier,
+	) (*IPSessionListResponse, error)
 
 	// GetPublicStoreProfile returns public store info by user identifier or slug.
 	// @get "user/store/{identifier}"
-	GetPublicStoreProfile(ctx context.Context, identifier string, mods ...aoni.RequestModifier) (*PublicStoreProfile, error)
+	GetPublicStoreProfile(
+		ctx context.Context,
+		identifier string,
+		mods ...aoni.RequestModifier,
+	) (*PublicStoreProfile, error)
 
 	// GetSalesInfos returns summary sales statistics for the user.
 	// @get "user/getSalesInfos"
@@ -50,31 +58,60 @@ type API interface {
 
 	// GetSalesChartInfos returns aggregated sales data for plotting charts.
 	// @get "user/getSalesChartInfos"
-	GetSalesChartInfos(ctx context.Context, query SalesChartQuery, mods ...aoni.RequestModifier) (*SalesChartResponse, error)
+	GetSalesChartInfos(
+		ctx context.Context,
+		query SalesChartQuery,
+		mods ...aoni.RequestModifier,
+	) (*SalesChartResponse, error)
 
 	// GetBalanceHistory returns logs of deposits, payments, and balance adjustments.
 	// @get "user/getBalanceHistory"
-	GetBalanceHistory(ctx context.Context, query BalanceHistoryQuery, mods ...aoni.RequestModifier) (*BalanceHistoryResponse, error)
+	GetBalanceHistory(
+		ctx context.Context,
+		query BalanceHistoryQuery,
+		mods ...aoni.RequestModifier,
+	) (*BalanceHistoryResponse, error)
 
 	// GetPurchaseHistory returns purchase checkout logs.
 	// @get "user/getPurchaseHistory"
-	GetPurchaseHistory(ctx context.Context, query PurchaseHistoryQuery, mods ...aoni.RequestModifier) (*PurchaseHistoryResponse, error)
+	GetPurchaseHistory(
+		ctx context.Context,
+		query PurchaseHistoryQuery,
+		mods ...aoni.RequestModifier,
+	) (*PurchaseHistoryResponse, error)
 
 	// GetSalesHistory returns marketplace sales logs.
 	// @get "user/getSalesHistory"
-	GetSalesHistory(ctx context.Context, query SalesHistoryQuery, mods ...aoni.RequestModifier) (*SalesHistoryResponse, error)
+	GetSalesHistory(
+		ctx context.Context,
+		query SalesHistoryQuery,
+		mods ...aoni.RequestModifier,
+	) (*SalesHistoryResponse, error)
 
 	// GetSalesHistoryForUser returns the sales history of another user (Admin only).
 	// @get "user/getSalesHistory/{userid}"
-	GetSalesHistoryForUser(ctx context.Context, userid string, query SalesHistoryQuery, mods ...aoni.RequestModifier) (*SalesHistoryResponse, error)
+	GetSalesHistoryForUser(
+		ctx context.Context,
+		userid string,
+		query SalesHistoryQuery,
+		mods ...aoni.RequestModifier,
+	) (*SalesHistoryResponse, error)
 
 	// GetCashoutHistory returns cashout checkout transaction logs.
 	// @get "user/getCashoutHistory"
-	GetCashoutHistory(ctx context.Context, query CashoutHistoryQuery, mods ...aoni.RequestModifier) (*CashoutHistoryResponse, error)
+	GetCashoutHistory(
+		ctx context.Context,
+		query CashoutHistoryQuery,
+		mods ...aoni.RequestModifier,
+	) (*CashoutHistoryResponse, error)
 
 	// GetTransactionHistory returns general account ledger details.
 	// @get "user/getTransactionHistory"
-	GetTransactionHistory(ctx context.Context, query TransactionHistoryQuery, mods ...aoni.RequestModifier) (*TransactionHistoryResponse, error)
+	GetTransactionHistory(
+		ctx context.Context,
+		query TransactionHistoryQuery,
+		mods ...aoni.RequestModifier,
+	) (*TransactionHistoryResponse, error)
 
 	// GetTransactionDetails returns details of a single ledger transaction ID.
 	// @get "user/getTransactionDetails"
@@ -87,7 +124,11 @@ type API interface {
 
 	// GetCryptoDepositHistory returns cryptocurrency top-ups logs.
 	// @get "user/getCryptoDepositHistory"
-	GetCryptoDepositHistory(ctx context.Context, query CryptoDepositHistoryQuery, mods ...aoni.RequestModifier) (*CryptoDepositHistoryResponse, error)
+	GetCryptoDepositHistory(
+		ctx context.Context,
+		query CryptoDepositHistoryQuery,
+		mods ...aoni.RequestModifier,
+	) (*CryptoDepositHistoryResponse, error)
 
 	// GetItemDetails contains the catalog information for a queried item ID or slug.
 	// @get "item/details/{item}"
@@ -95,7 +136,7 @@ type API interface {
 
 	// GetItemSalesGraph returns historical sales summary chart points.
 	// @get "item/salesGraph/{item}"
-	GetItemSalesGraph(ctx context.Context, item string, period string, mods ...aoni.RequestModifier) (*ItemSalesGraph, error)
+	GetItemSalesGraph(ctx context.Context, item, period string, mods ...aoni.RequestModifier) (*ItemSalesGraph, error)
 
 	// GetListingCountDirect returns the number of active sales listings for an item.
 	// @get "item/listing/count/{item}"
@@ -103,15 +144,29 @@ type API interface {
 
 	// GetListingCountForUser returns the number of active sales listings for an item by user ID.
 	// @get "item/listing/count/{item}/{userid}"
-	GetListingCountForUser(ctx context.Context, item string, userid string, mods ...aoni.RequestModifier) (*ListingCount, error)
+	GetListingCountForUser(
+		ctx context.Context,
+		item, userid string,
+		mods ...aoni.RequestModifier,
+	) (*ListingCount, error)
 
 	// GetItemListingsDirect fetches marketplace active listings sorted by price ascending.
 	// @get "item/listing/{item}"
-	GetItemListingsDirect(ctx context.Context, item string, query ListingsReq, mods ...aoni.RequestModifier) ([]Listing, error)
+	GetItemListingsDirect(
+		ctx context.Context,
+		item string,
+		query ListingsReq,
+		mods ...aoni.RequestModifier,
+	) ([]Listing, error)
 
 	// GetItemListingsForUser fetches marketplace active listings for an item by user ID.
 	// @get "item/listing/{item}/{userid}"
-	GetItemListingsForUser(ctx context.Context, item string, userid string, query ListingsReq, mods ...aoni.RequestModifier) ([]Listing, error)
+	GetItemListingsForUser(
+		ctx context.Context,
+		item, userid string,
+		query ListingsReq,
+		mods ...aoni.RequestModifier,
+	) ([]Listing, error)
 
 	// GetBuyOrderList retrieves active buy orders grouped by pricing tiers.
 	// @get "item/buyorderList/{item}"
@@ -127,11 +182,19 @@ type API interface {
 
 	// GetBackpackDetailsTF2 queries full item details and backpack metrics for a TF2 asset ID.
 	// @get "item/details/fromid/{backpackid}"
-	GetBackpackDetailsTF2(ctx context.Context, backpackid string, mods ...aoni.RequestModifier) (*BackpackDetailsResponse, error)
+	GetBackpackDetailsTF2(
+		ctx context.Context,
+		backpackid string,
+		mods ...aoni.RequestModifier,
+	) (*BackpackDetailsResponse, error)
 
 	// GetBackpackDetailsCS2 queries full details for a CS2 asset ID.
 	// @get "item/cs/details/fromid/{backpackid}"
-	GetBackpackDetailsCS2(ctx context.Context, backpackid string, mods ...aoni.RequestModifier) (*BackpackDetailsResponse, error)
+	GetBackpackDetailsCS2(
+		ctx context.Context,
+		backpackid string,
+		mods ...aoni.RequestModifier,
+	) (*BackpackDetailsResponse, error)
 
 	// GetItemsOnSale returns items listed for sale by the user.
 	// @get "inventory/onSale"
@@ -143,7 +206,11 @@ type API interface {
 
 	// SetPriceDirect updates pricing for inventory item asset IDs.
 	// @post "inventory/price"
-	SetPriceDirect(ctx context.Context, req SetPriceReq, mods ...aoni.RequestModifier) (*InventoryMessageResponse, error)
+	SetPriceDirect(
+		ctx context.Context,
+		req SetPriceReq,
+		mods ...aoni.RequestModifier,
+	) (*InventoryMessageResponse, error)
 
 	// WithdrawDirect pulls items from inventory to the user's Steam Account.
 	// @post "inventory/withdraw"
@@ -151,7 +218,11 @@ type API interface {
 
 	// CreateBuyOrderDirect creates a new buy order.
 	// @post "item/buyorder"
-	CreateBuyOrderDirect(ctx context.Context, req CreateBuyOrderReq, mods ...aoni.RequestModifier) (*DetailsResponse, error)
+	CreateBuyOrderDirect(
+		ctx context.Context,
+		req CreateBuyOrderReq,
+		mods ...aoni.RequestModifier,
+	) (*DetailsResponse, error)
 
 	// UpdateBuyOrderDirect updates an existing buy order price or amount.
 	// @post "item/buyorder/update"
@@ -159,15 +230,27 @@ type API interface {
 
 	// RemoveBuyOrderDirect deletes an existing buy order.
 	// @post "item/buyorder/remove"
-	RemoveBuyOrderDirect(ctx context.Context, req RemoveBuyOrderReq, mods ...aoni.RequestModifier) (*DetailsResponse, error)
+	RemoveBuyOrderDirect(
+		ctx context.Context,
+		req RemoveBuyOrderReq,
+		mods ...aoni.RequestModifier,
+	) (*DetailsResponse, error)
 
 	// GetUserBuyOrdersForItem returns user's active buy order for a specific item.
 	// @get "user/buyorder/{item}"
-	GetUserBuyOrdersForItem(ctx context.Context, item string, mods ...aoni.RequestModifier) (*UserBuyOrderResponse, error)
+	GetUserBuyOrdersForItem(
+		ctx context.Context,
+		item string,
+		mods ...aoni.RequestModifier,
+	) (*UserBuyOrderResponse, error)
 
 	// GetUserBuyOrders retrieves all active buy orders for the authenticated user.
 	// @get "user/getBuyorder"
-	GetUserBuyOrders(ctx context.Context, query GetUserBuyOrdersQuery, mods ...aoni.RequestModifier) (*UserAllBuyOrdersResponse, error)
+	GetUserBuyOrders(
+		ctx context.Context,
+		query GetUserBuyOrdersQuery,
+		mods ...aoni.RequestModifier,
+	) (*UserAllBuyOrdersResponse, error)
 
 	// GetCart retrieves user's current shopping cart with full item metadata.
 	// @get "cart/get"
@@ -199,11 +282,19 @@ type API interface {
 
 	// CreateDepositTrade creates a bot trade offer to deposit items onto the store.
 	// @post "deposit/trade"
-	CreateDepositTrade(ctx context.Context, req CreateDepositTradeReq, mods ...aoni.RequestModifier) (*CreateDepositTradeResponse, error)
+	CreateDepositTrade(
+		ctx context.Context,
+		req CreateDepositTradeReq,
+		mods ...aoni.RequestModifier,
+	) (*CreateDepositTradeResponse, error)
 
 	// CreateInstantSellTrade creates an instant sell bot trade offer.
 	// @post "deposit/trade/instant"
-	CreateInstantSellTrade(ctx context.Context, req CreateInstantSellTradeReq, mods ...aoni.RequestModifier) (*CreateDepositTradeResponse, error)
+	CreateInstantSellTrade(
+		ctx context.Context,
+		req CreateInstantSellTradeReq,
+		mods ...aoni.RequestModifier,
+	) (*CreateDepositTradeResponse, error)
 
 	// GetDepositTradeStatus retrieves the status and trade code of a deposit trade.
 	// @get "deposit/tradeStatus/{tradeid}"
@@ -231,21 +322,42 @@ type API interface {
 
 	// CreateOfferDirect initiates a purchase trade offer for an item on sale.
 	// @post "offers/create"
-	CreateOfferDirect(ctx context.Context, req CreateOfferReq, mods ...aoni.RequestModifier) (*OfferMessageResponse, error)
+	CreateOfferDirect(
+		ctx context.Context,
+		req CreateOfferReq,
+		mods ...aoni.RequestModifier,
+	) (*OfferMessageResponse, error)
 
 	// AcceptOfferDirect accepts a received offer (Seller action).
 	// @post "offers/accept"
-	AcceptOfferDirect(ctx context.Context, req OfferActionReq, mods ...aoni.RequestModifier) (*OfferMessageResponse, error)
+	AcceptOfferDirect(
+		ctx context.Context,
+		req OfferActionReq,
+		mods ...aoni.RequestModifier,
+	) (*OfferMessageResponse, error)
 
 	// DeclineOfferDirect declines an incoming trade offer (Seller action).
 	// @post "offers/decline"
-	DeclineOfferDirect(ctx context.Context, req OfferActionReq, mods ...aoni.RequestModifier) (*OfferMessageResponse, error)
+	DeclineOfferDirect(
+		ctx context.Context,
+		req OfferActionReq,
+		mods ...aoni.RequestModifier,
+	) (*OfferMessageResponse, error)
 
 	// RemoveOfferDirect cancels and removes an outgoing trade offer (Buyer action).
 	// @post "offers/remove"
-	RemoveOfferDirect(ctx context.Context, req OfferActionReq, mods ...aoni.RequestModifier) (*OfferMessageResponse, error)
+	RemoveOfferDirect(
+		ctx context.Context,
+		req OfferActionReq,
+		mods ...aoni.RequestModifier,
+	) (*OfferMessageResponse, error)
 
 	// InitiatePayment creates a checkout session to add balance credit or purchase cart listings.
 	// @post "payment/{provider}"
-	InitiatePayment(ctx context.Context, provider string, req PaymentReq, mods ...aoni.RequestModifier) (*PaymentResponse, error)
+	InitiatePayment(
+		ctx context.Context,
+		provider string,
+		req PaymentReq,
+		mods ...aoni.RequestModifier,
+	) (*PaymentResponse, error)
 }

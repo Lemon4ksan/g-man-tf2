@@ -11,8 +11,6 @@ import (
 	"fmt"
 	"time"
 
-	"google.golang.org/protobuf/proto"
-
 	pb "github.com/lemon4ksan/g-man-tf2/protobuf/tf2"
 )
 
@@ -34,7 +32,7 @@ func (t *TF2) RemoveItemDescription(ctx context.Context, itemID uint64) error {
 
 func (t *TF2) RemoveItemPaint(ctx context.Context, itemID uint64) error {
 	req := &pb.CMsgGCRemoveCustomizationAttributeSimple{
-		ItemId: proto.Uint64(itemID),
+		ItemId: new(itemID),
 	}
 
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCRemoveItemPaint), req)
@@ -42,7 +40,7 @@ func (t *TF2) RemoveItemPaint(ctx context.Context, itemID uint64) error {
 
 func (t *TF2) RemoveMakersMark(ctx context.Context, itemID uint64) error {
 	req := &pb.CMsgGCRemoveCustomizationAttributeSimple{
-		ItemId: proto.Uint64(itemID),
+		ItemId: new(itemID),
 	}
 
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCRemoveMakersMark), req)
@@ -50,7 +48,7 @@ func (t *TF2) RemoveMakersMark(ctx context.Context, itemID uint64) error {
 
 func (t *TF2) ResetStrangeScores(ctx context.Context, itemID uint64) error {
 	req := &pb.CMsgGCResetStrangeScores{
-		ItemId: proto.Uint64(itemID),
+		ItemId: new(itemID),
 	}
 
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCResetStrangeScores), req)
@@ -58,7 +56,7 @@ func (t *TF2) ResetStrangeScores(ctx context.Context, itemID uint64) error {
 
 func (t *TF2) RemoveKillstreak(ctx context.Context, itemID uint64) error {
 	req := &pb.CMsgGCRemoveCustomizationAttributeSimple{
-		ItemId: proto.Uint64(itemID),
+		ItemId: new(itemID),
 	}
 
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCRemoveKillStreak), req)
@@ -66,7 +64,7 @@ func (t *TF2) RemoveKillstreak(ctx context.Context, itemID uint64) error {
 
 func (t *TF2) RemoveFestivizer(ctx context.Context, itemID uint64) error {
 	req := &pb.CMsgGCRemoveCustomizationAttributeSimple{
-		ItemId: proto.Uint64(itemID),
+		ItemId: new(itemID),
 	}
 
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCRemoveFestivizer), req)
@@ -74,7 +72,7 @@ func (t *TF2) RemoveFestivizer(ctx context.Context, itemID uint64) error {
 
 func (t *TF2) RemoveGiftedBy(ctx context.Context, itemID uint64) error {
 	req := &pb.CMsgGCRemoveCustomizationAttributeSimple{
-		ItemId: proto.Uint64(itemID),
+		ItemId: new(itemID),
 	}
 
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCRemoveGiftedBy), req)
@@ -82,7 +80,7 @@ func (t *TF2) RemoveGiftedBy(ctx context.Context, itemID uint64) error {
 
 func (t *TF2) RemoveItemAttribute(ctx context.Context, itemID uint64, attributeID uint32) error {
 	req := &pb.CMsgGCRemoveCustomizationAttributeSimple{
-		ItemId: proto.Uint64(itemID),
+		ItemId: new(itemID),
 	}
 
 	return t.gc.Send(ctx, AppID, attributeID, req)
@@ -164,8 +162,8 @@ func (t *TF2) DeleteItem(ctx context.Context, itemID uint64) error {
 
 func (t *TF2) SetUnusualEffectOffset(ctx context.Context, itemID uint64, offset float32) error {
 	req := &pb.CMsgSetItemEffectVerticalOffset{
-		ItemId: proto.Uint64(itemID),
-		Offset: proto.Float32(offset),
+		ItemId: new(itemID),
+		Offset: new(offset),
 	}
 
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCSetItemEffectVerticalOffset), req)
@@ -173,9 +171,9 @@ func (t *TF2) SetUnusualEffectOffset(ctx context.Context, itemID uint64, offset 
 
 func (t *TF2) TransferStrangeCount(ctx context.Context, toolID, srcID, destID uint64) error {
 	req := &pb.CMsgApplyStrangeCountTransfer{
-		ToolItemId:     proto.Uint64(toolID),
-		ItemSrcItemId:  proto.Uint64(srcID),
-		ItemDestItemId: proto.Uint64(destID),
+		ToolItemId:     new(toolID),
+		ItemSrcItemId:  new(srcID),
+		ItemDestItemId: new(destID),
 	}
 
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCApplyStrangeCountTransfer), req)
@@ -183,8 +181,8 @@ func (t *TF2) TransferStrangeCount(ctx context.Context, toolID, srcID, destID ui
 
 func (t *TF2) ShuffleCrate(ctx context.Context, itemID uint64, userCode string) error {
 	req := &pb.CMsgGCShuffleCrateContents{
-		CrateItemId:    proto.Uint64(itemID),
-		UserCodeString: proto.String(userCode),
+		CrateItemId:    new(itemID),
+		UserCodeString: new(userCode),
 	}
 
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCShuffleCrateContents), req)
@@ -192,8 +190,8 @@ func (t *TF2) ShuffleCrate(ctx context.Context, itemID uint64, userCode string) 
 
 func (t *TF2) ApplyAutograph(ctx context.Context, toolID, itemID uint64) error {
 	req := &pb.CMsgApplyAutograph{
-		AutographItemId: proto.Uint64(toolID),
-		ItemItemId:      proto.Uint64(itemID),
+		AutographItemId: new(toolID),
+		ItemItemId:      new(itemID),
 	}
 
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCApplyAutograph), req)
@@ -201,7 +199,7 @@ func (t *TF2) ApplyAutograph(ctx context.Context, toolID, itemID uint64) error {
 
 func (t *TF2) RequestMarketData(ctx context.Context, currency uint32) error {
 	req := &pb.CMsgGCClientMarketDataRequest{
-		UserCurrency: proto.Uint32(currency),
+		UserCurrency: new(currency),
 	}
 
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCClientRequestMarketData), req)
@@ -209,7 +207,7 @@ func (t *TF2) RequestMarketData(ctx context.Context, currency uint32) error {
 
 func (t *TF2) ReportPlayer(ctx context.Context, accountID uint32, reason *pb.CMsgGC_ReportPlayer_EReason) error {
 	req := &pb.CMsgGC_ReportPlayer{
-		AccountIdTarget: proto.Uint32(accountID),
+		AccountIdTarget: new(accountID),
 		Reason:          reason,
 	}
 
@@ -226,7 +224,7 @@ func (t *TF2) RequestFriends(ctx context.Context, accountIDs []uint32) error {
 
 func (t *TF2) UseItem(ctx context.Context, itemID uint64) error {
 	req := &pb.CMsgUseItem{
-		ItemId: proto.Uint64(itemID),
+		ItemId: new(itemID),
 	}
 
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCUseItemRequest), req)
@@ -234,8 +232,8 @@ func (t *TF2) UseItem(ctx context.Context, itemID uint64) error {
 
 func (t *TF2) ApplyStrangePart(ctx context.Context, itemID, partID uint64) error {
 	req := &pb.CMsgApplyStrangePart{
-		ItemItemId:        proto.Uint64(itemID),
-		StrangePartItemId: proto.Uint64(partID),
+		ItemItemId:        new(itemID),
+		StrangePartItemId: new(partID),
 	}
 
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCApplyStrangePart), req)
@@ -243,8 +241,8 @@ func (t *TF2) ApplyStrangePart(ctx context.Context, itemID, partID uint64) error
 
 func (t *TF2) ApplyStrangifier(ctx context.Context, itemID, toolID uint64) error {
 	req := &pb.CMsgApplyToolToItem{
-		ToolItemId:    proto.Uint64(toolID),
-		SubjectItemId: proto.Uint64(itemID),
+		ToolItemId:    new(toolID),
+		SubjectItemId: new(itemID),
 	}
 
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCApplyXifier), req)
@@ -252,7 +250,7 @@ func (t *TF2) ApplyStrangifier(ctx context.Context, itemID, toolID uint64) error
 
 func (t *TF2) SortBackpack(ctx context.Context, sortType uint32) error {
 	req := &pb.CMsgSortItems{
-		SortType: proto.Uint32(sortType),
+		SortType: new(sortType),
 	}
 
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCSortItems), req)
@@ -260,9 +258,9 @@ func (t *TF2) SortBackpack(ctx context.Context, sortType uint32) error {
 
 func (t *TF2) EquipItem(ctx context.Context, itemID uint64, classID, slot uint32) error {
 	req := &pb.CMsgAdjustItemEquippedState{
-		ItemId:   proto.Uint64(itemID),
-		NewClass: proto.Uint32(classID),
-		NewSlot:  proto.Uint32(slot),
+		ItemId:   new(itemID),
+		NewClass: new(classID),
+		NewSlot:  new(slot),
 	}
 
 	return t.gc.Send(ctx, AppID, uint32(pb.EGCItemMsg_k_EMsgGCAdjustItemEquippedState), req)
@@ -359,8 +357,8 @@ func (t *TF2) MoveItems(ctx context.Context, items []ItemPos) error {
 
 		for _, item := range batch {
 			req.ItemPositions = append(req.ItemPositions, &pb.CMsgSetItemPositions_ItemPosition{
-				ItemId:   proto.Uint64(item.ID),
-				Position: proto.Uint32(item.Position),
+				ItemId:   new(item.ID),
+				Position: new(item.Position),
 			})
 		}
 
@@ -379,11 +377,11 @@ func (t *TF2) MoveItems(ctx context.Context, items []ItemPos) error {
 
 func (t *TF2) FulfillDynamicRecipeComponent(ctx context.Context, toolID, subjectID, attributeIndex uint64) error {
 	req := &pb.CMsgFulfillDynamicRecipeComponent{
-		ToolItemId: proto.Uint64(toolID),
+		ToolItemId: new(toolID),
 		ConsumptionComponents: []*pb.CMsgRecipeComponent{
 			{
-				SubjectItemId:  proto.Uint64(subjectID),
-				AttributeIndex: proto.Uint64(attributeIndex),
+				SubjectItemId:  new(subjectID),
+				AttributeIndex: new(attributeIndex),
 			},
 		},
 	}
@@ -393,8 +391,8 @@ func (t *TF2) FulfillDynamicRecipeComponent(ctx context.Context, toolID, subject
 
 func (t *TF2) ConsumePaintkit(ctx context.Context, warpaintID uint64, weaponDefIndex uint32) error {
 	req := &pb.CMsgConsumePaintkit{
-		SourceId:       proto.Uint64(warpaintID),
-		TargetDefindex: proto.Uint32(weaponDefIndex),
+		SourceId:       new(warpaintID),
+		TargetDefindex: new(weaponDefIndex),
 	}
 
 	return t.gc.Send(ctx, AppID, uint32(pb.ETFGCMsg_k_EMsgGCConsumePaintKit), req)
@@ -412,7 +410,7 @@ func (t *TF2) TradeUp(ctx context.Context, itemIDs []uint64) error {
 // SendProfessorSpeks thanks a helpful friend for a free trial account.
 func (t *TF2) SendProfessorSpeks(ctx context.Context, helperAccountID uint32) error {
 	req := &pb.CMsgTFFreeTrialChooseMostHelpfulFriend{
-		AccountIdFriend: proto.Uint32(helperAccountID),
+		AccountIdFriend: new(helperAccountID),
 	}
 
 	return t.gc.Send(ctx, AppID, uint32(pb.ETFGCMsg_k_EMsgGCFreeTrial_ChooseMostHelpfulFriend), req)

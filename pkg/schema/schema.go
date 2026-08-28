@@ -421,6 +421,7 @@ func (s *Schema) ItemByNameWithThe(name string) *Item {
 	}
 
 	var stackBuf [128]byte
+
 	loweredName := toLowerASCIIBuf(name, stackBuf[:])
 
 	if s.itemsByNameStripped != nil {
@@ -475,6 +476,7 @@ func (s *Schema) ItemByNameWithThe(name string) *Item {
 		if item, ok := s.itemsTrie.Get(loweredName); ok {
 			return item
 		}
+
 		if item, ok := s.itemsTrie.Get(stripped); ok {
 			return item
 		}
@@ -648,9 +650,11 @@ func (s *Schema) buildIndices() {
 			maxDef = item.Defindex
 		}
 	}
+
 	if maxDef < 35000 {
 		maxDef = 35000
 	}
+
 	s.itemsByDefDirect = make([]*Item, maxDef+1)
 
 	s.itemsByDef = make(map[int]*Item, numItems)
@@ -689,6 +693,7 @@ func (s *Schema) buildIndices() {
 	for name, id := range s.qualByName {
 		s.qualList = append(s.qualList, namedID{Name: name, ID: id})
 	}
+
 	slices.SortFunc(s.qualList, func(a, b namedID) int {
 		return len(b.Name) - len(a.Name)
 	})
@@ -697,6 +702,7 @@ func (s *Schema) buildIndices() {
 	for name, id := range s.effByName {
 		s.effList = append(s.effList, namedID{Name: name, ID: id})
 	}
+
 	slices.SortFunc(s.effList, func(a, b namedID) int {
 		return len(b.Name) - len(a.Name)
 	})
@@ -705,6 +711,7 @@ func (s *Schema) buildIndices() {
 	for name, id := range s.paintKitByName {
 		s.paintKitList = append(s.paintKitList, namedID{Name: name, ID: id})
 	}
+
 	slices.SortFunc(s.paintKitList, func(a, b namedID) int {
 		return len(b.Name) - len(a.Name)
 	})
@@ -725,10 +732,12 @@ func (s *Schema) indexQualities() {
 	for qType, id := range s.Raw.Schema.Qualities {
 		if name, ok := s.Raw.Schema.QualityNames[qType]; ok {
 			internedName := stringpool.Intern(name)
+
 			s.qualByID[id] = internedName
 			if uint(id) < 16 {
 				s.qualByIDDirect[id] = internedName
 			}
+
 			s.qualByName[strings.ToLower(internedName)] = id
 		}
 	}
@@ -743,10 +752,12 @@ func (s *Schema) indexQualities() {
 
 		for id, name := range fallbackQualities {
 			internedName := stringpool.Intern(name)
+
 			s.qualByID[id] = internedName
 			if uint(id) < 16 {
 				s.qualByIDDirect[id] = internedName
 			}
+
 			s.qualByName[strings.ToLower(internedName)] = id
 		}
 	}
@@ -1022,11 +1033,13 @@ func (s *Schema) ItemByDef(def int) *Item {
 	if s == nil {
 		return nil
 	}
+
 	if uint(def) < uint(len(s.itemsByDefDirect)) {
 		if it := s.itemsByDefDirect[def]; it != nil {
 			return it
 		}
 	}
+
 	return s.itemsByDef[def]
 }
 
@@ -1034,7 +1047,9 @@ func (s *Schema) ItemByName(name string) *Item {
 	if s == nil || len(name) == 0 {
 		return nil
 	}
+
 	var stackBuf [128]byte
+
 	return s.itemsByName[toLowerASCIIBuf(name, stackBuf[:])]
 }
 
@@ -1044,9 +1059,11 @@ func (s *Schema) QualityByID(id int) string {
 	if s == nil {
 		return ""
 	}
+
 	if uint(id) < 16 && s.qualByIDDirect[id] != "" {
 		return s.qualByIDDirect[id]
 	}
+
 	return s.qualByID[id]
 }
 
@@ -1054,7 +1071,9 @@ func (s *Schema) QualityIDByName(name string) int {
 	if s == nil || len(name) == 0 {
 		return 0
 	}
+
 	var stackBuf [128]byte
+
 	return s.qualByName[toLowerASCIIBuf(name, stackBuf[:])]
 }
 
@@ -1064,7 +1083,9 @@ func (s *Schema) EffectIDByName(name string) int {
 	if s == nil || len(name) == 0 {
 		return 0
 	}
+
 	var stackBuf [128]byte
+
 	return s.effByName[toLowerASCIIBuf(name, stackBuf[:])]
 }
 
@@ -1074,7 +1095,9 @@ func (s *Schema) SkinIDByName(name string) int {
 	if s == nil || len(name) == 0 {
 		return 0
 	}
+
 	var stackBuf [128]byte
+
 	return s.paintKitByName[toLowerASCIIBuf(name, stackBuf[:])]
 }
 
@@ -1082,7 +1105,9 @@ func (s *Schema) PaintDecimalByName(name string) int {
 	if s == nil || len(name) == 0 {
 		return 0
 	}
+
 	var stackBuf [128]byte
+
 	return s.paintByName[toLowerASCIIBuf(name, stackBuf[:])]
 }
 func (s *Schema) Qualities() map[string]int                   { return s.qualByName }
@@ -1093,9 +1118,11 @@ func (s *Schema) Paints() map[string]int                      { return s.paintBy
 func (s *Schema) PaintableItemDefindexes() []int              { return s.paintableItemDefindexesCache }
 func (s *Schema) CraftableWeaponsSchema() []*Item             { return s.craftableWeapons }
 func (s *Schema) WeaponsForCraftingByClass(c string) []string { return s.weaponsForCraftingByClass[c] }
-func (s *Schema) CraftableWeaponsForTrading() []string        { return s.craftableWeaponsForTrading }
-func (s *Schema) UncraftableWeaponsForTrading() []string      { return s.uncraftableWeaponsForTrading }
-func (s *Schema) CrateSeriesList() map[int]int                { return s.crateSeriesList }
+
+func (s *Schema) CraftableWeaponsForTrading() []string { return s.craftableWeaponsForTrading }
+
+func (s *Schema) UncraftableWeaponsForTrading() []string { return s.uncraftableWeaponsForTrading }
+func (s *Schema) CrateSeriesList() map[int]int           { return s.crateSeriesList }
 
 func (s *Schema) QualityName(qualityID int) string {
 	return s.QualityByID(qualityID)
@@ -1991,8 +2018,8 @@ func (s *Schema) parseQualityFromName(name string, item *sku.Item) string {
 
 	qualitySearch := name
 	for _, ex := range exception {
-		if idx := strings.Index(name, ex); idx != -1 {
-			qualitySearch = strings.TrimSpace(name[:idx] + name[idx+len(ex):])
+		if before, after, ok := strings.Cut(name, ex); ok {
+			qualitySearch = strings.TrimSpace(before + after)
 
 			break
 		}
@@ -2940,12 +2967,12 @@ func parseRecipeVDFLine(line string) (string, string) {
 
 	rest = rest[1:]
 
-	endQuote2 := strings.Index(rest, "\"")
-	if endQuote2 < 0 {
+	before, _, ok := strings.Cut(rest, "\"")
+	if !ok {
 		return key, ""
 	}
 
-	return key, rest[:endQuote2]
+	return key, before
 }
 
 func parseRecipeCategory(s string) RecipeCategory {

@@ -158,9 +158,9 @@ func TestClient_Endpoints(t *testing.T) {
 				setJSONResponse(stub, "v2/steam/market/price", 200, express.V2MarketPriceResponse{
 					Success: true,
 					Data: &express.MarketPriceData{
-						LowestPrice: strPtr("$2.26"),
-						MedianPrice: strPtr("$2.27"),
-						Volume:      strPtr("49,063"),
+						LowestPrice: new("$2.26"),
+						MedianPrice: new("$2.27"),
+						Volume:      new("49,063"),
 					},
 					Meta: &express.BilledResponseMeta{
 						CreditsCharged:   1,
@@ -484,6 +484,3 @@ func TestClient_ConcurrentRequests(t *testing.T) {
 
 	wg.Wait()
 }
-
-func strPtr(s string) *string { return &s }
-func intPtr(i int) *int       { return &i }

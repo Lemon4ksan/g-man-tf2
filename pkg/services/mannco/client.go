@@ -77,14 +77,15 @@ type Client struct {
 func NewClient(rest any, opts ...aoni.ClientOption) *Client {
 	c := &Client{}
 
-	defaultOpts := []aoni.ClientOption{
+	defaultOpts := make([]aoni.ClientOption, 0, 3+len(opts))
+	defaultOpts = append(defaultOpts,
 		option.WithUserAgent("G-man Bot/1.0"),
 		option.WithHeaderFunc("Authorization", c.Token),
 		option.WithBaseURL(BaseURL),
-	}
+	)
+	defaultOpts = append(defaultOpts, opts...)
 
-	allOpts := append(defaultOpts, opts...)
-	r := aoni.NewClient(rest, allOpts...)
+	r := aoni.NewClient(rest, defaultOpts...)
 	c.r = r
 	c.API = New(r)
 
@@ -127,6 +128,7 @@ func (c *Client) Login(ctx context.Context, apiKey string, mods ...aoni.RequestM
 	}
 
 	c.SetToken(res.JWT)
+
 	return nil
 }
 
