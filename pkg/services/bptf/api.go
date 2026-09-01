@@ -230,7 +230,12 @@ type API interface {
 	// DeleteV2ClassifiedsArchiveBatch — Batch delete archived listings
 	//
 	// @delete "v2/classifieds/archive/batch"
-	DeleteV2ClassifiedsArchiveBatch(ctx context.Context, mods ...aoni.RequestModifier) (map[string]any, error)
+	// @json
+	DeleteV2ClassifiedsArchiveBatch(
+		ctx context.Context,
+		req ListingBatchDeleteRequest,
+		mods ...aoni.RequestModifier,
+	) (map[string]any, error)
 
 	// GetV2ClassifiedsArchiveByListingID — Get one archived listing
 	//
@@ -335,7 +340,12 @@ type API interface {
 	// DeleteV2ClassifiedsListingsBatch — Batch delete listings
 	//
 	// @delete "v2/classifieds/listings/batch"
-	DeleteV2ClassifiedsListingsBatch(ctx context.Context, mods ...aoni.RequestModifier) (map[string]any, error)
+	// @json
+	DeleteV2ClassifiedsListingsBatch(
+		ctx context.Context,
+		req ListingBatchDeleteRequest,
+		mods ...aoni.RequestModifier,
+	) (map[string]any, error)
 
 	// PostV2ClassifiedsListingsPublishAll — Publish all listings
 	//

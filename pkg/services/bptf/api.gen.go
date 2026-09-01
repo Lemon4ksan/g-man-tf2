@@ -638,7 +638,7 @@ func (c *apiClient) GetV2ClassifiedsArchiveBatch(ctx context.Context, mods ...ao
 	return *resp, nil
 }
 
-func (c *apiClient) DeleteV2ClassifiedsArchiveBatch(ctx context.Context, mods ...aoni.RequestModifier) (map[string]any, error) {
+func (c *apiClient) DeleteV2ClassifiedsArchiveBatch(ctx context.Context, req ListingBatchDeleteRequest, mods ...aoni.RequestModifier) (map[string]any, error) {
 	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
@@ -646,7 +646,7 @@ func (c *apiClient) DeleteV2ClassifiedsArchiveBatch(ctx context.Context, mods ..
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := c.r.DeleteTo[map[string]any](ctx, "v2/classifieds/archive/batch", allMods...)
+	resp, err := c.r.FetchTo[map[string]any](ctx, "DELETE", "v2/classifieds/archive/batch", req, allMods...)
 	if err != nil {
 		return nil, err
 	}
@@ -836,7 +836,7 @@ func (c *apiClient) PatchV2ClassifiedsListingsBatch(ctx context.Context, req []L
 	return resp, nil
 }
 
-func (c *apiClient) DeleteV2ClassifiedsListingsBatch(ctx context.Context, mods ...aoni.RequestModifier) (map[string]any, error) {
+func (c *apiClient) DeleteV2ClassifiedsListingsBatch(ctx context.Context, req ListingBatchDeleteRequest, mods ...aoni.RequestModifier) (map[string]any, error) {
 	var stackMods [4]aoni.RequestModifier
 	allMods := stackMods[:0]
 
@@ -844,7 +844,7 @@ func (c *apiClient) DeleteV2ClassifiedsListingsBatch(ctx context.Context, mods .
 		allMods = append(allMods, mods...)
 	}
 
-	resp, err := c.r.DeleteTo[map[string]any](ctx, "v2/classifieds/listings/batch", allMods...)
+	resp, err := c.r.FetchTo[map[string]any](ctx, "DELETE", "v2/classifieds/listings/batch", req, allMods...)
 	if err != nil {
 		return nil, err
 	}

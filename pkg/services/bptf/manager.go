@@ -133,7 +133,10 @@ func (m *ListingManager) DeleteAll(ctx context.Context) error {
 		RPS:     5,
 		Burst:   2,
 	}, batches, func(chunkCtx context.Context, batch []string) error {
-		_, err := m.client.DeleteV2ClassifiedsListingsBatch(chunkCtx)
+		_, err := m.client.DeleteV2ClassifiedsListingsBatch(chunkCtx, ListingBatchDeleteRequest{
+			ListingIDs: batch,
+		})
+
 		return err
 	})
 	if err != nil {

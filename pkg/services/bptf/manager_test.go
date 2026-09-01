@@ -53,11 +53,20 @@ func TestListingManager(t *testing.T) {
 	})
 
 	t.Run("delete_all_batches", func(t *testing.T) {
-		var callCount atomic.Int32
+		var (
+			callCount    atomic.Int32
+			totalDeleted atomic.Int32
+		)
 
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/v2/classifieds/listings/batch" && r.Method == http.MethodDelete {
 				callCount.Add(1)
+
+				var req ListingBatchDeleteRequest
+
+				_ = json.NewDecoder(r.Body).Decode(&req)
+				totalDeleted.Add(int32(len(req.ListingIDs)))
+
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte(`{"success":true}`))
 			}
@@ -74,5 +83,6 @@ func TestListingManager(t *testing.T) {
 		err := mgr.DeleteAll(t.Context())
 		require.NoError(t, err)
 		assert.Equal(t, int32(2), callCount.Load())
+		assert.Equal(t, int32(150), totalDeleted.Load())
 	})
 }

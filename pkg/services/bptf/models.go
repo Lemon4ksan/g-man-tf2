@@ -223,6 +223,12 @@ type ListingDropRequest struct {
 	Intent string `json:"intent,omitempty"`
 }
 
+// ListingBatchDeleteRequest represents the request payload for batch deleting classified listings.
+// @aoni:dto casing=snake_case omitempty=true
+type ListingBatchDeleteRequest struct {
+	ListingIDs []string `json:"listings,omitempty"`
+}
+
 // ListingIntent — Listing intent.
 type ListingIntent string
 
