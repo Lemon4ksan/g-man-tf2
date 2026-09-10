@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"strconv"
 	"strings"
 
 	"github.com/lemon4ksan/aoni"
@@ -37,9 +38,13 @@ var (
 )
 
 type StockConfig struct {
-	MaxTotal   int
-	MaxPerSKU  map[string]int
-	DefaultMax int
+	MaxTotal    int
+	MaxPerSKU   map[string]int
+	MinPerSKU   map[string]int
+	DefaultMax  int
+	DefaultMin  int
+	Items       map[string]ItemConfig
+	GetConfigFn func() Config
 }
 
 type BackpackProvider interface {
@@ -51,29 +56,113 @@ type BackpackProvider interface {
 func StockLimitMiddleware(bp BackpackProvider, cfg StockConfig, logger log.Logger) engine.Middleware {
 	return func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
-			if len(ctx.Offer.ItemsToReceive) == 0 {
+			if len(ctx.Offer.ItemsToReceive) == 0 && len(ctx.Offer.ItemsToGive) == 0 {
 				return next(ctx)
 			}
 
-			if bp.GetTotalCount()+len(ctx.Offer.ItemsToReceive)-len(ctx.Offer.ItemsToGive) > cfg.MaxTotal {
-				ctx.Decline(reason.ReviewOverstocked)
-				return nil
-			}
+			cfgItems := cfg.Items
+			defaultMax := cfg.DefaultMax
+			defaultMin := cfg.DefaultMin
+			maxTotal := cfg.MaxTotal
+			maxPerSKU := cfg.MaxPerSKU
+			minPerSKU := cfg.MinPerSKU
 
-			incomingPerSKU := make(map[string]int, len(ctx.Offer.ItemsToReceive))
-			for _, it := range ctx.Offer.ItemsToReceive {
-				incomingPerSKU[it.SKU]++
-			}
-
-			for skuStr, count := range incomingPerSKU {
-				maxStock, ok := cfg.MaxPerSKU[skuStr]
-				if !ok {
-					maxStock = cfg.DefaultMax
+			if cfg.GetConfigFn != nil {
+				dynamicCfg := cfg.GetConfigFn()
+				if len(dynamicCfg.Items) > 0 {
+					cfgItems = dynamicCfg.Items
 				}
 
-				if maxStock > 0 && bp.GetStock(skuStr)+count > maxStock {
-					ctx.Decline(reason.DeclineOverstocked)
+				if dynamicCfg.DefaultMaxStock > 0 {
+					defaultMax = dynamicCfg.DefaultMaxStock
+				}
+
+				if dynamicCfg.GlobalMaxStock > 0 {
+					maxTotal = dynamicCfg.GlobalMaxStock
+				}
+			}
+
+			// Check Outgoing Items (ItemsToGive)
+			if len(ctx.Offer.ItemsToGive) > 0 {
+				givingPerSKU := make(map[string]int, len(ctx.Offer.ItemsToGive))
+				for _, it := range ctx.Offer.ItemsToGive {
+					givingPerSKU[it.SKU]++
+				}
+
+				for skuStr, count := range givingPerSKU {
+					if skuStr == currency.SKURefined || skuStr == currency.SKUReclaimed || skuStr == currency.SKUScrap {
+						continue
+					}
+
+					if itemCfg, ok := cfgItems[skuStr]; ok {
+						if !itemCfg.EnableSell {
+							ctx.Decline(tf2reason.DeclineIntentBuy)
+							return nil
+						}
+					}
+
+					minStock := 0
+					if itemCfg, ok := cfgItems[skuStr]; ok && itemCfg.MinStock > 0 {
+						minStock = itemCfg.MinStock
+					} else if minPerSKU != nil {
+						minStock = minPerSKU[skuStr]
+					}
+
+					if minStock == 0 {
+						minStock = defaultMin
+					}
+
+					if minStock > 0 && bp != nil {
+						if bp.GetStock(skuStr)-count < minStock {
+							ctx.Review(reason.ReviewUnderstocked)
+							return nil
+						}
+					}
+				}
+			}
+
+			// Check Incoming Items (ItemsToReceive)
+			if len(ctx.Offer.ItemsToReceive) > 0 {
+				if bp != nil && maxTotal > 0 &&
+					bp.GetTotalCount()+len(ctx.Offer.ItemsToReceive)-len(ctx.Offer.ItemsToGive) > maxTotal {
+					ctx.Decline(reason.ReviewOverstocked)
 					return nil
+				}
+
+				incomingPerSKU := make(map[string]int, len(ctx.Offer.ItemsToReceive))
+				for _, it := range ctx.Offer.ItemsToReceive {
+					incomingPerSKU[it.SKU]++
+				}
+
+				for skuStr, count := range incomingPerSKU {
+					if skuStr == currency.SKURefined || skuStr == currency.SKUReclaimed || skuStr == currency.SKUScrap {
+						continue
+					}
+
+					if itemCfg, ok := cfgItems[skuStr]; ok {
+						if !itemCfg.EnableBuy {
+							ctx.Decline(tf2reason.DeclineIntentSell)
+							return nil
+						}
+					}
+
+					maxStock := 0
+					if itemCfg, ok := cfgItems[skuStr]; ok && itemCfg.MaxStock > 0 {
+						maxStock = itemCfg.MaxStock
+					} else if maxPerSKU != nil {
+						if m, ok := maxPerSKU[skuStr]; ok {
+							maxStock = m
+						}
+					}
+
+					if maxStock == 0 && (maxPerSKU == nil || maxPerSKU[skuStr] == 0) {
+						maxStock = defaultMax
+					}
+
+					if maxStock > 0 && bp != nil && bp.GetStock(skuStr)+count > maxStock {
+						ctx.Decline(reason.DeclineOverstocked)
+						return nil
+					}
 				}
 			}
 
@@ -225,8 +314,40 @@ func EscrowMiddleware(checker trading.EscrowChecker, logger log.Logger) engine.M
 func DupeCheckMiddleware(checker DupeChecker, logger log.Logger) engine.Middleware {
 	return func(next engine.Handler) engine.Handler {
 		return func(ctx *engine.TradeContext) error {
+			var priceMap map[string]*pricedb.Price
+			if pRaw, ok := ctx.Get("prices").Value(); ok {
+				priceMap, _ = pRaw.(map[string]*pricedb.Price)
+			}
+
+			keyPriceScrap := currency.Scrap(50 * 9)
+			if kp, ok := ctx.Get("key_price_scrap").Value(); ok {
+				if ks, ok := kp.(currency.Scrap); ok && ks > 0 {
+					keyPriceScrap = ks
+				}
+			}
+
+			minKeysDupeScrap := 15 * keyPriceScrap
+
 			for _, item := range ctx.Offer.ItemsToReceive {
-				if item.SKU != "" && isUnusual(item.SKU) {
+				if item.SKU == "" {
+					continue
+				}
+
+				shouldCheck := isUnusual(item.SKU)
+				if !shouldCheck && priceMap != nil {
+					pricingSKU := sku.ToPricingSKU(item.SKU)
+					if p, ok := priceMap[pricingSKU]; ok {
+						itemBuyScrap := currency.Scrap(p.Buy.Keys)*keyPriceScrap + currency.ToScrap(p.Buy.Metal)
+
+						itemSellScrap := currency.Scrap(p.Sell.Keys)*keyPriceScrap + currency.ToScrap(p.Sell.Metal)
+						if itemBuyScrap >= minKeysDupeScrap || itemSellScrap >= minKeysDupeScrap || p.Buy.Keys >= 15 ||
+							p.Sell.Keys >= 15 {
+							shouldCheck = true
+						}
+					}
+				}
+
+				if shouldCheck {
 					status, err := checker.CheckHistory(ctx, item.AssetID)
 					if err == nil && status.Recorded && status.IsDuped {
 						ctx.Review(tf2reason.ReviewDupedItems)
@@ -280,7 +401,7 @@ func SmartCounterMiddleware(
 				return err
 			}
 
-			if ctx.Verdict.Action == trading.ActionDecline &&
+			if (ctx.Verdict.Action == trading.ActionDecline || ctx.Verdict.Action == trading.ActionReview) &&
 				ctx.Verdict.Reason != tf2reason.DeclineUnderpaid &&
 				ctx.Verdict.Reason != tf2reason.ReviewInvalidValue {
 				return nil
@@ -541,6 +662,18 @@ func calculateValueDiff(ctx *engine.TradeContext, useSeparateKeyRates bool) (cur
 		theirTotalScrapVal += float64(val)
 	}
 
+	if v, ok := ctx.Get("our_spell_premium_scrap").Value(); ok {
+		if prem, ok := v.(currency.Scrap); ok {
+			ourTotalScrapVal += float64(prem)
+		}
+	}
+
+	if v, ok := ctx.Get("their_spell_premium_scrap").Value(); ok {
+		if prem, ok := v.(currency.Scrap); ok {
+			theirTotalScrapVal += float64(prem)
+		}
+	}
+
 	diffVal := theirTotalScrapVal - ourTotalScrapVal
 	diffScrap := currency.Scrap(math.Floor(diffVal))
 
@@ -747,4 +880,70 @@ func computeSpellPremium(
 	}
 
 	return totalPremium, nil
+}
+
+// ItemUsesMiddleware verifies that multi-use items (Dueling Mini-Games and Noise Makers) have full uses remaining.
+func ItemUsesMiddleware(logger log.Logger) engine.Middleware {
+	return func(next engine.Handler) engine.Handler {
+		return func(ctx *engine.TradeContext) error {
+			for _, item := range ctx.Offer.ItemsToReceive {
+				if isDuelingMiniGame(item.SKU) {
+					if !hasFullUses(item, "5") {
+						ctx.Decline(tf2reason.DeclineDuelingUses)
+						return nil
+					}
+				} else if isNoiseMaker(item.SKU) {
+					if !hasFullUses(item, "25") {
+						ctx.Decline(tf2reason.DeclineNoisemakerUses)
+						return nil
+					}
+				}
+			}
+
+			return next(ctx)
+		}
+	}
+}
+
+func isDuelingMiniGame(skuStr string) bool {
+	it, err := sku.FromString(skuStr)
+	if err != nil {
+		return strings.HasPrefix(skuStr, "241;") || skuStr == "241"
+	}
+	defer sku.ReleaseItem(it)
+
+	return it.Defindex == 241
+}
+
+func isNoiseMaker(skuStr string) bool {
+	it, err := sku.FromString(skuStr)
+
+	var defindex int
+	if err != nil {
+		parts := strings.Split(skuStr, ";")
+		if len(parts) > 0 {
+			defindex, _ = strconv.Atoi(parts[0])
+		}
+	} else {
+		defindex = it.Defindex
+		sku.ReleaseItem(it)
+	}
+
+	switch defindex {
+	case 280, 281, 282, 283, 284, 286, 288, 362, 364, 365, 493, 542:
+		return true
+	default:
+		return false
+	}
+}
+
+func hasFullUses(item *trading.Item, requiredUses string) bool {
+	target := "This is a limited use item. Uses: " + requiredUses
+	for _, desc := range item.Descriptions {
+		if strings.Contains(desc.Value, target) {
+			return true
+		}
+	}
+
+	return false
 }

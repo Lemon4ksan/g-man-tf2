@@ -1283,3 +1283,252 @@ func funcMockSchema() *schema.Schema {
 
 	return schema.New(raw)
 }
+
+func TestItemUsesMiddleware(t *testing.T) {
+	t.Parallel()
+
+	mw := ItemUsesMiddleware(log.Discard)
+	nextHandler := func(c *engine.TradeContext) error { return nil }
+
+	t.Run("dueling mini game with 5 uses passes", func(t *testing.T) {
+		offer := &trading.TradeOffer{
+			ItemsToReceive: []*trading.Item{
+				{
+					SKU: "241;6",
+					Descriptions: []trading.Description{
+						{Value: "This is a limited use item. Uses: 5", Color: "00a000"},
+					},
+				},
+			},
+		}
+		ctx := engine.NewTradeContext(t.Context(), offer)
+		err := mw(nextHandler)(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, trading.ActionSkip, ctx.Verdict.Action)
+	})
+
+	t.Run("dueling mini game with 3 uses declines", func(t *testing.T) {
+		offer := &trading.TradeOffer{
+			ItemsToReceive: []*trading.Item{
+				{
+					SKU: "241;6",
+					Descriptions: []trading.Description{
+						{Value: "This is a limited use item. Uses: 3", Color: "00a000"},
+					},
+				},
+			},
+		}
+		ctx := engine.NewTradeContext(t.Context(), offer)
+		err := mw(nextHandler)(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, trading.ActionDecline, ctx.Verdict.Action)
+		assert.Equal(t, tf2reason.DeclineDuelingUses, ctx.Verdict.Reason)
+	})
+
+	t.Run("noise maker with 25 uses passes", func(t *testing.T) {
+		offer := &trading.TradeOffer{
+			ItemsToReceive: []*trading.Item{
+				{
+					SKU: "280;6",
+					Descriptions: []trading.Description{
+						{Value: "This is a limited use item. Uses: 25", Color: "00a000"},
+					},
+				},
+			},
+		}
+		ctx := engine.NewTradeContext(t.Context(), offer)
+		err := mw(nextHandler)(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, trading.ActionSkip, ctx.Verdict.Action)
+	})
+
+	t.Run("noise maker with 10 uses declines", func(t *testing.T) {
+		offer := &trading.TradeOffer{
+			ItemsToReceive: []*trading.Item{
+				{
+					SKU: "280;6",
+					Descriptions: []trading.Description{
+						{Value: "This is a limited use item. Uses: 10", Color: "00a000"},
+					},
+				},
+			},
+		}
+		ctx := engine.NewTradeContext(t.Context(), offer)
+		err := mw(nextHandler)(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, trading.ActionDecline, ctx.Verdict.Action)
+		assert.Equal(t, tf2reason.DeclineNoisemakerUses, ctx.Verdict.Reason)
+	})
+}
+
+func TestStockLimitMiddleware_IntentAndUnderstock(t *testing.T) {
+	t.Parallel()
+
+	nextHandler := func(c *engine.TradeContext) error { return nil }
+
+	t.Run("decline taking items when enable_sell is false", func(t *testing.T) {
+		bp := &mockBackpack{
+			stock: map[string]int{"30000;6": 10},
+		}
+		cfg := StockConfig{
+			Items: map[string]ItemConfig{
+				"30000;6": {
+					SKU:        "30000;6",
+					EnableSell: false,
+					EnableBuy:  true,
+				},
+			},
+		}
+		mw := StockLimitMiddleware(bp, cfg, log.Discard)
+		offer := &trading.TradeOffer{
+			ItemsToGive:    []*trading.Item{{SKU: "30000;6"}},
+			ItemsToReceive: []*trading.Item{{SKU: currency.SKUKey}},
+		}
+		ctx := engine.NewTradeContext(t.Context(), offer)
+		err := mw(nextHandler)(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, trading.ActionDecline, ctx.Verdict.Action)
+		assert.Equal(t, tf2reason.DeclineIntentBuy, ctx.Verdict.Reason)
+	})
+
+	t.Run("review taking items when understocked", func(t *testing.T) {
+		bp := &mockBackpack{
+			stock: map[string]int{"30000;6": 5},
+		}
+		cfg := StockConfig{
+			Items: map[string]ItemConfig{
+				"30000;6": {
+					SKU:        "30000;6",
+					EnableSell: true,
+					EnableBuy:  true,
+					MinStock:   3,
+				},
+			},
+		}
+		mw := StockLimitMiddleware(bp, cfg, log.Discard)
+		// Current stock is 5. We give 3 items. 5 - 3 = 2 < MinStock (3) -> Understocked!
+		offer := &trading.TradeOffer{
+			ItemsToGive: []*trading.Item{
+				{SKU: "30000;6"},
+				{SKU: "30000;6"},
+				{SKU: "30000;6"},
+			},
+			ItemsToReceive: []*trading.Item{{SKU: currency.SKUKey}},
+		}
+		ctx := engine.NewTradeContext(t.Context(), offer)
+		err := mw(nextHandler)(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, trading.ActionReview, ctx.Verdict.Action)
+		assert.Equal(t, reason.ReviewUnderstocked, ctx.Verdict.Reason)
+	})
+
+	t.Run("decline receiving items when enable_buy is false", func(t *testing.T) {
+		bp := &mockBackpack{
+			stock: map[string]int{"30000;6": 2},
+		}
+		cfg := StockConfig{
+			Items: map[string]ItemConfig{
+				"30000;6": {
+					SKU:        "30000;6",
+					EnableSell: true,
+					EnableBuy:  false,
+				},
+			},
+		}
+		mw := StockLimitMiddleware(bp, cfg, log.Discard)
+		offer := &trading.TradeOffer{
+			ItemsToGive:    []*trading.Item{{SKU: currency.SKUKey}},
+			ItemsToReceive: []*trading.Item{{SKU: "30000;6"}},
+		}
+		ctx := engine.NewTradeContext(t.Context(), offer)
+		err := mw(nextHandler)(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, trading.ActionDecline, ctx.Verdict.Action)
+		assert.Equal(t, tf2reason.DeclineIntentSell, ctx.Verdict.Reason)
+	})
+}
+
+type mockDupeCheckerRecord struct {
+	checkedIDs []uint64
+	duped      bool
+}
+
+func (m *mockDupeCheckerRecord) CheckHistory(
+	ctx context.Context,
+	assetID uint64,
+	mods ...aoni.RequestModifier,
+) (backpack.HistoryStatus, error) {
+	m.checkedIDs = append(m.checkedIDs, assetID)
+
+	return backpack.HistoryStatus{
+		Recorded: true,
+		IsDuped:  m.duped,
+	}, nil
+}
+
+func TestDupeCheckMiddleware_HighValueNonUnusual(t *testing.T) {
+	t.Parallel()
+
+	checker := &mockDupeCheckerRecord{duped: true}
+	mw := DupeCheckMiddleware(checker, log.Discard)
+	nextHandler := func(c *engine.TradeContext) error { return nil }
+
+	// Non-unusual Australium Rocket Launcher worth 20 keys
+	offer := &trading.TradeOffer{
+		ItemsToReceive: []*trading.Item{
+			{
+				AssetID: 123456,
+				SKU:     "205;11;australium",
+			},
+		},
+	}
+	ctx := engine.NewTradeContext(t.Context(), offer)
+	priceMap := map[string]*pricedb.Price{
+		"205;11;australium": {
+			Buy:  pricedb.Currencies{Keys: 20, Metal: 0},
+			Sell: pricedb.Currencies{Keys: 22, Metal: 0},
+		},
+	}
+	ctx.Set("prices", priceMap)
+
+	err := mw(nextHandler)(ctx)
+	assert.NoError(t, err)
+	assert.Contains(t, checker.checkedIDs, uint64(123456))
+	assert.Equal(t, trading.ActionReview, ctx.Verdict.Action)
+	assert.Equal(t, tf2reason.ReviewDupedItems, ctx.Verdict.Reason)
+}
+
+func TestCalculateValueDiff_WithHalloweenSpellPremiums(t *testing.T) {
+	t.Parallel()
+
+	offer := &trading.TradeOffer{
+		ItemsToGive: []*trading.Item{
+			{SKU: "205;6"}, // base weapon
+		},
+		ItemsToReceive: []*trading.Item{
+			{SKU: currency.SKUKey}, // 1 key = 50 ref = 450 scrap
+		},
+	}
+	ctx := engine.NewTradeContext(t.Context(), offer)
+	priceMap := map[string]*pricedb.Price{
+		currency.SKUKey: {
+			Buy:  pricedb.Currencies{Keys: 0, Metal: 50},
+			Sell: pricedb.Currencies{Keys: 0, Metal: 50},
+		},
+		"205;6": {
+			Buy:  pricedb.Currencies{Keys: 0, Metal: 1},
+			Sell: pricedb.Currencies{Keys: 0, Metal: 1},
+		},
+	}
+	ctx.Set("prices", priceMap)
+
+	// Inject our Halloween spell premium of 40 ref = 360 scrap on our weapon!
+	ctx.Set("our_spell_premium_scrap", currency.Scrap(360))
+
+	diff, err := calculateValueDiff(ctx, false)
+	assert.NoError(t, err)
+	// their total: 1 key = 450 scrap
+	// our total: 1 ref (9 scrap) + 360 spell premium = 369 scrap
+	// diff = 450 - 369 = 81 scrap profit
+	assert.Equal(t, currency.Scrap(81), diff)
+}

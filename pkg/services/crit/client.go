@@ -271,7 +271,7 @@ func (c *Client) StreamEvents(
 func (c *Client) SendDeadMansRequest(ctx context.Context, mods ...aoni.RequestModifier) (bool, error) {
 	payload := map[string]bool{"alive": true}
 
-	resp, err := c.r.Raw().Post(ctx, "bot-api/alive", append(mods, mod.WithJSON(payload))...)
+	resp, err := c.r.Post(ctx, "bot-api/alive", payload, mods...)
 	if err != nil {
 		return false, fmt.Errorf("crit: dead man request failed: %w", err)
 	}
