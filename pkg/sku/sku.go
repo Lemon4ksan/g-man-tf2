@@ -10,7 +10,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
+	
+	"github.com/lemon4ksan/foundation/silicon/pool"
 )
 
 var ErrEmptySKU = errors.New("invalid SKU: empty")
@@ -40,7 +41,7 @@ type Item struct {
 }
 
 func GetItem() *Item {
-	item := itemPool.Get().(*Item)
+	item := itemPool.Get()
 	item.Reset()
 
 	return item
@@ -144,23 +145,19 @@ type Spell struct {
 	Value     int
 }
 
-var skuBufferPool = sync.Pool{
-	New: func() any {
-		b := new(bytes.Buffer)
-		b.Grow(64)
+var skuBufferPool = pool.NewPerPStorage(func() *bytes.Buffer {
+	b := new(bytes.Buffer)
+	b.Grow(64)
 
-		return b
-	},
-}
+	return b
+})
 
-var itemPool = sync.Pool{
-	New: func() any {
-		return &Item{
-			Craftable: true,
-			Tradable:  true,
-		}
-	},
-}
+var itemPool = pool.NewPerPStorage(func() *Item {
+	return &Item{
+		Craftable: true,
+		Tradable:  true,
+	}
+})
 
 func ParseInto(skuStr string, item *Item) error {
 	if len(skuStr) == 0 {
@@ -225,7 +222,7 @@ func ParseInto(skuStr string, item *Item) error {
 }
 
 func FromString(skuStr string) (*Item, error) {
-	item := itemPool.Get().(*Item)
+	item := itemPool.Get()
 	if err := ParseInto(skuStr, item); err != nil {
 		itemPool.Put(item)
 		return nil, err
@@ -241,7 +238,7 @@ func ReleaseItem(item *Item) {
 }
 
 func FromObject(item *Item) string {
-	buf := skuBufferPool.Get().(*bytes.Buffer)
+	buf := skuBufferPool.Get()
 
 	buf.Reset()
 	defer skuBufferPool.Put(buf)

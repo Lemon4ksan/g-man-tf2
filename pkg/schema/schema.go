@@ -12,11 +12,11 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/lemon4ksan/foundation/codec/json"
 	"github.com/lemon4ksan/foundation/generic"
+	"github.com/lemon4ksan/foundation/silicon/pool"
 	"github.com/lemon4ksan/foundation/silicon/trie"
 	"github.com/lemon4ksan/g-man/pkg/trading"
 
@@ -61,14 +61,12 @@ var (
 	}
 )
 
-var nameBufferPool = sync.Pool{
-	New: func() any {
-		b := new(bytes.Buffer)
-		b.Grow(128)
+var nameBufferPool = pool.NewPerPStorage(func() *bytes.Buffer {
+	b := new(bytes.Buffer)
+	b.Grow(128)
 
-		return b
-	},
-}
+	return b
+})
 
 // ============================================================
 // SECTION 1: TYPES & STRUCT DEFINITIONS
@@ -1400,7 +1398,7 @@ func (s *Schema) ItemName(item *sku.Item, proper, usePipeForSkin, scmFormat bool
 		return fmt.Sprintf("Item #%d", item.Defindex)
 	}
 
-	buf := nameBufferPool.Get().(*bytes.Buffer)
+	buf := nameBufferPool.Get()
 
 	buf.Reset()
 	defer nameBufferPool.Put(buf)

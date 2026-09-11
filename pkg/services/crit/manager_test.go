@@ -359,7 +359,7 @@ func TestManager(t *testing.T) {
 		communityMock.ResponseErrs["groups/my"] = errors.New("internal server error")
 
 		mgr := NewManager(client)
-		mgr.listings = make(map[string]Listing)
+		clear(mgr.listings)
 		mgr.mu.Lock()
 		mgr.steamID = id.ID(123)
 		mgr.mu.Unlock()

@@ -68,7 +68,7 @@ func (m *ListingManager) Sync(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.listings = make(map[string]*Listing)
+	clear(m.listings)
 	for i := range allListings {
 		m.listings[allListings[i].ID] = &allListings[i]
 	}
@@ -144,7 +144,7 @@ func (m *ListingManager) DeleteAll(ctx context.Context) error {
 	}
 
 	m.mu.Lock()
-	m.listings = make(map[string]*Listing)
+	clear(m.listings)
 	m.mu.Unlock()
 
 	return nil

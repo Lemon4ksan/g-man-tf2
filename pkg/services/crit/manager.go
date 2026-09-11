@@ -235,7 +235,7 @@ func (m *Manager) bootstrap(ctx context.Context) {
 	} else {
 		m.listingsMu.Lock()
 
-		m.listings = make(map[string]Listing)
+		clear(m.listings)
 		for _, l := range listings {
 			m.listings[l.AssetID] = l
 		}
@@ -714,7 +714,7 @@ func (m *Manager) FetchMyListings(ctx context.Context) ([]Listing, error) {
 
 	m.listingsMu.Lock()
 
-	m.listings = make(map[string]Listing)
+	clear(m.listings)
 	for _, l := range listings {
 		m.listings[l.AssetID] = l
 	}
