@@ -491,6 +491,16 @@ func (t *TF2) routePacket(ctx context.Context, pkt *protocol.GCPacket) {
 			})
 		}
 
+	case pb.EGCItemMsg_k_EMsgGCTrading_InitiateTradeResponse:
+		if len(pkt.Payload) >= 8 {
+			response := binary.LittleEndian.Uint32(pkt.Payload[0:4])
+			tradeID := binary.LittleEndian.Uint32(pkt.Payload[4:8])
+			t.Bus.Publish(&TradeResponseEvent{
+				Response: response,
+				TradeID:  tradeID,
+			})
+		}
+
 	case pb.EGCItemMsg_k_EMsgGCBackpackSortFinished:
 		t.Bus.Publish(&BackpackSortFinishedEvent{})
 	case pb.EGCItemMsg_k_EMsgGCClientDisplayNotification:

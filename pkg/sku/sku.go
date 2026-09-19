@@ -84,6 +84,7 @@ func ToPricingSKU(skuStr string) string {
 	item.Parts = item.Parts[:0]
 	item.PartValues = nil
 	item.Paint = 0
+	item.Seed = 0
 
 	return FromObject(item)
 }
@@ -104,7 +105,7 @@ func hasPricingModifiers(s string) bool {
 			}
 
 		case 's':
-			if len(s) >= 2 && (s[1] == '-' || s[1] == 'p') {
+			if len(s) >= 2 && (s[1] == '-' || s[1] == 'p' || s[1] == 'd') {
 				return true
 			}
 

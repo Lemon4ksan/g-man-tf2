@@ -187,6 +187,9 @@ func (c *RecipeComponent) HasQuality() bool   { return c.Flags&0x08 != 0 }
 func (c *RecipeComponent) IsComplete() bool   { return c.NumFulfilled >= c.NumRequired }
 
 func (i *Item) Position() uint32 {
+	if (i.Inventory>>30)&1 == 1 {
+		return 0
+	}
 	return i.Inventory & 0xFFFF
 }
 

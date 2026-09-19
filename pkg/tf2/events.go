@@ -49,6 +49,12 @@ type TradeRequestEvent struct {
 	TradeID uint32
 }
 
+type TradeResponseEvent struct {
+	event.BaseEvent
+	Response uint32
+	TradeID  uint32
+}
+
 type CraftingCompleteEvent struct {
 	event.BaseEvent
 	RecipeID     int16
