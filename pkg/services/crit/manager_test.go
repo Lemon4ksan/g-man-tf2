@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/lemon4ksan/aoni"
-	"github.com/lemon4ksan/aoni/codec/values"
+	"github.com/lemon4ksan/aoni/x/codec/values"
 	"github.com/lemon4ksan/foundation/codec/json"
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"

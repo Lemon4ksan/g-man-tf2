@@ -128,7 +128,7 @@ func (m *ListingManager) DeleteAll(ctx context.Context) error {
 		batches = append(batches, ids[i:end])
 	}
 
-	err := pipeline.ForEach(ctx, pipeline.PipelineConfig{
+	err := pipeline.ForEach(ctx, pipeline.Config{
 		Workers: 3,
 		RPS:     5,
 		Burst:   2,
