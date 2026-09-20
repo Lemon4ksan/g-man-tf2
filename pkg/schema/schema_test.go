@@ -1189,7 +1189,7 @@ func TestSchema_NormalizeItem_VariousItems_NormalizesExpectedly(t *testing.T) {
 		},
 		{
 			name:     "grouping_killstreak_kits",
-			input:    sku.Item{Defindex: 6520},
+			input:    sku.Item{Defindex: 5726},
 			expected: sku.Item{Defindex: 6527},
 		},
 		{
@@ -2283,3 +2283,173 @@ func BenchmarkSchema_SKUFromItem(b *testing.B) {
 		_ = s.SKUFromItem(item)
 	}
 }
+
+func TestSchema_KitAndStrangifierDefindexIntegrity(t *testing.T) {
+	s := New(minimalRawSchema())
+
+	// Verify that canonical kit defindexes are NEVER modified by normalization
+	assert.Equal(t, 6523, s.NormalizeDefindex(6523), "Specialized Killstreak Kit must retain 6523")
+	assert.Equal(t, 6526, s.NormalizeDefindex(6526), "Professional Killstreak Kit must retain 6526")
+	assert.Equal(t, 6527, s.NormalizeDefindex(6527), "Basic Killstreak Kit must retain 6527")
+	assert.Equal(t, 6522, s.NormalizeDefindex(6522), "Strangifier must retain 6522")
+
+	// Verify Strange Filters retain their defindexes
+	assert.Equal(t, 6520, s.NormalizeDefindex(6520))
+	assert.Equal(t, 6530, s.NormalizeDefindex(6530))
+
+	// Verify Tournament Medals retain their defindexes
+	assert.Equal(t, 11051, s.NormalizeDefindex(11051))
+	assert.Equal(t, 11052, s.NormalizeDefindex(11052))
+}
+
+func TestSchema_NormalizationSetsParity(t *testing.T) {
+	s := New(minimalRawSchema())
+
+	// 1. Strangifiers (5661..5804 -> 6522)
+	strangifierDefs := []int{
+		5661, 5721, 5722, 5723, 5724, 5725, 5753, 5754,
+		5755, 5756, 5757, 5758, 5759, 5783, 5784, 5804,
+	}
+	for _, def := range strangifierDefs {
+		assert.Equal(t, 6522, s.NormalizeDefindex(def), "Strangifier %d must normalize to 6522", def)
+	}
+
+	// 2. Basic Killstreak Kits (5726..5801 -> 6527)
+	kitDefs := []int{
+		5726, 5727, 5728, 5729, 5730, 5731, 5732, 5733,
+		5743, 5744, 5745, 5746, 5747, 5748, 5749, 5750, 5751,
+		5793, 5794, 5795, 5796, 5797, 5798, 5799, 5800, 5801,
+	}
+	for _, def := range kitDefs {
+		assert.Equal(t, 6527, s.NormalizeDefindex(def), "Basic Kit %d must normalize to 6527", def)
+	}
+
+	// 3. Chemistry Sets (Strangifier recipes -> 20000)
+	chemDefs := []int{20001, 20005, 20008, 20009}
+	for _, def := range chemDefs {
+		assert.Equal(t, 20000, s.NormalizeDefindex(def), "Chemistry Set %d must normalize to 20000", def)
+	}
+
+	// Non-Strangifier Chemistry Sets and Fabricators must NOT map to 20000
+	assert.Equal(t, 20002, s.NormalizeDefindex(20002), "Fabricator 20002 must not normalize to 20000")
+	assert.Equal(t, 20003, s.NormalizeDefindex(20003), "Fabricator 20003 must not normalize to 20000")
+	assert.Equal(t, 20006, s.NormalizeDefindex(20006), "Collector Set 20006 must not normalize to 20000")
+	assert.Equal(t, 20007, s.NormalizeDefindex(20007), "Festive Collector Set 20007 must not normalize to 20000")
+
+	// 4. Stockpile Crate (5738 -> 5737)
+	assert.Equal(t, 5737, s.NormalizeDefindex(5738), "Stockpile Crate 5738 must normalize to 5737")
+}
+
+func TestSchema_DecoratedWeaponWarPaintRetention(t *testing.T) {
+	raw := minimalRawSchema()
+	if raw.Schema.PaintKits == nil {
+		raw.Schema.PaintKits = make(map[string]string)
+	}
+	raw.Schema.PaintKits["205"] = "Civic Duty"
+	raw.Schema.Items = append(raw.Schema.Items, &Item{
+		Defindex:    199,
+		Name:        "Shotgun",
+		ItemName:    "Shotgun",
+		ItemClass:   "weapon",
+		ItemQuality: QualityUnique,
+	})
+	s := New(raw)
+
+	// Strange Decorated Weapon
+	strangeDecorated := &trading.Item{
+		MarketHashName: "Strange Civic Duty Shotgun (Factory New)",
+		Tradable:       true,
+		Tags: []trading.Tag{
+			{Category: "Quality", LocalizedName: "Strange"},
+			{Category: "Exterior", LocalizedName: "Factory New"},
+		},
+	}
+	resStrange := s.ItemFromEconItem(strangeDecorated)
+	require.NotNil(t, resStrange)
+	assert.Equal(t, 1, resStrange.Wear)
+	assert.Equal(t, 205, resStrange.Paintkit, "Paintkit must not be stripped on Strange decorated weapons")
+	assert.Equal(t, QualityDecorated, resStrange.Quality, "Decorated strange weapon must have Quality 15")
+	assert.Equal(t, QualityStrange, resStrange.Quality2, "Decorated strange weapon must have Quality2 11")
+
+	// Unusual Decorated Weapon
+	unusualDecorated := &trading.Item{
+		MarketHashName: "Unusual Civic Duty Shotgun (Field-Tested)",
+		Tradable:       true,
+		Tags: []trading.Tag{
+			{Category: "Quality", LocalizedName: "Unusual"},
+			{Category: "Exterior", LocalizedName: "Field-Tested"},
+		},
+		Descriptions: []trading.Description{
+			{Value: "★ Unusual Effect: Burning Flames"},
+		},
+	}
+	resUnusual := s.ItemFromEconItem(unusualDecorated)
+	require.NotNil(t, resUnusual)
+	assert.Equal(t, 3, resUnusual.Wear)
+	assert.Equal(t, 205, resUnusual.Paintkit, "Paintkit must not be stripped on Unusual decorated weapons")
+	assert.Equal(t, 13, resUnusual.Effect) // Burning Flames
+}
+
+func TestSchema_RobustEconItemDefindexResolution(t *testing.T) {
+	raw := minimalRawSchema()
+	raw.Schema.Items = append(raw.Schema.Items, &Item{
+		Defindex: 560,
+		Name:     "Item 560",
+		ItemName: "Item 560",
+	}, &Item{
+		Defindex: 30217,
+		Name:     "Item 30217",
+		ItemName: "Item 30217",
+	})
+	s := New(raw)
+
+	// Case 1: Defindex extracted via AppData.Defindex
+	appDataItem := &trading.Item{
+		ClassID: 9999999999, // Bogus Steam ClassID
+		Descriptions: []trading.Description{
+			{
+				Value: "Standard item description",
+				AppData: &struct {
+					Defindex int `json:"def_index,string"`
+				}{Defindex: 560},
+			},
+		},
+	}
+	def1 := s.DefindexFromEconItem(appDataItem)
+	assert.Equal(t, 560, def1, "Must extract defindex from AppData and ignore ClassID")
+
+	resItem1 := s.ItemFromEconItem(appDataItem)
+	require.NotNil(t, resItem1)
+	assert.Equal(t, 560, resItem1.Defindex, "skuItem must inherit defindex from AppData, not ClassID")
+
+	// Case 2: Defindex extracted via Actions URL (Item Wiki Page redirect)
+	actionItem := &trading.Item{
+		ClassID: 8888888888, // Bogus Steam ClassID
+		Actions: []trading.Action{
+			{
+				Name: "Item Wiki Page...",
+				Link: "http://wiki.teamfortress.com/scripts/itemredirect.php?id=30217&lang=en_US",
+			},
+		},
+	}
+	def2 := s.DefindexFromEconItem(actionItem)
+	assert.Equal(t, 30217, def2, "Must extract defindex from Actions link and ignore ClassID")
+
+	resItem2 := s.ItemFromEconItem(actionItem)
+	require.NotNil(t, resItem2)
+	assert.Equal(t, 30217, resItem2.Defindex, "skuItem must inherit defindex from Action URL, not ClassID")
+
+	// Case 3: Normalized Defindex extracted from Actions URL (Pomson Strangifier 5661 -> 6522)
+	normActionItem := &trading.Item{
+		ClassID: 7777777777,
+		Actions: []trading.Action{
+			{
+				Name: "Item Wiki Page...",
+				Link: "http://wiki.teamfortress.com/scripts/itemredirect.php?id=5661&lang=en_US",
+			},
+		},
+	}
+	def3 := s.DefindexFromEconItem(normActionItem)
+	assert.Equal(t, 6522, def3, "Resolved defindex must be normalized to 6522")
+}
+

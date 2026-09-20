@@ -221,7 +221,7 @@ func (m *Manager) Fetch(ctx context.Context, skus []string) (map[string]*Price, 
 		price *Price
 	}
 
-	results, err := pipeline.Map(ctx, pipeline.Config{
+	results, err := pipeline.Map(ctx, pipeline.PipelineConfig{
 		Workers: 5,
 		RPS:     10,
 		Burst:   3,

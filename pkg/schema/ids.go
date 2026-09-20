@@ -602,8 +602,39 @@ var GlobalNormalizationMap = map[int]int{
 	5628: 5021, 5631: 5021, 5632: 5021, 5711: 5021, 5713: 5021, 5714: 5021,
 	5715: 5021, 5716: 5021, 5717: 5021, 5762: 5021,
 	294:  160,
-	6523: 6522, 6526: 6522, 6530: 6522, 6531: 6522, 6532: 6522, 6534: 6522,
-	6520: 6527, 6521: 6527, 11051: 6527, 11052: 6527,
+
+	// Mann Co. Stockpile Crates (5738 -> 5737)
+	5738: 5737,
+
+	// Strangifiers: standardizing 16 specific weapon Strangifiers (5661..5804 -> 6522)
+	5661: 6522, // Pomson 6000 Strangifier
+	5721: 6522, // Pretty Boy's Pocket Pistol Strangifier
+	5722: 6522, // Phlogistinator Strangifier
+	5723: 6522, // Cleaner's Carbine Strangifier
+	5724: 6522, // Private Eye Strangifier
+	5725: 6522, // Big Chief Strangifier
+	5753: 6522, // Air Strike Strangifier
+	5754: 6522, // Classic Strangifier
+	5755: 6522, // Manmelter Strangifier
+	5756: 6522, // Vaccinator Strangifier
+	5757: 6522, // Widowmaker Strangifier
+	5758: 6522, // Anger Strangifier
+	5759: 6522, // Apparition's Aspect Strangifier
+	5783: 6522, // Cow Mangler 5000 Strangifier
+	5784: 6522, // Third Degree Strangifier
+	5804: 6522, // Righteous Bison Strangifier
+
+	// Basic Killstreak Kits: standardizing 26 specific kits (5726..5801 -> 6527)
+	5726: 6527, 5727: 6527, 5728: 6527, 5729: 6527, 5730: 6527, 5731: 6527, 5732: 6527, 5733: 6527,
+	5743: 6527, 5744: 6527, 5745: 6527, 5746: 6527, 5747: 6527, 5748: 6527, 5749: 6527, 5750: 6527, 5751: 6527,
+	5793: 6527, 5794: 6527, 5795: 6527, 5796: 6527, 5797: 6527, 5798: 6527, 5799: 6527, 5800: 6527, 5801: 6527,
+
+	// Strangifier Chemistry Sets (20001..20009 -> 20000)
+	// Excludes Fabricators (20002, 20003) and Collector's Chemistry Sets (20006, 20007)
+	20001: 20000, // Cosmetic Strangifier Recipe 1 Rare
+	20005: 20000, // Cosmetic Strangifier Recipe 2
+	20008: 20000, // Rebuild Strange Weapon Recipe
+	20009: 20000, // Cosmetic Strangifier Recipe 3
 }
 
 // NormalizeDefindex converts a retired or legacy defindex to its canonical ID.

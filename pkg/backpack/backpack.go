@@ -187,6 +187,9 @@ func (m *Backpack) DeleteItem(ctx context.Context, itemID uint64) error {
 }
 
 func (m *Backpack) GetItemsBySKU(targetSKU string) []uint64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	if m.soCache != nil {
 		return m.soCache.GetAssetIDsDirect(targetSKU, m.locked)
 	}
@@ -659,7 +662,11 @@ func (m *Backpack) eventLoop(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case ev := <-sub.C():
+		case ev, ok := <-sub.C():
+			if !ok {
+				return
+			}
+
 			for _, e := range m.handleEvent(ctx, ev) {
 				m.Bus.Publish(e)
 			}

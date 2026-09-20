@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"slices"
 	"strconv"
@@ -1596,7 +1597,7 @@ func (s *Schema) ItemFromEconItem(item *trading.Item) *sku.Item {
 		return nil
 	}
 
-	defindex := int(item.ClassID)
+	defindex := s.DefindexFromEconItem(item)
 	nameToParse := item.MarketHashName
 
 	if nameToParse == "" {
@@ -1639,6 +1640,12 @@ func (s *Schema) ItemFromEconItem(item *trading.Item) *sku.Item {
 		skuItem.Quality2 = 11
 	}
 
+	// Decorated weapons with Strange quality parity: Quality = QualityDecorated (15), Quality2 = QualityStrange (11)
+	if skuItem.Paintkit != 0 && skuItem.Quality == QualityStrange {
+		skuItem.Quality = QualityDecorated
+		skuItem.Quality2 = QualityStrange
+	}
+
 	s.NormalizeItem(skuItem)
 
 	return skuItem
@@ -1653,18 +1660,96 @@ func (s *Schema) applyEconWearAndSkins(skuItem *sku.Item, item *trading.Item) {
 		}
 	}
 
-	if skuItem.Quality == QualityDecorated || item.ClassID == 205 {
-		lowerName := strings.ToLower(item.MarketHashName)
+	lowerName := strings.ToLower(item.MarketHashName)
+	if lowerName == "" {
+		lowerName = strings.ToLower(item.MarketName)
+	}
 
-		for pkName, pkID := range s.paintKitByName {
-			if strings.Contains(lowerName, pkName) {
-				skuItem.Paintkit = pkID
-				break
+	if skuItem.Paintkit == 0 && (skuItem.Wear != 0 || skuItem.Quality == QualityDecorated || strings.Contains(lowerName, "war paint")) {
+		if len(s.paintKitList) > 0 {
+			for _, pk := range s.paintKitList {
+				if strings.Contains(lowerName, pk.Name) {
+					skuItem.Paintkit = pk.ID
+					break
+				}
+			}
+		} else {
+			for pkName, pkID := range s.paintKitByName {
+				if strings.Contains(lowerName, pkName) {
+					skuItem.Paintkit = pkID
+					break
+				}
 			}
 		}
 	}
 
 	skuItem.Tradable = item.Tradable
+}
+
+// DefindexFromEconItem resolves the item's canonical defindex using authoritative metadata:
+// 1. Description AppData (app_data.def_index)
+// 2. Actions URL "id" query parameter (Item Wiki Page redirect)
+// 3. Schema Name lookup fallback
+// Never returns Steam ClassID. Returns 0 if not found.
+func (s *Schema) DefindexFromEconItem(item *trading.Item) int {
+	if item == nil {
+		return 0
+	}
+
+	for _, desc := range item.Descriptions {
+		if desc.AppData != nil && desc.AppData.Defindex > 0 {
+			if s != nil {
+				return s.NormalizeDefindex(desc.AppData.Defindex)
+			}
+			return NormalizeDefindex(desc.AppData.Defindex)
+		}
+	}
+
+	for _, act := range item.Actions {
+		if act.Link == "" {
+			continue
+		}
+		if def := extractDefindexFromURL(act.Link); def > 0 {
+			if s != nil {
+				return s.NormalizeDefindex(def)
+			}
+			return NormalizeDefindex(def)
+		}
+	}
+
+	name := item.MarketHashName
+	if name == "" {
+		name = item.MarketName
+	}
+	if name != "" && s != nil {
+		if schItem := s.ItemByName(name); schItem != nil {
+			return s.NormalizeDefindex(schItem.Defindex)
+		}
+	}
+
+	return 0
+}
+
+func extractDefindexFromURL(rawURL string) int {
+	u, err := url.Parse(rawURL)
+	if err == nil {
+		idStr := u.Query().Get("id")
+		if idStr != "" {
+			if val, err := strconv.Atoi(idStr); err == nil && val > 0 {
+				return val
+			}
+		}
+	}
+	if idx := strings.Index(rawURL, "id="); idx != -1 {
+		sub := rawURL[idx+3:]
+		if amp := strings.IndexByte(sub, '&'); amp != -1 {
+			sub = sub[:amp]
+		}
+		if val, err := strconv.Atoi(sub); err == nil && val > 0 {
+			return val
+		}
+	}
+	return 0
 }
 
 func (s *Schema) applyEconDescriptions(skuItem *sku.Item, descriptions []trading.Description) {

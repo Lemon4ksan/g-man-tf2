@@ -7,7 +7,9 @@ package backpack
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/lemon4ksan/foundation/async/event"
 	log "github.com/lemon4ksan/foundation/async/logkit"
@@ -865,3 +867,78 @@ func TestBackpack_Lifecycle(t *testing.T) {
 		cancel()
 	})
 }
+
+func TestBackpack_GetItemsBySKU_ConcurrentMapAccess(t *testing.T) {
+	t.Parallel()
+
+	soCache := tf2.NewSOCache(nil)
+	bp := NewWithDeps(soCache, &mockSchemaProvider{s: &schema.Schema{}}, generic.NewSet[uint64]())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var wg sync.WaitGroup
+
+	// Reader goroutines calling GetItemsBySKU
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					_ = bp.GetItemsBySKU("1;6")
+				}
+			}
+		}()
+	}
+
+	// Writer goroutines mutating m.locked
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(id uint64) {
+			defer wg.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					bp.LockItems([]uint64{id})
+					bp.UnlockItems([]uint64{id})
+				}
+			}
+		}(uint64(100 + i))
+	}
+
+	wg.Wait()
+}
+
+func TestBackpack_EventLoop_ExitsOnBusClose(t *testing.T) {
+	t.Parallel()
+
+	bus := event.New()
+	bp := New()
+	bp.Bus = bus
+
+	// Context is intentionally NOT cancelled to prove loop exits via channel closure
+	ctx := context.Background()
+
+	done := make(chan struct{})
+	go func() {
+		bp.eventLoop(ctx)
+		close(done)
+	}()
+
+	time.Sleep(20 * time.Millisecond)
+	_ = bus.Close()
+
+	select {
+	case <-done:
+		// Passed: eventLoop terminated immediately on bus channel close
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("eventLoop hung after event.Bus was closed; infinite loop detected")
+	}
+}
+

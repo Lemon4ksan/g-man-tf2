@@ -41,7 +41,7 @@ func GetItemsBulk(ctx context.Context, client API, skus []string, mods ...aoni.R
 		batches = append(batches, validSKUs[i:end])
 	}
 
-	results, err := pipeline.Map(ctx, pipeline.Config{
+	results, err := pipeline.Map(ctx, pipeline.PipelineConfig{
 		Workers: 3,
 		RPS:     5,
 		Burst:   2,

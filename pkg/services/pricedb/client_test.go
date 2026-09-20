@@ -138,7 +138,7 @@ func TestClient(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotNil(t, health)
 
-		stub.SetJSONResponse("api/", 200, "healthy")
+		stub.SetRawResponse("api/", 200, []byte("healthy"))
 
 		statusStr, err := client.GetHealth(ctx)
 		require.NoError(t, err)
@@ -168,7 +168,7 @@ func TestClient(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, snapshot, 1)
 
-		stub.SetJSONResponse("api/graph/5021;6", 200, "<html>graph</html>")
+		stub.SetHTMLResponse("api/graph/5021;6", 200, "<html>graph</html>")
 
 		graph, err := client.GetGraph(ctx, "5021;6", true, 400, "100%")
 		require.NoError(t, err)

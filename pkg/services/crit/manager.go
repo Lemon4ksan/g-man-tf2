@@ -580,7 +580,11 @@ func (m *Manager) eventLoop(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case ev := <-sub.C():
+		case ev, ok := <-sub.C():
+			if !ok {
+				return
+			}
+
 			m.mu.RLock()
 			bp := m.bp
 			priceMgr := m.priceMgr

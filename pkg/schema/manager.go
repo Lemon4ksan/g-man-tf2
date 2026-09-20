@@ -171,6 +171,7 @@ func NewManager(cfg Config) *Manager {
 	return &Manager{
 		Base:   module.New(ModuleName),
 		config: cfg,
+		rest:   aoni.NewClient(defaultHTTPClient),
 	}
 }
 
@@ -353,12 +354,19 @@ func (m *Manager) refreshPriceDB(ctx context.Context) error {
 		}
 	}
 
-	itemsGame, err := m.getItemsGame(ctx, itemsGameURL)
+	itemsGameURL = generic.Coalesce(itemsGameURL, m.config.ItemsGameMirrorURL)
+
+	itemsGameData, err := m.downloadRawURL(ctx, itemsGameURL)
 	if err != nil {
 		return fmt.Errorf("failed to fetch items_game.txt: %w", err)
 	}
 
-	extraItems := m.parseItemsGameItems(ctx, itemsGameURL)
+	itemsGame, err := m.parseItemsGameRecipesAndSeries(itemsGameData)
+	if err != nil {
+		return fmt.Errorf("failed to parse items_game.txt: %w", err)
+	}
+
+	extraItems := m.parseItemsGameItemsFromData(ctx, itemsGameData)
 	if len(extraItems) > 0 {
 		existingDefindexes := make(map[int]bool, len(overviewResult.Items))
 		for _, item := range overviewResult.Items {
@@ -395,8 +403,13 @@ func (m *Manager) refreshPriceDB(ctx context.Context) error {
 }
 
 func (m *Manager) refreshFromGame(ctx context.Context, itemsGameURL string) error {
-	itemsGame, err := m.getItemsGame(ctx, itemsGameURL)
-	if err != nil {
+	resolvedItemsGameURL := generic.Coalesce(itemsGameURL, m.config.ItemsGameMirrorURL)
+
+	itemsGameData, err := m.downloadRawURL(ctx, resolvedItemsGameURL)
+	var itemsGame map[string]any
+	if err == nil {
+		itemsGame, _ = m.parseItemsGameRecipesAndSeries(itemsGameData)
+	} else {
 		itemsGame = map[string]any{}
 	}
 
@@ -405,7 +418,10 @@ func (m *Manager) refreshFromGame(ctx context.Context, itemsGameURL string) erro
 		return fmt.Errorf("failed to fetch schema items: %w", err)
 	}
 
-	extraItems := m.parseItemsGameItems(ctx, itemsGameURL)
+	var extraItems []*Item
+	if len(itemsGameData) > 0 {
+		extraItems = m.parseItemsGameItemsFromData(ctx, itemsGameData)
+	}
 	if len(extraItems) > 0 {
 		existingDefindexes := make(map[int]bool, len(items))
 		for _, item := range items {
@@ -444,6 +460,18 @@ func (m *Manager) refreshFromGame(ctx context.Context, itemsGameURL string) erro
 	return nil
 }
 
+var defaultHTTPClient = &http.Client{
+	Timeout: 60 * time.Second,
+	Transport: &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   10,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	},
+}
+
 func (m *Manager) downloadRawURL(ctx context.Context, rawURL string) ([]byte, error) {
 	if m != nil && m.rest != nil {
 		resp, err := m.rest.GetTo[[]byte](ctx, rawURL, decode.WithRaw())
@@ -463,14 +491,15 @@ func (m *Manager) downloadRawURL(ctx context.Context, rawURL string) ([]byte, er
 
 	req.Header.Set("User-Agent", "G-man Bot/1.0")
 
-	client := &http.Client{Timeout: 60 * time.Second}
-
-	resp, err := client.Do(req)
+	resp, err := defaultHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 
-	defer resp.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("http status %d", resp.StatusCode)
@@ -557,6 +586,14 @@ func (m *Manager) parseItemsGameItems(ctx context.Context, url string) []*Item {
 
 	data, err := m.downloadRawURL(ctx, url)
 	if err != nil {
+		return nil
+	}
+
+	return m.parseItemsGameItemsFromData(ctx, data)
+}
+
+func (m *Manager) parseItemsGameItemsFromData(ctx context.Context, data []byte) []*Item {
+	if len(data) == 0 {
 		return nil
 	}
 
@@ -1005,6 +1042,10 @@ func (m *Manager) getItemsGame(ctx context.Context, url string) (map[string]any,
 		return nil, fmt.Errorf("failed to fetch items_game.txt: %w", err)
 	}
 
+	return m.parseItemsGameRecipesAndSeries(data)
+}
+
+func (m *Manager) parseItemsGameRecipesAndSeries(data []byte) (map[string]any, error) {
 	seriesMap := make(map[string]any)
 	recipesMap := make(map[string]any)
 	recipeBuf := new(strings.Builder)

@@ -7,6 +7,7 @@ package pricedb
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"net/url"
 	"strings"
 	"sync"
@@ -20,12 +21,24 @@ import (
 	"github.com/lemon4ksan/foundation/generic"
 )
 
+const (
+	defaultInitialBackoff      = 1 * time.Second
+	defaultMaxBackoff          = 30 * time.Second
+	defaultMaxProtocolAttempts = 3
+)
+
 // SocketManager handles the real-time price updates via Socket.IO.
 type SocketManager struct {
 	r         aoni.WebSocketDialer
 	url       string
+	urlTLS    string
+	preferTLS bool
 	logger    log.Logger
 	userAgent string
+
+	initialBackoff      time.Duration
+	maxBackoff          time.Duration
+	maxProtocolAttempts int
 
 	mu   sync.Mutex
 	conn ws.Conn
@@ -39,11 +52,44 @@ func NewSocketManager(rawURL string, r aoni.WebSocketDialer, logger log.Logger) 
 		r = aoni.DefaultClient
 	}
 
+	target := generic.Coalesce(rawURL, "ws://ws.pricedb.io/")
+	wsURL, wssURL, preferTLS := deriveProtocolURLs(target)
+
 	return &SocketManager{
-		r:      r,
-		url:    generic.Coalesce(rawURL, "ws://ws.pricedb.io/"),
-		logger: logger.With(log.Module("pricedb_socket")),
+		r:                   r,
+		url:                 wsURL,
+		urlTLS:              wssURL,
+		preferTLS:           preferTLS,
+		initialBackoff:      defaultInitialBackoff,
+		maxBackoff:          defaultMaxBackoff,
+		maxProtocolAttempts: defaultMaxProtocolAttempts,
+		logger:              logger.With(log.Module("pricedb_socket")),
 	}
+}
+
+func deriveProtocolURLs(rawURL string) (wsURL string, wssURL string, preferTLS bool) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL, rawURL, false
+	}
+
+	preferTLS = u.Scheme == "wss" || u.Scheme == "https"
+
+	uNonTLS := *u
+	if uNonTLS.Scheme == "https" || uNonTLS.Scheme == "wss" {
+		uNonTLS.Scheme = "ws"
+	} else if uNonTLS.Scheme == "http" {
+		uNonTLS.Scheme = "ws"
+	}
+
+	uTLS := *u
+	if uTLS.Scheme == "http" || uTLS.Scheme == "ws" {
+		uTLS.Scheme = "wss"
+	} else if uTLS.Scheme == "https" {
+		uTLS.Scheme = "wss"
+	}
+
+	return uNonTLS.String(), uTLS.String(), preferTLS
 }
 
 // OnPrice sets the callback for when a price update is received.
@@ -51,23 +97,87 @@ func (s *SocketManager) OnPrice(fn func(price *Price)) {
 	s.onPrice = fn
 }
 
-// Run starts the socket connection and maintains it.
+// Run starts the socket connection and maintains it with exponential backoff, jitter, and TLS fallback.
 func (s *SocketManager) Run(ctx context.Context) error {
+	attempt := 0
+	currentPreferTLS := s.preferTLS
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			if err := s.connectAndListen(ctx); err != nil {
-				s.logger.Warn("Socket.IO connection failed, retrying...", log.Err(err))
-				time.Sleep(5 * time.Second)
-			}
+		}
+
+		targetURL := s.url
+		if currentPreferTLS {
+			targetURL = s.urlTLS
+		}
+
+		err := s.connectAndListenURL(ctx, targetURL)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		attempt++
+		if attempt >= s.maxProtocolAttempts {
+			currentPreferTLS = !currentPreferTLS
+			attempt = 0
+			s.logger.Warn("Max reconnect attempts reached on current protocol, switching endpoint",
+				log.Bool("preferTLS", currentPreferTLS),
+				log.String("nextEndpoint", generic.Ternary(currentPreferTLS, s.urlTLS, s.url)),
+				log.Err(err),
+			)
+		} else if err != nil {
+			s.logger.Warn("Socket.IO connection failed, retrying...",
+				log.Int("attempt", attempt),
+				log.Bool("preferTLS", currentPreferTLS),
+				log.Err(err),
+			)
+		}
+
+		delay := s.calculateBackoff(attempt)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
 		}
 	}
 }
 
+func (s *SocketManager) calculateBackoff(attempt int) time.Duration {
+	if attempt <= 0 {
+		return s.initialBackoff
+	}
+
+	mult := 1 << min(attempt, 6)
+	backoff := s.initialBackoff * time.Duration(mult)
+	if backoff > s.maxBackoff {
+		backoff = s.maxBackoff
+	}
+
+	// Full jitter between backoff/2 and backoff
+	half := int64(backoff / 2)
+	if half <= 0 {
+		return backoff
+	}
+	jitter := time.Duration(rand.Int64N(half))
+
+	return time.Duration(half) + jitter
+}
+
 func (s *SocketManager) connectAndListen(ctx context.Context) error {
-	u, err := url.Parse(s.url)
+	target := s.url
+	if s.preferTLS {
+		target = s.urlTLS
+	}
+	return s.connectAndListenURL(ctx, target)
+}
+
+func (s *SocketManager) connectAndListenURL(ctx context.Context, endpointURL string) error {
+	u, err := url.Parse(endpointURL)
 	if err != nil {
 		return err
 	}
@@ -94,12 +204,11 @@ func (s *SocketManager) connectAndListen(ctx context.Context) error {
 	}
 
 	wsConn, resp, err := ws.DialWebSocket(ctx, s.r, u.String(), mods...)
-	if err != nil {
-		return err
-	}
-
 	if resp != nil && resp.Body != nil {
 		_ = resp.Body.Close()
+	}
+	if err != nil {
+		return err
 	}
 
 	s.mu.Lock()

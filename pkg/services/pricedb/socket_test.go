@@ -9,6 +9,7 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -298,3 +299,145 @@ func TestSocketManager_HandshakeErr(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unexpected handshake packet")
 }
+
+func TestSocketManager_BackoffCalculation(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSocketManager("", nil, log.Discard)
+	assert.Equal(t, 1*time.Second, sm.calculateBackoff(0))
+
+	for i := 0; i < 20; i++ {
+		b1 := sm.calculateBackoff(1)
+		assert.GreaterOrEqual(t, b1, 1*time.Second)
+		assert.LessOrEqual(t, b1, 2*time.Second)
+
+		b2 := sm.calculateBackoff(2)
+		assert.GreaterOrEqual(t, b2, 2*time.Second)
+		assert.LessOrEqual(t, b2, 4*time.Second)
+
+		b5 := sm.calculateBackoff(5)
+		assert.GreaterOrEqual(t, b5, 15*time.Second)
+		assert.LessOrEqual(t, b5, 30*time.Second)
+
+		b10 := sm.calculateBackoff(10)
+		assert.LessOrEqual(t, b10, 30*time.Second)
+	}
+}
+
+func TestSocketManager_DeriveProtocolURLs(t *testing.T) {
+	t.Parallel()
+
+	wsURL, wssURL, preferTLS := deriveProtocolURLs("ws://ws.pricedb.io/")
+	assert.Equal(t, "ws://ws.pricedb.io/", wsURL)
+	assert.Equal(t, "wss://ws.pricedb.io/", wssURL)
+	assert.False(t, preferTLS)
+
+	wsURL2, wssURL2, preferTLS2 := deriveProtocolURLs("wss://ws.pricedb.io/")
+	assert.Equal(t, "ws://ws.pricedb.io/", wsURL2)
+	assert.Equal(t, "wss://ws.pricedb.io/", wssURL2)
+	assert.True(t, preferTLS2)
+
+	wsURL3, wssURL3, preferTLS3 := deriveProtocolURLs("http://example.com/socket")
+	assert.Equal(t, "ws://example.com/socket", wsURL3)
+	assert.Equal(t, "wss://example.com/socket", wssURL3)
+	assert.False(t, preferTLS3)
+}
+
+func TestSocketManager_ContextCancellationInterruptsBackoff(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSocketManager("ws://127.0.0.1:49151", nil, log.Discard)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- sm.Run(ctx)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	start := time.Now()
+	cancel()
+
+	select {
+	case err := <-done:
+		elapsed := time.Since(start)
+		assert.ErrorIs(t, err, context.Canceled)
+		assert.Less(t, elapsed, 200*time.Millisecond, "Run must exit promptly on context cancel")
+	case <-time.After(1 * time.Second):
+		t.Fatal("Run hung in backoff sleep after context was cancelled")
+	}
+}
+
+type mockFallbackDialer struct {
+	mu          sync.Mutex
+	schemes     []string
+	targetAddrs []string
+}
+
+func (m *mockFallbackDialer) DialPlainForWS(ctx context.Context, addr string) (net.Conn, error) {
+	m.mu.Lock()
+	m.schemes = append(m.schemes, "ws")
+	m.targetAddrs = append(m.targetAddrs, addr)
+	m.mu.Unlock()
+	return nil, errors.New("mock plain dial failed")
+}
+
+func (m *mockFallbackDialer) DialTLSForWS(ctx context.Context, addr string) (net.Conn, error) {
+	m.mu.Lock()
+	m.schemes = append(m.schemes, "wss")
+	m.targetAddrs = append(m.targetAddrs, addr)
+	m.mu.Unlock()
+	return nil, errors.New("mock tls dial failed")
+}
+
+func TestSocketManager_ResponseClosedOnDialError(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "Bad Gateway", http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	wsURL := strings.Replace(server.URL, "http://", "ws://", 1)
+	sm := NewSocketManager(wsURL, nil, log.Discard)
+	err := sm.connectAndListen(context.Background())
+	assert.Error(t, err)
+}
+
+func TestSocketManager_ProtocolFallback_WStoWSS(t *testing.T) {
+	t.Parallel()
+
+	dialer := &mockFallbackDialer{}
+
+	sm := NewSocketManager("ws://test.pricedb.io/", dialer, log.Discard)
+	sm.initialBackoff = 5 * time.Millisecond
+	sm.maxBackoff = 10 * time.Millisecond
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		for {
+			dialer.mu.Lock()
+			count := len(dialer.schemes)
+			dialer.mu.Unlock()
+
+			if count >= 4 {
+				cancel()
+				return
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	}()
+
+	_ = sm.Run(ctx)
+
+	dialer.mu.Lock()
+	defer dialer.mu.Unlock()
+
+	require.GreaterOrEqual(t, len(dialer.schemes), 4)
+	assert.Equal(t, "ws", dialer.schemes[0])
+	assert.Equal(t, "ws", dialer.schemes[1])
+	assert.Equal(t, "ws", dialer.schemes[2])
+	assert.Equal(t, "wss", dialer.schemes[3], "4th attempt must fall back to wss (DialTLSForWS)")
+}
+

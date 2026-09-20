@@ -794,3 +794,76 @@ func TestCoverage_GetItemsGame_Deep(t *testing.T) {
 	_, err = sm.getItemsGame(t.Context(), "http://mock/test_items_game")
 	assert.Error(t, err)
 }
+
+func TestManager_ParseItemsGameRecipesAndSeries_Direct(t *testing.T) {
+	t.Parallel()
+
+	sm := NewManager(DefaultConfig())
+	vdf := "\"items_game\"\n{\n\t\"items\"\n\t{\n\t\t\"5022\"\n\t\t{\n\t\t\t\"static_attrs\"\n\t\t\t{\n\t\t\t\t\"set supply crate series\" \"1\"\n\t\t\t}\n\t\t}\n\t}\n\t\"recipes\"\n\t{\n\t\t\"3\"\n\t\t{\n\t\t\t\"name\" \"Smelt Weapons\"\n\t\t}\n\t}\n}\n"
+
+	res, err := sm.parseItemsGameRecipesAndSeries([]byte(vdf))
+	require.NoError(t, err)
+	require.NotNil(t, res)
+
+	items, ok := res["items"].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, items, "5022")
+
+	recipes, ok := res["recipes"].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, recipes, "3")
+}
+
+func TestManager_RefreshFromGame_SingleDownloadOfItemsGame(t *testing.T) {
+	t.Parallel()
+
+	sm, mockAPI := setupSchema(t, Config{
+		ExcludeMedals: false,
+	})
+
+	mockAPI.SetJSONResponse("IEconItems_440", "GetSchemaOverview", map[string]any{
+		"result": map[string]any{
+			"qualities": map[string]any{"Normal": 0},
+		},
+	})
+
+	mockAPI.SetJSONResponse("IEconItems_440", "GetSchemaItems", map[string]any{
+		"result": map[string]any{
+			"items": []any{
+				map[string]any{"defindex": 5021, "name": "Mann Co. Supply Crate Key"},
+			},
+			"next": 0,
+		},
+	})
+
+	var itemsGameRequests int
+	var mu sync.Mutex
+
+	mockAPI.OnRest = func(method, path string, body any) (*http.Response, error) {
+		if strings.Contains(path, "items_game.txt") {
+			mu.Lock()
+			itemsGameRequests++
+			mu.Unlock()
+
+			vdf := "\"items_game\"\n{\n\t\"items\"\n\t{\n\t\t\"5022\"\n\t\t{\n\t\t\t\"static_attrs\"\n\t\t\t{\n\t\t\t\t\"set supply crate series\" \"1\"\n\t\t\t}\n\t\t}\n\t}\n}\n"
+			return &http.Response{
+				StatusCode: 200,
+				Body:       io.NopCloser(strings.NewReader(vdf)),
+			}, nil
+		}
+
+		return &http.Response{
+			StatusCode: 200,
+			Body:       io.NopCloser(strings.NewReader("")),
+		}, nil
+	}
+
+	err := sm.refreshFromGame(t.Context(), "http://mock/items_game.txt")
+	assert.NoError(t, err)
+
+	mu.Lock()
+	count := itemsGameRequests
+	mu.Unlock()
+	assert.Equal(t, 1, count, "items_game.txt must be downloaded exactly ONCE per refreshFromGame")
+}
+
