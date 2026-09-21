@@ -515,6 +515,25 @@ func (c *SOCache) parseGCAttributes(attributes []*pb.CSOEconItemAttribute, item 
 		return binary.LittleEndian.Uint32(b)
 	}
 
+	getUintOrFloat := func(attr *pb.CSOEconItemAttribute) uint32 {
+		if attr.Value != nil && *attr.Value != 0 {
+			return *attr.Value
+		}
+		b := attr.GetValueBytes()
+		if len(b) >= 4 {
+			u := binary.LittleEndian.Uint32(b)
+			f := math.Float32frombits(u)
+			if f >= 1.0 && f <= 16777216.0 && float32(uint32(f)) == f {
+				return uint32(f)
+			}
+			return u
+		}
+		if attr.Value != nil {
+			return *attr.Value
+		}
+		return 0
+	}
+
 	var (
 		decalLo, decalHi     uint32
 		part1ID, part1Val    uint32
@@ -541,16 +560,16 @@ func (c *SOCache) parseGCAttributes(attributes []*pb.CSOEconItemAttribute, item 
 			}
 
 		case AttrMedalNumber:
-			item.MedalNumber = getUint(val)
+			item.MedalNumber = getUintOrFloat(attr)
 
 		case AttrUnusualEffect:
-			item.Effect = uint32(getFloat(val))
+			item.Effect = getUintOrFloat(attr)
 
 		case AttrPaintPrimary:
-			item.PaintPrimary = uint32(getFloat(val))
+			item.PaintPrimary = getUintOrFloat(attr)
 
 		case AttrPaintSecondary:
-			item.PaintSecondary = uint32(getFloat(val))
+			item.PaintSecondary = getUintOrFloat(attr)
 
 		case AttrCannotTrade:
 			item.IsTradable = false
@@ -559,7 +578,7 @@ func (c *SOCache) parseGCAttributes(attributes []*pb.CSOEconItemAttribute, item 
 			item.IsCraftable = false
 
 		case AttrCrateSeries:
-			item.CrateSeries = uint32(getFloat(val))
+			item.CrateSeries = getUintOrFloat(attr)
 
 		case AttrAlwaysTradable:
 			item.IsTradable = true
@@ -577,40 +596,40 @@ func (c *SOCache) parseGCAttributes(attributes []*pb.CSOEconItemAttribute, item 
 			}
 
 		case AttrCrafterAccountID:
-			item.CrafterAccountID = uint32(getFloat(val))
+			item.CrafterAccountID = getUintOrFloat(attr)
 
 		case AttrGifterAccountID:
-			item.GifterAccountID = uint32(getFloat(val))
+			item.GifterAccountID = getUintOrFloat(attr)
 
 		case AttrKillEater:
 			item.IsElevated = item.Quality != schema.QualityStrange
 
 		case AttrKillEaterScoreValue:
-			item.ScoreCount = getUint(val)
+			item.ScoreCount = getUintOrFloat(attr)
 
 		case AttrCraftNumber:
-			item.CraftNumber = getUint(val)
+			item.CraftNumber = getUintOrFloat(attr)
 
 		case AttrStrangePart1:
-			part1ID = uint32(getFloat(val))
+			part1ID = getUintOrFloat(attr)
 			item.Parts = append(item.Parts, part1ID)
 
 		case AttrStrangePart2:
-			part2ID = uint32(getFloat(val))
+			part2ID = getUintOrFloat(attr)
 			item.Parts = append(item.Parts, part2ID)
 
 		case AttrStrangePart3:
-			part3ID = uint32(getFloat(val))
+			part3ID = getUintOrFloat(attr)
 			item.Parts = append(item.Parts, part3ID)
 
 		case AttrStrangePart1Val:
-			part1Val = getUint(val)
+			part1Val = getUintOrFloat(attr)
 
 		case AttrStrangePart2Val:
-			part2Val = getUint(val)
+			part2Val = getUintOrFloat(attr)
 
 		case AttrStrangePart3Val:
-			part3Val = getUint(val)
+			part3Val = getUintOrFloat(attr)
 
 		case AttrEOTLEarlySupporter:
 			item.EarlySupporter = getFloat(val) != 0
@@ -625,7 +644,7 @@ func (c *SOCache) parseGCAttributes(attributes []*pb.CSOEconItemAttribute, item 
 			item.Wear = getFloat(val)
 
 		case AttrPaintkit:
-			item.Paintkit = getUint(val)
+			item.Paintkit = getUintOrFloat(attr)
 
 		case AttrPaintkitSeedLo:
 			seedLo = getUint(val)
@@ -639,22 +658,22 @@ func (c *SOCache) parseGCAttributes(attributes []*pb.CSOEconItemAttribute, item 
 			item.Spells = append(item.Spells, sku.Spell{Attribute: int(def), Value: int(getFloat(val))})
 
 		case AttrTarget:
-			item.Target = uint32(getFloat(val))
+			item.Target = getUintOrFloat(attr)
 
 		case AttrKillstreaker:
-			item.Killstreaker = uint32(getFloat(val))
+			item.Killstreaker = getUintOrFloat(attr)
 
 		case AttrSheen:
-			item.Sheen = uint32(getFloat(val))
+			item.Sheen = getUintOrFloat(attr)
 
 		case AttrKillstreakTier:
-			item.KillstreakTier = uint32(getFloat(val))
+			item.KillstreakTier = getUintOrFloat(attr)
 
 		case AttrSeries:
-			item.Series = uint32(getFloat(val))
+			item.Series = getUintOrFloat(attr)
 
 		case AttrTauntUnusualEffect:
-			item.Effect = uint32(getFloat(val))
+			item.Effect = getUintOrFloat(attr)
 
 		case AttrAustralium:
 			item.Australium = getFloat(val) != 0
