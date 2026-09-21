@@ -2468,6 +2468,7 @@ func TestSchema_ItemFromName_AustraliumMinigun(t *testing.T) {
 	}
 	s := New(raw)
 
+	// 1. Parsing with explicit "Strange"
 	parsed := s.ItemFromName("Strange Australium Minigun")
 	require.NotNil(t, parsed)
 	assert.Equal(t, 202, parsed.Defindex)
@@ -2476,7 +2477,7 @@ func TestSchema_ItemFromName_AustraliumMinigun(t *testing.T) {
 	assert.Equal(t, "202;11;australium", s.SKUFromItem(parsed))
 
 	formatted := s.ItemName(parsed, true, false, false)
-	assert.Equal(t, "Strange Australium Minigun", formatted)
+	assert.Equal(t, "Australium Minigun", formatted, "Strange must be omitted from Australium weapon display name")
 }
 
 func TestSchema_IsAustraliumDefindex_Complete(t *testing.T) {

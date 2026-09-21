@@ -1440,7 +1440,7 @@ func (s *Schema) ItemName(item *sku.Item, proper, usePipeForSkin, scmFormat bool
 		appendWord("Non-Craftable")
 	}
 
-	if item.Quality2 != 0 {
+	if item.Quality2 != 0 && !(item.Australium && item.Quality2 == QualityStrange) {
 		qName := s.QualityByID(item.Quality2)
 		if qName != "" {
 			if !scmFormat && (item.Wear != 0 || item.Paintkit != 0) {
@@ -1453,6 +1453,10 @@ func (s *Schema) ItemName(item *sku.Item, proper, usePipeForSkin, scmFormat bool
 
 	addPrimaryQuality := false
 	switch {
+	case item.Australium && item.Quality == QualityStrange:
+		// In TF2 and Steam, Australium weapons are inherently Strange quality,
+		// but "Strange" is omitted from the display name (e.g. "Australium Minigun", not "Strange Australium Minigun").
+		addPrimaryQuality = false
 	case item.Quality == QualityUnique && item.Quality2 != Quality2None,
 		item.Quality != QualityUnique && item.Quality != QualityDecorated && item.Quality != QualityUnusual,
 		item.Quality == QualityUnusual && item.Effect == 0,
