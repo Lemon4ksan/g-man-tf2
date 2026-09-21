@@ -2453,3 +2453,57 @@ func TestSchema_RobustEconItemDefindexResolution(t *testing.T) {
 	assert.Equal(t, 6522, def3, "Resolved defindex must be normalized to 6522")
 }
 
+func TestSchema_ItemFromName_AustraliumMinigun(t *testing.T) {
+	t.Parallel()
+
+	raw := &Raw{}
+	raw.Schema.Items = append(raw.Schema.Items,
+		&Item{Defindex: 15031, Name: "teufort_minigun_warroom", ItemName: "Minigun", ItemQuality: 15},
+		&Item{Defindex: 202, Name: "Upgradeable TF_WEAPON_MINIGUN", ItemName: "Minigun", ItemQuality: 6, ItemClass: "tf_weapon_minigun"},
+		&Item{Defindex: 15, Name: "TF_WEAPON_MINIGUN", ItemName: "Minigun", ItemQuality: 0, ItemClass: "tf_weapon_minigun"},
+	)
+	raw.Schema.Qualities = map[string]int{
+		"Unique":  6,
+		"Strange": 11,
+	}
+	s := New(raw)
+
+	parsed := s.ItemFromName("Strange Australium Minigun")
+	require.NotNil(t, parsed)
+	assert.Equal(t, 202, parsed.Defindex)
+	assert.Equal(t, 11, parsed.Quality)
+	assert.True(t, parsed.Australium)
+	assert.Equal(t, "202;11;australium", s.SKUFromItem(parsed))
+
+	formatted := s.ItemName(parsed, true, false, false)
+	assert.Equal(t, "Strange Australium Minigun", formatted)
+}
+
+func TestSchema_IsAustraliumDefindex_Complete(t *testing.T) {
+	t.Parallel()
+
+	s := New(&Raw{})
+
+	// Check upgradeable defindexes
+	upgradeable := []int{200, 201, 202, 203, 205, 206, 207, 208, 211, 194, 197}
+	for _, def := range upgradeable {
+		assert.True(t, s.IsAustraliumDefindex(def), "Upgradeable defindex %d must be recognized as Australium", def)
+	}
+
+	// Check stock defindexes
+	stock := []int{13, 14, 15, 16, 18, 19, 20, 21, 29, 4, 7}
+	for _, def := range stock {
+		assert.True(t, s.IsAustraliumDefindex(def), "Stock defindex %d must be recognized as Australium", def)
+	}
+
+	// Check other unique weapon defindexes
+	unique := []int{36, 38, 45, 61, 132, 141, 228, 424}
+	for _, def := range unique {
+		assert.True(t, s.IsAustraliumDefindex(def), "Unique weapon defindex %d must be recognized as Australium", def)
+	}
+
+	// Decorated weapon (15031) must NOT be recognized as Australium
+	assert.False(t, s.IsAustraliumDefindex(15031))
+}
+
+

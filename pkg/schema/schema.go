@@ -396,6 +396,19 @@ func (s *Schema) indexItem(item *Item) {
 		return
 	}
 
+	if item.Defindex >= 15000 && item.Defindex < 16000 {
+		// Decorated weapons (15000..15999) have generic weapon ItemName in schema (e.g. "Minigun", "Shotgun").
+		// They must not shadow base stock/upgradeable weapons in name lookup maps.
+		// Only index them by their specific schema name (e.g. "teufort_minigun_warroom") if available.
+		if item.Name != "" {
+			rawName := strings.ToLower(item.Name)
+			if _, exists := s.itemsByName[rawName]; !exists {
+				s.itemsByName[rawName] = item
+			}
+		}
+		return
+	}
+
 	if s.itemsTrie != nil {
 		s.itemsTrie.Insert(lowName, item)
 	}

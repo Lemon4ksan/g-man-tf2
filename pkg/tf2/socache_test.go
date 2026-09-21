@@ -919,3 +919,35 @@ func TestSOCache_RequiresFull_PreservesSheenAndScoreCount(t *testing.T) {
 	assert.True(t, hasScore)
 }
 
+func TestSOCache_protoToItem_AustraliumAndFestivized_AsUintOrVarint(t *testing.T) {
+	t.Parallel()
+
+	tf, _, _ := setupTF2(t)
+	cache := tf.Cache()
+
+	// 1. Sent as proto.Uint32 in Value field
+	p1 := &pb.CSOEconItem{
+		Id: proto.Uint64(1001),
+		Attribute: []*pb.CSOEconItemAttribute{
+			{DefIndex: new(AttrAustralium), Value: proto.Uint32(1)},
+			{DefIndex: new(AttrFestivized), Value: proto.Uint32(1)},
+		},
+	}
+	item1 := cache.protoToItem(p1)
+	assert.True(t, item1.Australium)
+	assert.True(t, item1.Festivized)
+
+	// 2. Sent as 4-byte LE uint32 in ValueBytes field
+	p2 := &pb.CSOEconItem{
+		Id: proto.Uint64(1002),
+		Attribute: []*pb.CSOEconItemAttribute{
+			{DefIndex: new(AttrAustralium), ValueBytes: uint32ToBytes(1)},
+			{DefIndex: new(AttrFestivized), ValueBytes: uint32ToBytes(1)},
+		},
+	}
+	item2 := cache.protoToItem(p2)
+	assert.True(t, item2.Australium)
+	assert.True(t, item2.Festivized)
+}
+
+

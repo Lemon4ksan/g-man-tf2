@@ -650,7 +650,7 @@ func NormalizeDefindex(defindex int) int {
 // IsAustraliumDefindex checks if the defindex is eligible for an Australium variant.
 func IsAustraliumDefindex(defindex int) bool {
 	switch defindex {
-	case 13, 45, 18, 228, 21, 38, 19, 20, 132, 172, 15, 424, 141, 197, 29, 36, 14, 16, 61:
+	case 4, 7, 13, 14, 15, 16, 18, 19, 20, 21, 29, 36, 38, 45, 61, 132, 141, 194, 197, 200, 201, 202, 203, 205, 206, 207, 208, 211, 228, 424:
 		return true
 	}
 

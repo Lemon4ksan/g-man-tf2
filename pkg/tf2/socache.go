@@ -676,10 +676,10 @@ func (c *SOCache) parseGCAttributes(attributes []*pb.CSOEconItemAttribute, item 
 			item.Effect = getUintOrFloat(attr)
 
 		case AttrAustralium:
-			item.Australium = getFloat(val) != 0
+			item.Australium = getUintOrFloat(attr) != 0
 
 		case AttrFestivized:
-			item.Festivized = getFloat(val) != 0
+			item.Festivized = getUintOrFloat(attr) != 0
 
 		case AttrCustomTextureLow:
 			decalLo = getUint(val)

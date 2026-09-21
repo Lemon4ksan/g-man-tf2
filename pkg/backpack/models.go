@@ -193,8 +193,10 @@ func MapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 	}
 
 	hasAustraliumAttr := desc.AppData != nil && desc.AppData.IsAustralium
-	if !hasAustraliumAttr && item.Quality == schema.QualityStrange &&
-		s != nil && s.IsAustraliumDefindex(item.Defindex) && strings.Contains(desc.MarketHashName, "Australium") {
+	if !hasAustraliumAttr &&
+		s != nil && s.IsAustraliumDefindex(item.Defindex) &&
+		strings.Contains(desc.MarketHashName, "Australium") &&
+		!strings.Contains(desc.MarketHashName, "Australium Gold") {
 		hasAustraliumAttr = true
 	}
 
