@@ -874,3 +874,48 @@ func TestSOCache_GCEvents_UnmarshalErrors(t *testing.T) {
 		Payload: []byte("invalid-payload"),
 	})
 }
+
+func TestSOCache_RequiresFull_PreservesSheenAndScoreCount(t *testing.T) {
+	t.Parallel()
+
+	tf, _, _ := setupTF2(t)
+	cache := tf.Cache()
+
+	// An item with Sheen, Killstreaker, and ScoreCount but NO custom name/desc/spells
+	p := &pb.CSOEconItem{
+		Id:       proto.Uint64(9999),
+		DefIndex: proto.Uint32(200),
+		Quality:  proto.Uint32(QualityStrange),
+		Attribute: []*pb.CSOEconItemAttribute{
+			{DefIndex: proto.Uint32(AttrSheen), ValueBytes: uint32ToBytes(3)},
+			{DefIndex: proto.Uint32(AttrKillstreaker), ValueBytes: uint32ToBytes(2004)},
+			{DefIndex: proto.Uint32(AttrKillEaterScoreValue), ValueBytes: uint32ToBytes(542)},
+		},
+	}
+	itemBytes, _ := proto.Marshal(p)
+
+	cache.processObject(SOTypeEconItem, itemBytes, false, nil)
+
+	// Verify item was retained in fullItems
+	items := cache.GetItems()
+	assert.Len(t, items, 1)
+	assert.Equal(t, uint32(3), items[0].Sheen)
+	assert.Equal(t, uint32(2004), items[0].Killstreaker)
+	assert.Equal(t, uint32(542), items[0].ScoreCount)
+
+	econ := items[0].ToEconItem()
+	assert.NotNil(t, econ)
+	hasSheen := false
+	hasScore := false
+	for _, attr := range econ.Attributes {
+		if attr.Defindex == int(AttrSheen) && attr.FloatValue == 3 {
+			hasSheen = true
+		}
+		if attr.Defindex == int(AttrKillEaterScoreValue) && attr.FloatValue == 542 {
+			hasScore = true
+		}
+	}
+	assert.True(t, hasSheen)
+	assert.True(t, hasScore)
+}
+

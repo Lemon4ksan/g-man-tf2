@@ -410,7 +410,7 @@ func (c *SOCache) processObject(typeID int32, data []byte, isBulk bool, events *
 		_, exists := c.items[item.ID]
 		c.items[item.ID] = packed
 
-		if item.CustomName != "" || item.CustomDesc != "" || len(item.Spells) > 0 || len(item.Parts) > 0 {
+		if item.RequiresFull() {
 			c.fullItems[item.ID] = item
 		} else {
 			delete(c.fullItems, item.ID)

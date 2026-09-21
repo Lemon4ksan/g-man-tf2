@@ -345,6 +345,10 @@ func (i Item) ToEconItem() *trading.Item {
 		addAttr(186, float64(i.GifterAccountID))
 	}
 
+	if i.ScoreCount != 0 {
+		addAttr(int(AttrKillEaterScoreValue), float64(i.ScoreCount))
+	}
+
 	for _, spell := range i.Spells {
 		addAttr(spell.Attribute, float64(spell.Value))
 	}
@@ -458,3 +462,32 @@ func (i *Item) Fix(s *schema.Schema) {
 		}
 	}
 }
+
+func (i *Item) RequiresFull() bool {
+	if i == nil {
+		return false
+	}
+
+	return i.CustomName != "" ||
+		i.CustomDesc != "" ||
+		i.Sheen != 0 ||
+		i.Killstreaker != 0 ||
+		i.ScoreCount != 0 ||
+		i.PaintSecondary != 0 ||
+		i.PaintkitSeed != 0 ||
+		i.CrafterAccountID != 0 ||
+		i.GifterAccountID != 0 ||
+		i.CraftNumber != 0 ||
+		i.Series != 0 ||
+		i.MedalNumber != 0 ||
+		i.Target != 0 ||
+		i.QuestID != 0 ||
+		i.HasCustomDecal ||
+		i.TradableAfter != 0 ||
+		i.InUse ||
+		len(i.Spells) > 0 ||
+		len(i.Parts) > 0 ||
+		len(i.PartValues) > 0 ||
+		len(i.RecipeComponents) > 0
+}
+
