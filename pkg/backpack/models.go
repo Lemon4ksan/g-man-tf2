@@ -126,7 +126,14 @@ func PackTF2Item(it *TF2Item) tf2.PackedItem {
 		DefIndex:    uint16(it.Defindex),
 		Effect:      uint16(effect),
 		Paintkit:    uint16(paintkit),
-		Position:    uint16(it.Inventory & 0xFFFF),
+		// Invariant: If bit 30 is set, the item is unacknowledged and position is 0.
+		// Parity: matches @tf2autobot/tf2 (classes/Backpack.js).
+		Position: func() uint16 {
+			if (it.Inventory>>30)&1 == 1 {
+				return 0
+			}
+			return uint16(it.Inventory & 0xFFFF)
+		}(),
 		Quality:     uint8(it.Quality),
 		Flags:       flags,
 		Killstreak:  uint8(killstreak),

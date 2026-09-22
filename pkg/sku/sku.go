@@ -65,9 +65,10 @@ func IsValid(skuStr string) bool {
 	return ok
 }
 
-// ToPricingSKU normalizes the specified SKU string by stripping transient flags
-// and modifiers (such as Festivized, Spells, Strange Parts, and Paint)
-// that do not affect the base pricing category.
+// ToPricingSKU normalizes an SKU for base market pricing by stripping cosmetic modifiers
+// (festivized, spells, strange parts, paint, war paint pattern seed) that do not affect the base price.
+//
+// Parity: matches tf2-sku and @tf2autobot/tf2-schema item pricing normalization.
 func ToPricingSKU(skuStr string) string {
 	if !hasPricingModifiers(skuStr) {
 		return skuStr

@@ -392,14 +392,18 @@ func (s *Schema) indexItem(item *Item) {
 		}
 	}
 
+	// Invariant: Defindex 2093 is an internal schema duplicate of Name Tag (defindex 5020).
+	// Skipping it prevents shadowing standard Name Tag lookups.
+	// Parity: matches @tf2autobot/tf2-schema item indexing.
 	if lowName == "" || (item.ItemName == "Name Tag" && item.Defindex == 2093) {
 		return
 	}
 
+	// Invariant: Decorated weapons (15000..15999) have generic weapon ItemName in schema (e.g. "Minigun", "Shotgun").
+	// They must not shadow base stock/upgradeable weapons in name lookup maps.
+	// Only index them by their specific schema name (e.g. "teufort_minigun_warroom") if available.
+	// Parity: matches @tf2autobot/tf2-schema decorated weapon index filtering.
 	if item.Defindex >= 15000 && item.Defindex < 16000 {
-		// Decorated weapons (15000..15999) have generic weapon ItemName in schema (e.g. "Minigun", "Shotgun").
-		// They must not shadow base stock/upgradeable weapons in name lookup maps.
-		// Only index them by their specific schema name (e.g. "teufort_minigun_warroom") if available.
 		if item.Name != "" {
 			rawName := strings.ToLower(item.Name)
 			if _, exists := s.itemsByName[rawName]; !exists {
@@ -1454,8 +1458,11 @@ func (s *Schema) ItemName(item *sku.Item, proper, usePipeForSkin, scmFormat bool
 	addPrimaryQuality := false
 	switch {
 	case item.Australium && item.Quality == QualityStrange:
-		// In TF2 and Steam, Australium weapons are inherently Strange quality,
-		// but "Strange" is omitted from the display name (e.g. "Australium Minigun", not "Strange Australium Minigun").
+		// Invariant: In TF2 schema, Australium weapons have quality 11 (Strange).
+		// On Steam Community Market (scmFormat == true), the "Strange" prefix is omitted
+		// by Valve (e.g. "Australium Minigun").
+		//
+		// Parity: matches @tf2autobot/tf2-schema and tf2-item-format.
 		addPrimaryQuality = false
 	case item.Quality == QualityUnique && item.Quality2 != Quality2None,
 		item.Quality != QualityUnique && item.Quality != QualityDecorated && item.Quality != QualityUnusual,
@@ -1567,6 +1574,11 @@ func (s *Schema) ItemName(item *sku.Item, proper, usePipeForSkin, scmFormat bool
 		appendWord(fmt.Sprintf("(%s: %d)", partName, val))
 	}
 
+	// Invariant: On Steam Community Market (scmFormat == true), series numbers are formatted
+	// as "Series %23<number>" (URL-encoded "#"). For backpack.tf, "#<number>" is used.
+	// Strangifier Chemistry Sets resolve series from their target attribute.
+	//
+	// Parity: matches @tf2autobot/tf2-schema and tf2-item-format.
 	crateSeries := item.Crateseries
 	if crateSeries == 0 && item.Target != 0 {
 		if series, ok := strangifierChemistrySetSeries[item.Target]; ok {
@@ -2177,6 +2189,17 @@ func (s *Schema) parseQualityFromName(name string, item *sku.Item) string {
 	return name
 }
 
+// parseEffectFromName extracts Unusual effect from an item name while handling known TF2 schema collisions.
+//
+// Invariant: Valve's schema has multiple lexical collisions between item base names, War Paints,
+// and Unusual particle effects:
+//   - "smoking": collision with "Smoking Jacket" and "Smoking Skid Lid" (unless double-prefixed).
+//   - "showstopper": taunt effect only; must not match cosmetic items unless name contains "Taunt:" or "Shred Alert".
+//   - "haunted ghosts", "pumpkin patch", "stardust": collide with war paints when Wear is present.
+//   - "hot", "cool": war paint effects that strictly require Wear to be set, and "hot" must not match "Shotgun".
+//   - "accursed", "haunted", "frostbite", "sizzling": collide with "Accursed Apparition", "Haunted Kraken", etc.
+//
+// Parity: matches @tf2autobot/tf2-schema (lib/schema.js: getEffectFromName) and tf2-item-format.
 func (s *Schema) parseEffectFromName(name string, item *sku.Item) string {
 	excludeAtomic := strings.Contains(name, "bonk! atomic punch") || strings.Contains(name, "atomic accolade")
 
@@ -2265,6 +2288,13 @@ func (s *Schema) parseEffectFromName(name string, item *sku.Item) string {
 	return name
 }
 
+// parsePaintkitAndSkins extracts War Paint texture IDs and maps skinned weapons to decorated defindexes.
+//
+// Invariant: Mk.II skins must not be shadowed by Mk.I variants with matching prefixes.
+// Weapons with applied War Paints receive specific decorated weapon defindexes (e.g. 15013 for Pistol,
+// 15014 for Rocket Launcher) rather than the base weapon defindex.
+//
+// Parity: matches @tf2autobot/tf2-schema (lib/schema.js: getSkinProperties).
 func (s *Schema) parsePaintkitAndSkins(name string, item *sku.Item, isExplicitElevatedStrange bool) (*sku.Item, bool) {
 	checkPaintKit := func(pkName string, pkID int) (string, bool) {
 		if strings.Contains(name, pkName) {
@@ -2573,6 +2603,12 @@ func (s *Schema) parseWarPaint(item *sku.Item) *sku.Item {
 	return item
 }
 
+// parseCratesAndFinalItem identifies crate series numbers and maps supply crates to correct defindexes.
+//
+// Invariant: In TF2's schema, Mann Co. Supply Crates are split across three distinct defindexes
+// (5022, 5041, 5045) depending on series number, while Salvaged is 5068 and Select Reserve is 5660.
+//
+// Parity: matches @tf2autobot/tf2-schema (lib/schema.js: getCrateSeriesList).
 func (s *Schema) parseCratesAndFinalItem(name string, item *sku.Item, hasStrangePrefix bool) *sku.Item {
 	name = strings.ReplaceAll(name, " series ", " ")
 	name = strings.ReplaceAll(name, " series#", " #")

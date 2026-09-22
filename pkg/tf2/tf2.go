@@ -491,6 +491,9 @@ func (t *TF2) routePacket(ctx context.Context, pkt *protocol.GCPacket) {
 			})
 		}
 
+	// Invariant: Parses GC Trading_InitiateTradeResponse (ID 130).
+	// Payload contains 4 bytes of response code (e.g. trade ban, cooldown) and 4 bytes of tradeID.
+	// Parity: matches @tf2autobot/tf2 (classes/TF2GC.js: tradeResponse).
 	case pb.EGCItemMsg_k_EMsgGCTrading_InitiateTradeResponse:
 		if len(pkt.Payload) >= 8 {
 			response := binary.LittleEndian.Uint32(pkt.Payload[0:4])

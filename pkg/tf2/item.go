@@ -186,6 +186,12 @@ func (c *RecipeComponent) HasDefIndex() bool  { return c.Flags&0x04 != 0 }
 func (c *RecipeComponent) HasQuality() bool   { return c.Flags&0x08 != 0 }
 func (c *RecipeComponent) IsComplete() bool   { return c.NumFulfilled >= c.NumRequired }
 
+// Position returns the 1-based backpack slot index.
+//
+// Invariant: Bit 30 of the 32-bit Inventory field indicates whether the item is unacknowledged
+// (new drop or trade receipt). If set, the position is forced to 0.
+//
+// Parity: matches @tf2autobot/tf2 (classes/Backpack.js).
 func (i *Item) Position() uint32 {
 	if (i.Inventory>>30)&1 == 1 {
 		return 0

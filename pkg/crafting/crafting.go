@@ -127,6 +127,12 @@ func (cm *Manager) CondenseMetal(ctx context.Context) (int, error) {
 	return crafts, nil
 }
 
+// MakeChange breaks down higher denomination metals to guarantee at least targetCount units of targetDefIndex.
+//
+// Invariant: Breaks down metal hierarchically (Refined -> Reclaimed -> Scrap) one step at a time
+// to prevent over-smelting the entire inventory stock into scrap.
+//
+// Parity: matches @tf2autobot/tf2 (classes/Crafting.js: getRequired).
 func (cm *Manager) MakeChange(ctx context.Context, targetDefIndex uint32, targetCount int) error {
 	for cm.inv.GetMetalCount(targetDefIndex) < targetCount {
 		if err := cm.smeltSingleMetalStep(ctx, targetDefIndex); err != nil {
