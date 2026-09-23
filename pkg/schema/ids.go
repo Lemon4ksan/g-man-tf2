@@ -129,17 +129,24 @@ const (
 )
 
 // Attribute ID constants for TF2 items
+// Parity: matches @tf2autobot/tf2-schema and GC item attribute defindexes.
 const (
-	AttrUnusualEffect = 134
-	AttrStrangeScore  = 214
-	AttrPaintColor    = 142
-	AttrPaintColor2   = 1031
-	AttrKillstreak    = 2025
-	AttrAustralium    = 2027
-	AttrFestivized    = 2053
-	AttrWear          = 725
-	AttrPaintkit      = 834
-	AttrCrateSeries   = 187
+	AttrUnusualEffect       = 134
+	AttrStrangeScore        = 214
+	AttrCraftNumber         = 229
+	AttrPaintColor          = 142
+	AttrPaintColor2         = 1031
+	AttrKillstreak          = 2025
+	AttrAustralium          = 2027
+	AttrFestivized          = 2053
+	AttrWear                = 725
+	AttrPaintkit            = 834
+	AttrCrateSeries         = 187
+	AttrTarget              = 2012
+	AttrRecipeOutputItem    = 2000
+	AttrRecipeOutputQuality = 2001
+	AttrOutput              = AttrRecipeOutputItem
+	AttrOutputQuality       = AttrRecipeOutputQuality
 )
 
 // Wear levels for Decorated weapons
@@ -601,7 +608,7 @@ var GlobalNormalizationMap = map[int]int{
 	5049: 5021, 5067: 5021, 5072: 5021, 5073: 5021, 5079: 5021, 5081: 5021,
 	5628: 5021, 5631: 5021, 5632: 5021, 5711: 5021, 5713: 5021, 5714: 5021,
 	5715: 5021, 5716: 5021, 5717: 5021, 5762: 5021,
-	294:  160,
+	294: 160,
 
 	// Mann Co. Stockpile Crates (5738 -> 5737)
 	5738: 5737,
@@ -650,7 +657,8 @@ func NormalizeDefindex(defindex int) int {
 // IsAustraliumDefindex checks if the defindex is eligible for an Australium variant.
 func IsAustraliumDefindex(defindex int) bool {
 	switch defindex {
-	case 4, 7, 13, 14, 15, 16, 18, 19, 20, 21, 29, 36, 38, 45, 61, 132, 141, 194, 197, 200, 201, 202, 203, 205, 206, 207, 208, 211, 228, 424:
+	case 4, 7, 13, 14, 15, 16, 18, 19, 20, 21, 29, 36, 38, 45, 61,
+		132, 141, 194, 197, 200, 201, 202, 203, 205, 206, 207, 208, 211, 228, 424:
 		return true
 	}
 

@@ -24,15 +24,18 @@ const (
 // ErrMissingConversionRate indicates key conversion rate in Refined is missing or zero.
 var ErrMissingConversionRate = errors.New("currency: missing conversion rate")
 
+// Currency represents a mixed TF2 balance composed of Keys and Refined metal.
 type Currency struct {
 	Keys  float64 `json:"keys"`
 	Metal float64 `json:"metal"`
 }
 
+// New creates a new Currency instance with the given keys and metal amounts.
 func New(keys, metal float64) *Currency {
 	return &Currency{Keys: keys, Metal: metal}
 }
 
+// String formats the Currency into a human-readable string (e.g. "2 keys, 1.33 ref").
 func (c *Currency) String() string {
 	if c.Keys == 0 && c.Metal == 0 {
 		return "0 keys, 0 ref"

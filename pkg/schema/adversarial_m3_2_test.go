@@ -7,10 +7,9 @@ package schema
 import (
 	"testing"
 
+	"github.com/lemon4ksan/g-man/pkg/trading"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/lemon4ksan/g-man/pkg/trading"
 )
 
 // ============================================================================
@@ -157,6 +156,7 @@ func setupDecoratedSchema() *Schema {
 	if raw.Schema.PaintKits == nil {
 		raw.Schema.PaintKits = make(map[string]string)
 	}
+
 	// Add paintkits:
 	// Carpet Bomber Mk.II (ID 279)
 	// Carpet Bomber (ID 123) - shorter prefix to challenge sort order!
@@ -216,7 +216,12 @@ func TestAdversarial_DecoratedWeaponWarPaintRetentionAndQuality(t *testing.T) {
 		require.NotNil(t, skuItem)
 
 		// Assert Paintkit is retained (279) and NOT stripped or matched to shorter "Carpet Bomber" (123)
-		assert.Equal(t, 279, skuItem.Paintkit, "Must match longest paint kit 'Carpet Bomber Mk.II' (279), not 'Carpet Bomber' (123)")
+		assert.Equal(
+			t,
+			279,
+			skuItem.Paintkit,
+			"Must match longest paint kit 'Carpet Bomber Mk.II' (279), not 'Carpet Bomber' (123)",
+		)
 		// Assert Wear is Field-Tested (3)
 		assert.Equal(t, 3, skuItem.Wear)
 		// Assert weapon name / defindex is preserved (Scattergun skin defindex 15002, NOT generic war paint tool 16189)
@@ -246,8 +251,18 @@ func TestAdversarial_DecoratedWeaponWarPaintRetentionAndQuality(t *testing.T) {
 		// 3. Wear is Factory New (1)
 		assert.Equal(t, 1, skuItem.Wear)
 		// 4. Quality == 15 (QualityDecorated) and Quality2 == 11 (QualityStrange)
-		assert.Equal(t, QualityDecorated, skuItem.Quality, "Strange Decorated weapon must have Quality == 15 (QualityDecorated)")
-		assert.Equal(t, QualityStrange, skuItem.Quality2, "Strange Decorated weapon must have Quality2 == 11 (QualityStrange)")
+		assert.Equal(
+			t,
+			QualityDecorated,
+			skuItem.Quality,
+			"Strange Decorated weapon must have Quality == 15 (QualityDecorated)",
+		)
+		assert.Equal(
+			t,
+			QualityStrange,
+			skuItem.Quality2,
+			"Strange Decorated weapon must have Quality2 == 11 (QualityStrange)",
+		)
 	})
 
 	t.Run("Unusual_CarpetBomberMkII_Scattergun_RetainsPaintkitAndEffect", func(t *testing.T) {
@@ -322,11 +337,21 @@ func TestAdversarial_DecoratedWeaponWarPaintRetentionAndQuality(t *testing.T) {
 		// Steam Community Market & Steam Inventory tags use canonical "Battle-Scarred" (with hyphen)
 		// and capitalized tags like "Field-Tested".
 		// 1. WearByName fails on canonical capitalized tags because it lacks strings.ToLower
-		assert.Equal(t, 0, s.WearByName("Field-Tested"), "BUG: WearByName('Field-Tested') returns 0 due to case-sensitivity")
+		assert.Equal(
+			t,
+			0,
+			s.WearByName("Field-Tested"),
+			"BUG: WearByName('Field-Tested') returns 0 due to case-sensitivity",
+		)
 		assert.Equal(t, 3, s.WearByName("field-tested"), "WearByName('field-tested') returns 3 only when lowercase")
 
 		// 2. WearByName fails on canonical "Battle-Scarred" even if lowercase because of missing hyphen
-		assert.Equal(t, 0, s.WearByName("battle-scarred"), "BUG: WearByName('battle-scarred') returns 0 because wears map has '(battle scarred)'")
+		assert.Equal(
+			t,
+			0,
+			s.WearByName("battle-scarred"),
+			"BUG: WearByName('battle-scarred') returns 0 because wears map has '(battle scarred)'",
+		)
 		assert.Equal(t, 5, s.WearByName("battle scarred"), "WearByName returns 5 only without hyphen")
 
 		// 3. Cascading impact on Decorated weapons:

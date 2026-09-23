@@ -192,10 +192,38 @@ func TestMetalManager_TryToSmeltForChange(t *testing.T) {
 		mm := NewMetalManager(fetcher, nil, log.Discard)
 
 		fetcher.On("GetPureStock").Return(currency.PureStock{Scrap: 1}).Once()
+		fetcher.On("FindWeaponsByClassForSmelting", mock.Anything).Return([]*tf2.Item{}).Maybe()
 
 		err := mm.TryToSmeltForChange(t.Context(), 2)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "insufficient total metal value")
+	})
+
+	t.Run("unblock_duplicate_weapons_when_metal_zero", func(t *testing.T) {
+		fetcher := new(mockFetcher)
+		inv := new(mockInventory)
+		gc := new(mockGC)
+		mgr := NewManager(inv, gc)
+		mm := NewMetalManager(fetcher, mgr, log.Discard)
+
+		ctx := t.Context()
+
+		// 0 metal in stock, but 2 duplicate weapons
+		fetcher.On("GetPureStock").Return(currency.PureStock{Scrap: 0}).Once()
+		fetcher.On("FindWeaponsByClassForSmelting", "Scout").Return([]*tf2.Item{
+			{ID: 101, IsTradable: true, IsCraftable: true},
+			{ID: 102, IsTradable: true, IsCraftable: true},
+		}).Once()
+		fetcher.On("FindWeaponsByClassForSmelting", mock.Anything).Return([]*tf2.Item{}).Maybe()
+
+		gc.On("Craft", ctx, []uint64{101, 102}, RecipeSmeltWeapons).Return([]uint64{999}, nil).Once()
+
+		fetcher.On("GetAssetIDs", currency.SKURefined).Return([]uint64{}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{}).Once()
+		fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{999}).Once()
+
+		err := mm.TryToSmeltForChange(ctx, 1)
+		assert.NoError(t, err)
 	})
 
 	t.Run("make_change_fails_returns_error", func(t *testing.T) {

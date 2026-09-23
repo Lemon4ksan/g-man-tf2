@@ -69,6 +69,7 @@ func BenchmarkAoS_vs_SoA_Inventory_4000Items(b *testing.B) {
 		if i%50 == 0 {
 			def = 5021 // target key
 		}
+
 		item := &Item{
 			ID:         uint64(100000 + i),
 			DefIndex:   def,
@@ -82,6 +83,7 @@ func BenchmarkAoS_vs_SoA_Inventory_4000Items(b *testing.B) {
 	b.Run("AoS_PointerScan", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
+
 		for i := 0; i < b.N; i++ {
 			count := 0
 			for _, it := range aos {
@@ -89,6 +91,7 @@ func BenchmarkAoS_vs_SoA_Inventory_4000Items(b *testing.B) {
 					count++
 				}
 			}
+
 			if count == 0 {
 				b.Fatal("unexpected zero count")
 			}
@@ -98,8 +101,10 @@ func BenchmarkAoS_vs_SoA_Inventory_4000Items(b *testing.B) {
 	b.Run("SoA_FlatScan", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
+
 		for i := 0; i < b.N; i++ {
 			count := soa.CountMatching(5021, 6)
+
 			if count == 0 {
 				b.Fatal("unexpected zero count")
 			}

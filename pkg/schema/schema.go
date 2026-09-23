@@ -410,6 +410,7 @@ func (s *Schema) indexItem(item *Item) {
 				s.itemsByName[rawName] = item
 			}
 		}
+
 		return
 	}
 
@@ -1444,7 +1445,7 @@ func (s *Schema) ItemName(item *sku.Item, proper, usePipeForSkin, scmFormat bool
 		appendWord("Non-Craftable")
 	}
 
-	if item.Quality2 != 0 && !(item.Australium && item.Quality2 == QualityStrange) {
+	if item.Quality2 != 0 && (!item.Australium || item.Quality2 != QualityStrange) {
 		qName := s.QualityByID(item.Quality2)
 		if qName != "" {
 			if !scmFormat && (item.Wear != 0 || item.Paintkit != 0) {
@@ -1457,12 +1458,13 @@ func (s *Schema) ItemName(item *sku.Item, proper, usePipeForSkin, scmFormat bool
 
 	addPrimaryQuality := false
 	switch {
-	case item.Australium && item.Quality == QualityStrange:
+	case item.Australium && item.Quality == QualityStrange && scmFormat:
 		// Invariant: In TF2 schema, Australium weapons have quality 11 (Strange).
 		// On Steam Community Market (scmFormat == true), the "Strange" prefix is omitted
 		// by Valve (e.g. "Australium Minigun").
+		// For standard display and backpack.tf pricer keys (scmFormat == false), "Strange " is retained.
 		//
-		// Parity: matches @tf2autobot/tf2-schema and tf2-item-format.
+		// Parity: matches @tf2autobot/tf2-schema, pricedb, and backpack.tf pricing keys.
 		addPrimaryQuality = false
 	case item.Quality == QualityUnique && item.Quality2 != Quality2None,
 		item.Quality != QualityUnique && item.Quality != QualityDecorated && item.Quality != QualityUnusual,
@@ -1574,26 +1576,40 @@ func (s *Schema) ItemName(item *sku.Item, proper, usePipeForSkin, scmFormat bool
 		appendWord(fmt.Sprintf("(%s: %d)", partName, val))
 	}
 
-	// Invariant: On Steam Community Market (scmFormat == true), series numbers are formatted
-	// as "Series %23<number>" (URL-encoded "#"). For backpack.tf, "#<number>" is used.
-	// Strangifier Chemistry Sets resolve series from their target attribute.
+	// Invariant: On Steam Community Market (scmFormat == true), crate series numbers are formatted
+	// as "Series %23<number>" (URL-encoded "#") ONLY if schema item has supply_crate_series attribute class.
+	// For backpack.tf, "#<number>" is used.
+	// Strangifier Chemistry Sets (output == 6522) resolve series from their target attribute on SCM only.
 	//
-	// Parity: matches @tf2autobot/tf2-schema and tf2-item-format.
-	crateSeries := item.Crateseries
-	if crateSeries == 0 && item.Target != 0 {
-		if series, ok := strangifierChemistrySetSeries[item.Target]; ok {
-			crateSeries = series
+	// Parity: matches @tf2autobot/tf2-schema: do NOT add crate series for Chemistry Sets (defindexes 20000..20007).
+	if item.Crateseries != 0 && (item.Defindex < 20000 || item.Defindex > 20007) {
+		hasSupplyCrateSeries := false
+		for _, attr := range schemaItem.Attributes {
+			if attr.Class == "supply_crate_series" {
+				hasSupplyCrateSeries = true
+				break
+			}
 		}
-	}
 
-	if crateSeries != 0 {
 		if scmFormat {
-			appendWord(fmt.Sprintf("Series %%23%d", crateSeries))
+			if hasSupplyCrateSeries {
+				appendWord(fmt.Sprintf("Series %%23%d", item.Crateseries))
+			}
 		} else {
-			appendWord(fmt.Sprintf("#%d", crateSeries))
+			appendWord(fmt.Sprintf("#%d", item.Crateseries))
 		}
 	} else if item.Craftnumber != 0 {
 		appendWord(fmt.Sprintf("#%d", item.Craftnumber))
+	}
+
+	isChemSet := strings.Contains(schemaItem.ItemName, "Chemistry Set") ||
+		strings.Contains(schemaItem.Name, "Chemistry Set")
+	if scmFormat && isChemSet && item.Output == 6522 {
+		if item.Target != 0 {
+			if series, ok := strangifierChemistrySetSeries[item.Target]; ok {
+				appendWord(fmt.Sprintf("Series %%23%d", series))
+			}
+		}
 	}
 
 	if !scmFormat && item.Paint != 0 {
@@ -1694,7 +1710,8 @@ func (s *Schema) applyEconWearAndSkins(skuItem *sku.Item, item *trading.Item) {
 		lowerName = strings.ToLower(item.MarketName)
 	}
 
-	if skuItem.Paintkit == 0 && (skuItem.Wear != 0 || skuItem.Quality == QualityDecorated || strings.Contains(lowerName, "war paint")) {
+	if skuItem.Paintkit == 0 &&
+		(skuItem.Wear != 0 || skuItem.Quality == QualityDecorated || strings.Contains(lowerName, "war paint")) {
 		if len(s.paintKitList) > 0 {
 			for _, pk := range s.paintKitList {
 				if strings.Contains(lowerName, pk.Name) {
@@ -1730,6 +1747,7 @@ func (s *Schema) DefindexFromEconItem(item *trading.Item) int {
 			if s != nil {
 				return s.NormalizeDefindex(desc.AppData.Defindex)
 			}
+
 			return NormalizeDefindex(desc.AppData.Defindex)
 		}
 	}
@@ -1738,10 +1756,12 @@ func (s *Schema) DefindexFromEconItem(item *trading.Item) int {
 		if act.Link == "" {
 			continue
 		}
+
 		if def := extractDefindexFromURL(act.Link); def > 0 {
 			if s != nil {
 				return s.NormalizeDefindex(def)
 			}
+
 			return NormalizeDefindex(def)
 		}
 	}
@@ -1750,6 +1770,7 @@ func (s *Schema) DefindexFromEconItem(item *trading.Item) int {
 	if name == "" {
 		name = item.MarketName
 	}
+
 	if name != "" && s != nil {
 		if schItem := s.ItemByName(name); schItem != nil {
 			return s.NormalizeDefindex(schItem.Defindex)
@@ -1769,15 +1790,18 @@ func extractDefindexFromURL(rawURL string) int {
 			}
 		}
 	}
+
 	if idx := strings.Index(rawURL, "id="); idx != -1 {
 		sub := rawURL[idx+3:]
 		if amp := strings.IndexByte(sub, '&'); amp != -1 {
 			sub = sub[:amp]
 		}
+
 		if val, err := strconv.Atoi(sub); err == nil && val > 0 {
 			return val
 		}
 	}
+
 	return 0
 }
 
@@ -2516,6 +2540,13 @@ func (s *Schema) parseKitFabricator(name string, item *sku.Item) (*sku.Item, boo
 func (s *Schema) parseChemistrySet(name string, item *sku.Item) *sku.Item {
 	name = strings.ReplaceAll(name, "collector's ", "")
 	name = strings.ReplaceAll(name, "chemistry set", "")
+
+	for _, p := range []string{"series %23", "series #", "series ", "#"} {
+		if idx := strings.Index(name, p); idx != -1 {
+			name = name[:idx]
+		}
+	}
+
 	name = strings.TrimSpace(name)
 
 	if strings.Contains(name, "festive") && !strings.Contains(name, "a rather festive tree") {
@@ -2537,7 +2568,15 @@ func (s *Schema) parseChemistrySet(name string, item *sku.Item) *sku.Item {
 }
 
 func (s *Schema) parseStrangifierChemistrySet(name string, item *sku.Item) *sku.Item {
-	name = strings.TrimSpace(strings.ReplaceAll(name, "strangifier chemistry set", ""))
+	name = strings.ReplaceAll(name, "strangifier chemistry set", "")
+
+	for _, p := range []string{"series %23", "series #", "series ", "#"} {
+		if idx := strings.Index(name, p); idx != -1 {
+			name = name[:idx]
+		}
+	}
+
+	name = strings.TrimSpace(name)
 
 	item.Defindex = 20000
 	item.Quality = QualityUnique
@@ -2547,9 +2586,6 @@ func (s *Schema) parseStrangifierChemistrySet(name string, item *sku.Item) *sku.
 	if name != "" {
 		if schemaItem := s.ItemByName(name); schemaItem != nil {
 			item.Target = schemaItem.Defindex
-			if series, ok := strangifierChemistrySetSeries[item.Target]; ok {
-				item.Crateseries = series
-			}
 		}
 	}
 

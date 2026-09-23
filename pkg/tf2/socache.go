@@ -516,22 +516,23 @@ func (c *SOCache) parseGCAttributes(attributes []*pb.CSOEconItemAttribute, item 
 	}
 
 	getUintOrFloat := func(attr *pb.CSOEconItemAttribute) uint32 {
-		if attr.Value != nil && *attr.Value != 0 {
-			return *attr.Value
+		if val := attr.GetValue(); val != 0 {
+			return val
 		}
+
 		b := attr.GetValueBytes()
 		if len(b) >= 4 {
 			u := binary.LittleEndian.Uint32(b)
 			f := math.Float32frombits(u)
+
 			if f >= 1.0 && f <= 16777216.0 && float32(uint32(f)) == f {
 				return uint32(f)
 			}
+
 			return u
 		}
-		if attr.Value != nil {
-			return *attr.Value
-		}
-		return 0
+
+		return attr.GetValue()
 	}
 
 	var (

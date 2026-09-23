@@ -836,8 +836,10 @@ func TestManager_RefreshFromGame_SingleDownloadOfItemsGame(t *testing.T) {
 		},
 	})
 
-	var itemsGameRequests int
-	var mu sync.Mutex
+	var (
+		itemsGameRequests int
+		mu                sync.Mutex
+	)
 
 	mockAPI.OnRest = func(method, path string, body any) (*http.Response, error) {
 		if strings.Contains(path, "items_game.txt") {
@@ -846,6 +848,7 @@ func TestManager_RefreshFromGame_SingleDownloadOfItemsGame(t *testing.T) {
 			mu.Unlock()
 
 			vdf := "\"items_game\"\n{\n\t\"items\"\n\t{\n\t\t\"5022\"\n\t\t{\n\t\t\t\"static_attrs\"\n\t\t\t{\n\t\t\t\t\"set supply crate series\" \"1\"\n\t\t\t}\n\t\t}\n\t}\n}\n"
+
 			return &http.Response{
 				StatusCode: 200,
 				Body:       io.NopCloser(strings.NewReader(vdf)),
@@ -866,4 +869,3 @@ func TestManager_RefreshFromGame_SingleDownloadOfItemsGame(t *testing.T) {
 	mu.Unlock()
 	assert.Equal(t, 1, count, "items_game.txt must be downloaded exactly ONCE per refreshFromGame")
 }
-

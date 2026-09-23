@@ -536,3 +536,109 @@ func TestStrangeIsotopeFlameThrower_SKURoundtrip(t *testing.T) {
 	assert.Equal(t, 208, tfItem.Defindex)
 	assert.Equal(t, 11, tfItem.Quality)
 }
+
+func TestTF2Item_ToSKU_CraftNumber(t *testing.T) {
+	t.Parallel()
+
+	item := &TF2Item{
+		Defindex: 30000,
+		Quality:  6,
+		Attributes: []TF2Attribute{
+			{Defindex: schema.AttrCraftNumber, Value: float64(42)},
+		},
+	}
+
+	assert.Equal(t, "30000;6;n42", item.ToSKU())
+}
+
+func TestTF2Item_ToSKU_TargetOutput(t *testing.T) {
+	t.Parallel()
+
+	// Strangifier target
+	strangifier := &TF2Item{
+		Defindex: 6522,
+		Quality:  6,
+		Attributes: []TF2Attribute{
+			{Defindex: schema.AttrTarget, Value: float64(200)},
+		},
+	}
+	assert.Equal(t, "6522;6;td-200", strangifier.ToSKU())
+
+	// Chemistry set with target, output, outputquality
+	chemSet := &TF2Item{
+		Defindex: 20000,
+		Quality:  6,
+		Attributes: []TF2Attribute{
+			{Defindex: schema.AttrTarget, Value: float64(30000)},
+			{Defindex: schema.AttrOutput, Value: float64(6522)},
+			{Defindex: schema.AttrOutputQuality, Value: float64(14)},
+		},
+	}
+	assert.Equal(t, "20000;6;td-30000;od-6522;oq-14", chemSet.ToSKU())
+}
+
+func TestTF2Item_ToEconItem_Spells(t *testing.T) {
+	t.Parallel()
+
+	item := &TF2Item{
+		ID:       12345,
+		Defindex: 221,
+		Quality:  11,
+		Attributes: []TF2Attribute{
+			{
+				Defindex: schema.DefSpellProxy,
+				Value: sku.Spell{
+					Attribute: 1004,
+					Value:     1,
+				},
+			},
+		},
+	}
+
+	econItem := item.ToEconItem()
+	assert.Equal(t, 1, len(econItem.Attributes))
+	assert.Equal(t, 1004, econItem.Attributes[0].Defindex)
+	assert.Equal(t, "1", econItem.Attributes[0].Value)
+	assert.Equal(t, 1.0, econItem.Attributes[0].FloatValue)
+}
+
+func TestMapCEconToTF2_CraftNumberAndChemistrySet(t *testing.T) {
+	t.Parallel()
+
+	s := mockSchemaForCoverage()
+
+	// Craft number from "Item #42"
+	econCraft := inventory.CEconItem{
+		Asset: inventory.Asset{AssetID: "888", Amount: "1"},
+		Description: inventory.Description{
+			Tradable: 1,
+			AppData:  &inventory.AppData{DefIndex: 30000, Quality: 6},
+			Descriptions: []struct {
+				Value string `json:"value"`
+				Color string `json:"color,omitempty"`
+			}{
+				{Value: "Item #42"},
+			},
+		},
+	}
+
+	itemCraft := MapCEconToTF2(econCraft, s)
+	assert.Equal(t, "30000;6;n42", itemCraft.ToSKU())
+
+	// Defindex 121 (Gentle Manne's Service Medal) must NOT parse Item # as Craft Number
+	econMedal := inventory.CEconItem{
+		Asset: inventory.Asset{AssetID: "889", Amount: "1"},
+		Description: inventory.Description{
+			Tradable: 1,
+			AppData:  &inventory.AppData{DefIndex: 121, Quality: 6},
+			Descriptions: []struct {
+				Value string `json:"value"`
+				Color string `json:"color,omitempty"`
+			}{
+				{Value: "Item #1337"},
+			},
+		},
+	}
+	itemMedal := MapCEconToTF2(econMedal, s)
+	assert.Equal(t, "121;6", itemMedal.ToSKU())
+}

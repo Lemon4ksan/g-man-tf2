@@ -196,6 +196,7 @@ func (i *Item) Position() uint32 {
 	if (i.Inventory>>30)&1 == 1 {
 		return 0
 	}
+
 	return i.Inventory & 0xFFFF
 }
 
@@ -496,4 +497,3 @@ func (i *Item) RequiresFull() bool {
 		len(i.PartValues) > 0 ||
 		len(i.RecipeComponents) > 0
 }
-

@@ -34,28 +34,34 @@ const (
 
 var ErrSchemaNotReady = errors.New("backpack: schema not ready")
 
+// WithModule registers the Backpack module on a steam.Client instance.
 func WithModule() steam.Option {
 	return steam.WithModule(New())
 }
 
+// From extracts the registered Backpack module from a steam.Client instance.
 func From(c *steam.Client) *Backpack {
 	return steam.GetModule[*Backpack](c)
 }
 
+// TradingProvider defines the contract to query active outgoing trade offers.
 type TradingProvider interface {
 	GetActiveSentOffers(ctx context.Context) ([]trading.TradeOffer, error)
 }
 
+// SchemaProvider defines the contract to obtain the current TF2 schema snapshot.
 type SchemaProvider interface {
 	Get() *schema.Schema
 }
 
+// ItemCache defines the item querying interface provided by the underlying TF2 GC SOCache.
 type ItemCache interface {
 	GetItems() []*tf2.Item
 	GetItem(id uint64) (*tf2.Item, bool)
 	GetMaxSlots() int
 }
 
+// PositionOf calculates the 1-based linear backpack position from 1-based page and slot numbers.
 func PositionOf(page, slot int) uint32 {
 	if page < 1 {
 		page = 1
@@ -68,6 +74,7 @@ func PositionOf(page, slot int) uint32 {
 	return uint32((page-1)*ItemsPerPage + slot)
 }
 
+// Backpack manages TF2 backpack items, slot locks, layout rules, and GC inventory interactions.
 type Backpack struct {
 	module.Base
 
@@ -82,6 +89,7 @@ type Backpack struct {
 	locked    generic.Set[uint64]
 }
 
+// New constructs a new Backpack module with standard dependencies.
 func New() *Backpack {
 	return &Backpack{
 		Base:      module.New(ModuleName).WithDeps(tf2.ModuleName, schema.ModuleName, "trading"),
@@ -90,6 +98,7 @@ func New() *Backpack {
 	}
 }
 
+// NewWithDeps constructs a Backpack instance with explicitly injected cache, schema, and lock dependencies.
 func NewWithDeps(cache ItemCache, manager SchemaProvider, locked generic.Set[uint64]) *Backpack {
 	b := &Backpack{
 		cache:     cache,
@@ -157,6 +166,7 @@ func (m *Backpack) StartAuthed(ctx context.Context, _ module.AuthContext) error 
 	return nil
 }
 
+// LockItems reserves the specified asset IDs to prevent them from being spent in concurrent actions.
 func (m *Backpack) LockItems(ids []uint64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -166,6 +176,7 @@ func (m *Backpack) LockItems(ids []uint64) {
 	}
 }
 
+// UnlockItems releases reservations for the specified asset IDs.
 func (m *Backpack) UnlockItems(ids []uint64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -175,17 +186,23 @@ func (m *Backpack) UnlockItems(ids []uint64) {
 	}
 }
 
-func (m *Backpack) Cache() ItemCache       { return m.cache }
+// Cache returns the underlying ItemCache used by the backpack.
+func (m *Backpack) Cache() ItemCache { return m.cache }
+
+// Schema returns the SchemaProvider associated with this backpack.
 func (m *Backpack) Schema() SchemaProvider { return m.manager }
 
+// GetItem retrieves an item from the cache by its 64-bit asset ID.
 func (m *Backpack) GetItem(id uint64) (*tf2.Item, bool) {
 	return m.cache.GetItem(id)
 }
 
+// DeleteItem requests the Game Coordinator to permanently delete the specified item.
 func (m *Backpack) DeleteItem(ctx context.Context, itemID uint64) error {
 	return m.tf2.DeleteItem(ctx, itemID)
 }
 
+// GetItemsBySKU returns all unlocked item asset IDs that match the target SKU.
 func (m *Backpack) GetItemsBySKU(targetSKU string) []uint64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -211,6 +228,7 @@ func (m *Backpack) GetItemsBySKU(targetSKU string) []uint64 {
 	return result
 }
 
+// GetPureStock scans the backpack to tally available keys, refined, reclaimed, and scrap metal.
 func (m *Backpack) GetPureStock() currency.PureStock {
 	var (
 		stock             currency.PureStock
@@ -261,6 +279,7 @@ func (m *Backpack) GetPureStock() currency.PureStock {
 	return stock
 }
 
+// FindCraftableItems finds unlocked, craftable items matching defIndex up to the specified count limit.
 func (m *Backpack) FindCraftableItems(defIndex uint32, count int) []uint64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -284,10 +303,12 @@ func (m *Backpack) FindCraftableItems(defIndex uint32, count int) []uint64 {
 	return result
 }
 
+// GetTotalCount returns the total number of items in the backpack cache.
 func (m *Backpack) GetTotalCount() int {
 	return len(m.cache.GetItems())
 }
 
+// GetStock returns the current quantity of items matching the given SKU in the backpack.
 func (m *Backpack) GetStock(sku string) int {
 	if m.soCache != nil {
 		return m.soCache.GetStockDirect(sku)
@@ -308,6 +329,7 @@ func (m *Backpack) GetStock(sku string) int {
 	return count
 }
 
+// FindWeaponsByClass returns all craftable, tradable weapons usable by the specified class name.
 func (m *Backpack) FindWeaponsByClass(class string) []*tf2.Item {
 	s := m.manager.Get()
 	if s == nil {
@@ -343,6 +365,7 @@ func (m *Backpack) FindWeaponsByClass(class string) []*tf2.Item {
 	return result
 }
 
+// FindWeaponsByClassForSmelting locates duplicate weapon pairs for the given class eligible for smelting.
 func (m *Backpack) FindWeaponsByClassForSmelting(class string) []*tf2.Item {
 	s := m.manager.Get()
 	if s == nil {
@@ -456,6 +479,7 @@ func groupSmeltingPairs(candidates []*tf2.Item) []*tf2.Item {
 	return result
 }
 
+// GetMetalCount returns the number of metal items in the backpack matching defIndex.
 func (m *Backpack) GetMetalCount(defIndex uint32) int {
 	if m.soCache != nil {
 		return m.soCache.GetMetalCountDirect(defIndex)
@@ -471,6 +495,7 @@ func (m *Backpack) GetMetalCount(defIndex uint32) int {
 	return count
 }
 
+// GetAssetIDs returns unlocked, tradable asset IDs matching the given target SKU.
 func (m *Backpack) GetAssetIDs(targetSKU string) []uint64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -496,6 +521,7 @@ func (m *Backpack) GetAssetIDs(targetSKU string) []uint64 {
 	return result
 }
 
+// GetLockedAssetIDs returns a slice of all currently locked item asset IDs.
 func (m *Backpack) GetLockedAssetIDs() []uint64 {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -508,6 +534,7 @@ func (m *Backpack) GetLockedAssetIDs() []uint64 {
 	return result
 }
 
+// ApplyLayout reorganizes items in the backpack to match the defined Layout specification.
 func (m *Backpack) ApplyLayout(ctx context.Context, layout Layout) error {
 	s := m.manager.Get()
 	if s == nil {
@@ -677,7 +704,8 @@ func (m *Backpack) eventLoop(ctx context.Context) {
 func (m *Backpack) handleEvent(ctx context.Context, ev event.Event) []event.Event {
 	var events []event.Event
 
-	if _, ok := ev.(*tf2.ItemAcquiredEvent); ok {
+	switch e := ev.(type) {
+	case *tf2.ItemAcquiredEvent:
 		count := len(m.cache.GetItems())
 		slots := m.cache.GetMaxSlots()
 
@@ -685,9 +713,83 @@ func (m *Backpack) handleEvent(ctx context.Context, ev event.Event) []event.Even
 			m.Logger.WarnContext(ctx, "Backpack is FULL!", log.Int("count", count), log.Int("max", slots))
 			events = append(events, &FullEvent{Count: count, Max: slots})
 		}
+
+		// Parity: matches @tf2autobot/tf2 automated safe item acknowledgement.
+		if m.tf2 != nil {
+			if e.Item != nil && e.Item.ID != 0 {
+				isNew := (e.Item.Inventory >> 30) & 1
+				if e.Item.Position() == 0 || isNew == 1 {
+					if err := m.tf2.AcknowledgeItem(ctx, e.Item.ID); err != nil {
+						if m.Logger != nil {
+							m.Logger.ErrorContext(ctx, "Failed to auto-acknowledge item",
+								log.Uint64("item_id", e.Item.ID),
+								log.Err(err),
+							)
+						}
+					}
+				}
+			} else {
+				if err := m.tf2.AcknowledgeAll(ctx); err != nil {
+					if m.Logger != nil {
+						m.Logger.ErrorContext(ctx, "Failed to auto-acknowledge all items", log.Err(err))
+					}
+				}
+			}
+		}
+
+	case *tf2.BackpackLoadedEvent:
+		if m.tf2 != nil {
+			if err := m.tf2.AcknowledgeAll(ctx); err != nil {
+				if m.Logger != nil {
+					m.Logger.ErrorContext(ctx, "Failed to acknowledge items on backpack load", log.Err(err))
+				}
+			}
+		}
 	}
 
 	return events
+}
+
+// AcknowledgeItem acknowledges a single item by moving it to an unoccupied backpack slot.
+func (m *Backpack) AcknowledgeItem(ctx context.Context, itemID uint64) error {
+	if m.tf2 == nil {
+		return errors.New("backpack: tf2 module not initialized")
+	}
+
+	return m.tf2.AcknowledgeItem(ctx, itemID)
+}
+
+// AcknowledgeAll scans for all unplaced or newly acquired items and assigns them to unoccupied slots.
+func (m *Backpack) AcknowledgeAll(ctx context.Context) error {
+	if m.tf2 == nil {
+		return errors.New("backpack: tf2 module not initialized")
+	}
+
+	return m.tf2.AcknowledgeAll(ctx)
+}
+
+// GetMaxSlots returns the maximum number of backpack slots supported by the cache.
+func (m *Backpack) GetMaxSlots() int {
+	if m.cache != nil {
+		return m.cache.GetMaxSlots()
+	}
+
+	return 0
+}
+
+// FreeSlotsCount returns the number of currently unoccupied backpack slots.
+func (m *Backpack) FreeSlotsCount() int {
+	maxSlots := m.GetMaxSlots()
+	if maxSlots <= 0 {
+		return 0
+	}
+
+	used := m.GetTotalCount()
+	if used >= maxSlots {
+		return 0
+	}
+
+	return maxSlots - used
 }
 
 func (m *Backpack) cleanupStaleLocks(ctx context.Context, tradingModule TradingProvider) {

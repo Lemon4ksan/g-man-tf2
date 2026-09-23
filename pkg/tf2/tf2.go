@@ -127,7 +127,7 @@ type TF2 struct {
 }
 
 func New() *TF2 {
-	mach := fsm.NewFSM[State, Event](Disconnected)
+	mach := fsm.New[State, Event](Disconnected)
 	mach.AddRules(
 		fsm.TransitionRule[State, Event]{From: Disconnected, Event: EventConnect, To: Connecting},
 		fsm.TransitionRule[State, Event]{From: Connecting, Event: EventConnected, To: Connected},

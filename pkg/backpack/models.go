@@ -26,15 +26,18 @@ var (
 	ErrSteamAPI     = errors.New("backpack: steam webapi returned error status")
 )
 
+// HistoryStatus represents the duplicate check history status for an item on backpack.tf.
 type HistoryStatus struct {
 	Recorded bool
 	IsDuped  bool
 }
 
+// DupeChecker defines the interface to inspect the duplicate history of an asset ID.
 type DupeChecker interface {
 	CheckHistory(ctx context.Context, assetID uint64, mods ...aoni.RequestModifier) (HistoryStatus, error)
 }
 
+// TF2Item represents a parsed Team Fortress 2 item with its attributes, position, and metadata.
 type TF2Item struct {
 	ID              uint64         `json:"id"`
 	OriginalID      uint64         `json:"original_id"`
@@ -53,6 +56,7 @@ type TF2Item struct {
 	SKU             string         `json:"sku,omitempty"`
 }
 
+// PackTF2Item converts a TF2Item into a compact PackedItem bitfield for memory-efficient cache storage.
 func PackTF2Item(it *TF2Item) tf2.PackedItem {
 	if it == nil {
 		return tf2.PackedItem{}
@@ -120,18 +124,19 @@ func PackTF2Item(it *TF2Item) tf2.PackedItem {
 	}
 
 	return tf2.PackedItem{
-		AssetID:     it.ID,
-		OriginalID:  it.OriginalID,
-		Paint:       uint32(paint),
-		DefIndex:    uint16(it.Defindex),
-		Effect:      uint16(effect),
-		Paintkit:    uint16(paintkit),
+		AssetID:    it.ID,
+		OriginalID: it.OriginalID,
+		Paint:      uint32(paint),
+		DefIndex:   uint16(it.Defindex),
+		Effect:     uint16(effect),
+		Paintkit:   uint16(paintkit),
 		// Invariant: If bit 30 is set, the item is unacknowledged and position is 0.
 		// Parity: matches @tf2autobot/tf2 (classes/Backpack.js).
 		Position: func() uint16 {
 			if (it.Inventory>>30)&1 == 1 {
 				return 0
 			}
+
 			return uint16(it.Inventory & 0xFFFF)
 		}(),
 		Quality:     uint8(it.Quality),
@@ -225,6 +230,18 @@ func MapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 		item.Defindex = s.NormalizeDefindex(item.Defindex)
 	}
 
+	if (item.Defindex == 6522 || strings.Contains(desc.MarketHashName, "Strangifier")) &&
+		!strings.Contains(desc.MarketHashName, "Chemistry Set") &&
+		s != nil {
+		targetName := strings.TrimSpace(strings.ReplaceAll(desc.MarketHashName, "Strangifier", ""))
+		if targetItem := s.ItemByName(targetName); targetItem != nil {
+			item.Attributes = append(item.Attributes, TF2Attribute{
+				Defindex: schema.AttrTarget,
+				Value:    float64(targetItem.Defindex),
+			})
+		}
+	}
+
 	item.SKU = item.ToSKU()
 
 	return item
@@ -261,7 +278,7 @@ func resolveQualityFromTags(item *TF2Item, econ *inventory.CEconItem, s *schema.
 }
 
 func parseCEconDescriptions(item *TF2Item, econ *inventory.CEconItem, s *schema.Schema) {
-	for _, d := range econ.Description.Descriptions {
+	for i, d := range econ.Description.Descriptions {
 		val := d.Value
 
 		if strings.Contains(val, "( Not Usable in Crafting )") {
@@ -302,6 +319,42 @@ func parseCEconDescriptions(item *TF2Item, econ *inventory.CEconItem, s *schema.
 					item.Attributes,
 					TF2Attribute{Defindex: schema.AttrPaintColor, Value: float64(paintID)},
 				)
+			}
+		}
+
+		if strings.HasPrefix(strings.TrimSpace(val), "Item #") && item.Defindex != 121 {
+			numStr := strings.TrimPrefix(strings.TrimSpace(val), "Item #")
+			if craftNum, err := strconv.Atoi(strings.TrimSpace(numStr)); err == nil && craftNum > 0 {
+				item.Attributes = append(
+					item.Attributes,
+					TF2Attribute{Defindex: schema.AttrCraftNumber, Value: float64(craftNum)},
+				)
+			}
+		}
+
+		if val == "You will receive all of the following outputs once all of the inputs are fulfilled." && s != nil {
+			if i+1 < len(econ.Description.Descriptions) {
+				outputVal := econ.Description.Descriptions[i+1].Value
+				switch {
+				case strings.Contains(outputVal, "Strangifier"):
+					targetName := strings.TrimSpace(strings.ReplaceAll(outputVal, "Strangifier", ""))
+					if targetItem := s.ItemByName(targetName); targetItem != nil {
+						item.Attributes = append(item.Attributes,
+							TF2Attribute{Defindex: schema.AttrTarget, Value: float64(targetItem.Defindex)},
+							TF2Attribute{Defindex: schema.AttrOutput, Value: float64(6522)},
+							TF2Attribute{Defindex: schema.AttrOutputQuality, Value: float64(6)},
+						)
+					}
+
+				case strings.Contains(outputVal, "Collector's"):
+					outputName := strings.TrimSpace(strings.ReplaceAll(outputVal, "Collector's", ""))
+					if outputItem := s.ItemByName(outputName); outputItem != nil {
+						item.Attributes = append(item.Attributes,
+							TF2Attribute{Defindex: schema.AttrOutput, Value: float64(outputItem.Defindex)},
+							TF2Attribute{Defindex: schema.AttrOutputQuality, Value: float64(14)},
+						)
+					}
+				}
 			}
 		}
 
@@ -431,16 +484,18 @@ func resolvePaintkitFromName(item *TF2Item, name string, s *schema.Schema) {
 	}
 }
 
+// ToSKU serializes the TF2Item into a canonical semicolon-delimited SKU string.
 func (it *TF2Item) ToSKU() string {
 	if it.SKU != "" {
 		return it.SKU
 	}
 
 	var (
-		effect, wear, paintkit, killstreak, paint, quality2, crateseries int
-		isAustralium, isFestivized                                       bool
-		spells                                                           []sku.Spell
-		parts                                                            []int
+		effect, wear, paintkit, killstreak, paint, quality2, crateseries, craftnumber int
+		target, output, outputQuality                                                 int
+		isAustralium, isFestivized                                                    bool
+		spells                                                                        []sku.Spell
+		parts                                                                         []int
 	)
 
 	for _, attr := range it.Attributes {
@@ -475,6 +530,38 @@ func (it *TF2Item) ToSKU() string {
 			}
 		case schema.AttrStrangeScore:
 			quality2 = schema.QualityStrange
+
+		case schema.AttrCraftNumber:
+			switch v := attr.Value.(type) {
+			case float64:
+				craftnumber = int(v)
+			case int:
+				craftnumber = v
+			}
+
+		case schema.AttrTarget:
+			switch v := attr.Value.(type) {
+			case float64:
+				target = int(v)
+			case int:
+				target = v
+			}
+
+		case schema.AttrOutput:
+			switch v := attr.Value.(type) {
+			case float64:
+				output = int(v)
+			case int:
+				output = v
+			}
+
+		case schema.AttrOutputQuality:
+			switch v := attr.Value.(type) {
+			case float64:
+				outputQuality = int(v)
+			case int:
+				outputQuality = v
+			}
 		}
 
 		if attr.Defindex >= schema.DefSpellProxy && attr.Defindex < schema.DefSpellProxy+100 {
@@ -491,24 +578,29 @@ func (it *TF2Item) ToSKU() string {
 	}
 
 	return sku.FromObject(&sku.Item{
-		Defindex:    it.Defindex,
-		Quality:     it.Quality,
-		Craftable:   !it.FlagCannotCraft,
-		Tradable:    !it.FlagCannotTrade,
-		Australium:  isAustralium,
-		Effect:      effect,
-		Wear:        wear,
-		Paintkit:    paintkit,
-		Killstreak:  killstreak,
-		Festivized:  isFestivized,
-		Paint:       paint,
-		Quality2:    quality2,
-		Crateseries: crateseries,
-		Spells:      spells,
-		Parts:       parts,
+		Defindex:      it.Defindex,
+		Quality:       it.Quality,
+		Craftable:     !it.FlagCannotCraft,
+		Tradable:      !it.FlagCannotTrade,
+		Australium:    isAustralium,
+		Effect:        effect,
+		Wear:          wear,
+		Paintkit:      paintkit,
+		Killstreak:    killstreak,
+		Festivized:    isFestivized,
+		Paint:         paint,
+		Quality2:      quality2,
+		Crateseries:   crateseries,
+		Craftnumber:   craftnumber,
+		Target:        target,
+		Output:        output,
+		OutputQuality: outputQuality,
+		Spells:        spells,
+		Parts:         parts,
 	})
 }
 
+// ToEconItem converts a TF2Item into an engine-compatible trading Item with full attribute mapping.
 func (it *TF2Item) ToEconItem() *trading.Item {
 	item := &trading.Item{
 		AppID:     440,
@@ -525,9 +617,12 @@ func (it *TF2Item) ToEconItem() *trading.Item {
 		item.Attributes = make([]trading.Attribute, 0, len(it.Attributes))
 
 		for _, attr := range it.Attributes {
-			valStr := ""
+			var (
+				valStr   string
+				floatVal float64
+			)
 
-			var floatVal float64
+			defindex := attr.Defindex
 
 			switch v := attr.Value.(type) {
 			case float64:
@@ -536,10 +631,30 @@ func (it *TF2Item) ToEconItem() *trading.Item {
 			case string:
 				valStr = v
 				floatVal, _ = strconv.ParseFloat(v, 64)
+			case int:
+				floatVal = float64(v)
+				valStr = strconv.Itoa(v)
+			case sku.Spell:
+				floatVal = float64(v.Value)
+				valStr = strconv.Itoa(v.Value)
+
+				if v.Attribute != 0 {
+					defindex = v.Attribute
+				}
+
+			case *sku.Spell:
+				if v != nil {
+					floatVal = float64(v.Value)
+					valStr = strconv.Itoa(v.Value)
+
+					if v.Attribute != 0 {
+						defindex = v.Attribute
+					}
+				}
 			}
 
 			item.Attributes = append(item.Attributes, trading.Attribute{
-				Defindex:   attr.Defindex,
+				Defindex:   defindex,
 				Value:      valStr,
 				FloatValue: floatVal,
 			})
@@ -560,6 +675,7 @@ func (it *TF2Item) ToEconItem() *trading.Item {
 	return item
 }
 
+// TF2Attribute represents an attribute defindex and value attached to a TF2 item.
 type TF2Attribute struct {
 	Defindex   int     `json:"defindex"`
 	Value      any     `json:"value"`

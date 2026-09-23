@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/lemon4ksan/aoni"
@@ -39,11 +38,9 @@ func (c *BackpackTFChecker) CheckHistory(
 	assetID uint64,
 	mods ...aoni.RequestModifier,
 ) (backpack.HistoryStatus, error) {
-	path := "https://backpack.tf/item/" + strconv.FormatUint(assetID, 10)
+	allMods := append([]aoni.RequestModifier{decode.WithRaw(), aoni.WithVar("id", assetID)}, mods...)
 
-	allMods := append([]aoni.RequestModifier{decode.WithRaw()}, mods...)
-
-	resp, err := c.r.GetTo[[]byte](ctx, path, allMods...)
+	resp, err := c.r.GetTo[[]byte](ctx, "https://backpack.tf/item/{id}", allMods...)
 	if err != nil {
 		var apiErr *aoni.APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {

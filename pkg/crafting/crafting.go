@@ -39,12 +39,14 @@ var (
 	ErrInvalidSmeltType = errors.New("crafting: cannot smelt this item type")
 )
 
+// InventoryProvider defines the item query interface required by the Crafting Manager.
 type InventoryProvider interface {
 	FindCraftableItems(defIndex uint32, count int) []uint64
 	FindWeaponsByClassForSmelting(class string) []*tf2.Item
 	GetMetalCount(defIndex uint32) int
 }
 
+// GCProvider defines the Game Coordinator crafting execution interface.
 type GCProvider interface {
 	Craft(ctx context.Context, items []uint64, recipe int16) ([]uint64, error)
 }
@@ -55,10 +57,12 @@ type Manager struct {
 	gc  GCProvider
 }
 
+// NewManager creates a new crafting Manager backed by the given inventory and GC providers.
 func NewManager(inv InventoryProvider, gc GCProvider) *Manager {
 	return &Manager{inv: inv, gc: gc}
 }
 
+// CombineMetal combines 3 smaller metal items into the next higher metal denomination.
 func (cm *Manager) CombineMetal(ctx context.Context, metalDefIndex uint32) ([]uint64, error) {
 	items := cm.inv.FindCraftableItems(metalDefIndex, 3)
 	if len(items) < 3 {
@@ -78,6 +82,7 @@ func (cm *Manager) CombineMetal(ctx context.Context, metalDefIndex uint32) ([]ui
 	return cm.gc.Craft(ctx, items, recipe)
 }
 
+// SmeltMetal breaks down 1 higher metal denomination into 3 smaller metal pieces.
 func (cm *Manager) SmeltMetal(ctx context.Context, metalDefIndex uint32) ([]uint64, error) {
 	items := cm.inv.FindCraftableItems(metalDefIndex, 1)
 	if len(items) == 0 {
@@ -97,10 +102,12 @@ func (cm *Manager) SmeltMetal(ctx context.Context, metalDefIndex uint32) ([]uint
 	return cm.gc.Craft(ctx, items, recipe)
 }
 
+// SmeltWeapons smelts 2 craftable weapons of the same class into 1 Scrap metal (Recipe 3).
 func (cm *Manager) SmeltWeapons(ctx context.Context, weaponID1, weaponID2 uint64) ([]uint64, error) {
 	return cm.gc.Craft(ctx, []uint64{weaponID1, weaponID2}, RecipeSmeltWeapons)
 }
 
+// CondenseMetal iteratively combines available scrap into reclaimed, and reclaimed into refined metal.
 func (cm *Manager) CondenseMetal(ctx context.Context) (int, error) {
 	crafts := 0
 
@@ -127,22 +134,49 @@ func (cm *Manager) CondenseMetal(ctx context.Context) (int, error) {
 	return crafts, nil
 }
 
-// MakeChange breaks down higher denomination metals to guarantee at least targetCount units of targetDefIndex.
+// MakeChange breaks down higher denomination metals to guarantee sufficient target metal
+// while preventing over-smelting intermediate Reclaimed metal into Scrap.
 //
-// Invariant: Breaks down metal hierarchically (Refined -> Reclaimed -> Scrap) one step at a time
-// to prevent over-smelting the entire inventory stock into scrap.
+// Invariant: For DefIndexScrap, at most targetCount % 3 scrap items are needed;
+// multiples of 3 scrap value are preserved as Reclaimed metal.
 //
 // Parity: matches @tf2autobot/tf2 (classes/Crafting.js: getRequired).
 func (cm *Manager) MakeChange(ctx context.Context, targetDefIndex uint32, targetCount int) error {
-	for cm.inv.GetMetalCount(targetDefIndex) < targetCount {
-		if err := cm.smeltSingleMetalStep(ctx, targetDefIndex); err != nil {
-			return err
-		}
-
-		time.Sleep(500 * time.Millisecond)
+	if targetCount <= 0 {
+		return nil
 	}
 
-	return nil
+	switch targetDefIndex {
+	case DefIndexScrap:
+		neededScrap := targetCount % 3
+		if neededScrap == 0 {
+			neededScrap = 3
+		}
+
+		for cm.inv.GetMetalCount(DefIndexScrap) < neededScrap {
+			if err := cm.smeltSingleMetalStep(ctx, DefIndexScrap); err != nil {
+				return err
+			}
+
+			time.Sleep(500 * time.Millisecond)
+		}
+
+		return nil
+
+	case DefIndexReclaimed:
+		for cm.inv.GetMetalCount(DefIndexReclaimed) < targetCount {
+			if err := cm.smeltSingleMetalStep(ctx, DefIndexReclaimed); err != nil {
+				return err
+			}
+
+			time.Sleep(500 * time.Millisecond)
+		}
+
+		return nil
+
+	default:
+		return ErrInvalidSmeltType
+	}
 }
 
 func (cm *Manager) smeltSingleMetalStep(ctx context.Context, targetDefIndex uint32) error {

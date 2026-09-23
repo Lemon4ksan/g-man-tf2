@@ -67,7 +67,7 @@ func NewSocketManager(rawURL string, r aoni.WebSocketDialer, logger log.Logger) 
 	}
 }
 
-func deriveProtocolURLs(rawURL string) (wsURL string, wssURL string, preferTLS bool) {
+func deriveProtocolURLs(rawURL string) (wsURL, wssURL string, preferTLS bool) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return rawURL, rawURL, false
@@ -76,16 +76,14 @@ func deriveProtocolURLs(rawURL string) (wsURL string, wssURL string, preferTLS b
 	preferTLS = u.Scheme == "wss" || u.Scheme == "https"
 
 	uNonTLS := *u
-	if uNonTLS.Scheme == "https" || uNonTLS.Scheme == "wss" {
-		uNonTLS.Scheme = "ws"
-	} else if uNonTLS.Scheme == "http" {
+	switch uNonTLS.Scheme {
+	case "https", "wss", "http":
 		uNonTLS.Scheme = "ws"
 	}
 
 	uTLS := *u
-	if uTLS.Scheme == "http" || uTLS.Scheme == "ws" {
-		uTLS.Scheme = "wss"
-	} else if uTLS.Scheme == "https" {
+	switch uTLS.Scheme {
+	case "http", "ws", "https":
 		uTLS.Scheme = "wss"
 	}
 
@@ -123,6 +121,7 @@ func (s *SocketManager) Run(ctx context.Context) error {
 		if attempt >= s.maxProtocolAttempts {
 			currentPreferTLS = !currentPreferTLS
 			attempt = 0
+
 			s.logger.Warn("Max reconnect attempts reached on current protocol, switching endpoint",
 				log.Bool("preferTLS", currentPreferTLS),
 				log.String("nextEndpoint", generic.Ternary(currentPreferTLS, s.urlTLS, s.url)),
@@ -138,6 +137,7 @@ func (s *SocketManager) Run(ctx context.Context) error {
 
 		delay := s.calculateBackoff(attempt)
 		timer := time.NewTimer(delay)
+
 		select {
 		case <-ctx.Done():
 			timer.Stop()
@@ -154,6 +154,7 @@ func (s *SocketManager) calculateBackoff(attempt int) time.Duration {
 
 	mult := 1 << min(attempt, 6)
 	backoff := s.initialBackoff * time.Duration(mult)
+
 	if backoff > s.maxBackoff {
 		backoff = s.maxBackoff
 	}
@@ -163,6 +164,7 @@ func (s *SocketManager) calculateBackoff(attempt int) time.Duration {
 	if half <= 0 {
 		return backoff
 	}
+
 	jitter := time.Duration(rand.Int64N(half))
 
 	return time.Duration(half) + jitter
@@ -173,6 +175,7 @@ func (s *SocketManager) connectAndListen(ctx context.Context) error {
 	if s.preferTLS {
 		target = s.urlTLS
 	}
+
 	return s.connectAndListenURL(ctx, target)
 }
 
@@ -207,6 +210,7 @@ func (s *SocketManager) connectAndListenURL(ctx context.Context, endpointURL str
 	if resp != nil && resp.Body != nil {
 		_ = resp.Body.Close()
 	}
+
 	if err != nil {
 		return err
 	}

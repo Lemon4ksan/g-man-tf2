@@ -5,10 +5,10 @@ go 1.27.0
 require (
 	github.com/PuerkitoBio/goquery v1.13.0
 	github.com/andygrunwald/vdf v1.1.0
-	github.com/lemon4ksan/aoni v0.7.0-rc.1.0.20260922043708-e1f058a8ceda
-	github.com/lemon4ksan/aoni-contrib v0.0.0-20260920182848-0fc690142ce7
-	github.com/lemon4ksan/foundation v0.0.0-20260922043230-8cce1a5e6865
-	github.com/lemon4ksan/g-man v0.14.0-rc.3.0.20260922050632-ffa74b6d341b
+	github.com/lemon4ksan/aoni v0.7.0-rc.1.0.20260923050730-6edfbd8d275d
+	github.com/lemon4ksan/aoni-contrib v0.0.0-20260923050828-ae18f4ab28fa
+	github.com/lemon4ksan/foundation v0.0.0-20260923050528-dc5d9a8c9c6b
+	github.com/lemon4ksan/g-man v0.14.0-rc.3.0.20260923050935-c74b3e18a327
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/time v0.16.0
 	google.golang.org/protobuf v1.36.12
@@ -16,7 +16,7 @@ require (
 
 require (
 	github.com/andybalholm/cascadia v1.3.5 // indirect
-	github.com/lemon4ksan/mach v0.0.0-20260920192632-d937e04c0749 // indirect
+	github.com/lemon4ksan/mach v0.0.0-20260923050623-74d65af4cf4a // indirect
 	github.com/lemon4ksan/sein v0.0.0-20260921100627-4be1ad4b77a9 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect

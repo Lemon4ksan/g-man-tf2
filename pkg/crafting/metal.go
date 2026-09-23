@@ -23,6 +23,7 @@ var (
 	ErrNoDuplicateWeapons = errors.New("crafting: no duplicate weapons found to smelt")
 )
 
+// AssetFetcher provides inventory queries for pure currencies and craftable weapons.
 type AssetFetcher interface {
 	GetAssetIDs(sku string) []uint64
 	GetPureStock() currency.PureStock
@@ -30,46 +31,67 @@ type AssetFetcher interface {
 	GetMetalCount(defIndex uint32) int
 }
 
+// MetalManager manages metal currency selection, change calculation, and smelting.
 type MetalManager struct {
 	fetcher AssetFetcher
 	logger  log.Logger
 	craft   *Manager
 }
 
+// NewMetalManager constructs a new MetalManager instance.
 func NewMetalManager(fetcher AssetFetcher, craft *Manager, logger log.Logger) *MetalManager {
 	return &MetalManager{fetcher: fetcher, craft: craft, logger: logger}
 }
 
+// SelectMetal selects metal asset IDs satisfying `needed` scrap value.
+// It uses bidirectional sweep to pick change. If change cannot be satisfied from stock,
+// it breaks down higher metal denominations using MakeChange without over-smelting.
+//
+// Parity: matches @tf2autobot/tf2 (classes/Crafting.js: getRequired).
 func (m *MetalManager) SelectMetal(ctx context.Context, needed currency.Scrap) ([]uint64, error) {
 	if needed <= 0 {
 		return nil, nil
 	}
 
-	selected, remaining := m.greedySelect(int(needed))
-	if remaining > 0 {
+	selected, remaining := m.bidirectionalSelect(int(needed))
+	if remaining == 0 {
+		return selected, nil
+	}
+
+	if m.craft != nil {
 		if err := m.craft.MakeChange(ctx, DefIndexScrap, remaining); err != nil {
 			return nil, err
 		}
 
-		selected, remaining = m.greedySelect(int(needed))
+		selected, remaining = m.bidirectionalSelect(int(needed))
+		if remaining == 0 {
+			return selected, nil
+		}
+	} else if err := m.TryToSmeltForChange(ctx, needed); err == nil {
+		selected, remaining = m.bidirectionalSelect(int(needed))
+		if remaining == 0 {
+			return selected, nil
+		}
 	}
 
-	if remaining > 0 {
+	if remaining != 0 {
 		return nil, fmt.Errorf("not enough metal: missing %d scrap", remaining)
 	}
 
 	return selected, nil
 }
 
+// SelectChange selects exact change in metal without modifying inventory.
 func (m *MetalManager) SelectChange(amount currency.Scrap) ([]uint64, error) {
-	selected, remaining := m.greedySelect(int(amount))
-	if remaining > 0 {
+	selected, remaining := m.bidirectionalSelect(int(amount))
+	if remaining != 0 {
 		return nil, ErrNotEnoughChange
 	}
 
 	return selected, nil
 }
 
+// SelectKeysAndMetal selects keys and exact metal change required for a trade offer.
 func (m *MetalManager) SelectKeysAndMetal(keys int, metal currency.Scrap) ([]uint64, error) {
 	var selected []uint64
 
@@ -94,62 +116,151 @@ func (m *MetalManager) SelectKeysAndMetal(keys int, metal currency.Scrap) ([]uin
 	return selected, nil
 }
 
-func (m *MetalManager) greedySelect(needed int) (selected []uint64, remaining int) {
-	ref := m.fetcher.GetAssetIDs(currency.SKURefined)
-	rec := m.fetcher.GetAssetIDs(currency.SKUReclaimed)
-	scrap := m.fetcher.GetAssetIDs(currency.SKUScrap)
+// bidirectionalSelect selects metal asset IDs satisfying `needed` scrap value
+// using a 3-pass sweep matching @tf2autobot UserCart.ts (getRequired parity):
+// Pass 1: Forward sweep (Ref -> Rec -> Scrap) picking floor(remaining / value).
+// Pass 2: Reverse sweep (Scrap -> Rec -> Ref) picking ceil(remaining / value) on higher tier.
+// Pass 3: Deduction pass (Ref -> Rec -> Scrap) pruning redundant smaller denominations when remaining < 0.
+func (m *MetalManager) bidirectionalSelect(needed int) (selected []uint64, remaining int) {
+	if needed <= 0 {
+		return nil, 0
+	}
 
-	current := needed
+	tiers := []struct {
+		sku   string
+		value int
+		items []uint64
+	}{
+		{sku: currency.SKURefined, value: 9, items: m.fetcher.GetAssetIDs(currency.SKURefined)},
+		{sku: currency.SKUReclaimed, value: 3, items: m.fetcher.GetAssetIDs(currency.SKUReclaimed)},
+		{sku: currency.SKUScrap, value: 1, items: m.fetcher.GetAssetIDs(currency.SKUScrap)},
+	}
 
-	pick := func(items []uint64, value int) {
-		for current >= value && len(items) > 0 {
-			selected = append(selected, items[0])
-			items = items[1:]
-			current -= value
+	picked := make([]int, len(tiers))
+	remaining = needed
+	hasReversed := false
+	reverse := false
+	index := 0
+
+	for {
+		val := tiers[index].value
+		avail := len(tiers[index].items)
+
+		amount := min(remaining / val, avail)
+
+		if index == len(tiers)-1 {
+			if hasReversed {
+				break
+			}
+
+			reverse = true
+		}
+
+		currAmount := picked[index]
+		if reverse && amount > 0 {
+			ceilAmount := (remaining + val - 1) / val
+			if currAmount+ceilAmount > avail {
+				amount = avail - currAmount
+			} else {
+				amount = ceilAmount
+			}
+		}
+
+		if amount >= 1 {
+			picked[index] = currAmount + amount
+			remaining -= amount * val
+		}
+
+		if remaining == 0 || remaining < 0 {
+			break
+		}
+
+		if index == 0 && reverse {
+			hasReversed = true
+			reverse = false
+		}
+
+		if reverse {
+			index--
+		} else {
+			index++
 		}
 	}
 
-	pick(ref, 9)
-	pick(rec, 3)
-	pick(scrap, 1)
+	if remaining < 0 {
+		for i := range tiers {
+			val := tiers[i].value
+			amount := min(picked[i], (-remaining) / val)
 
-	return selected, current
+			if amount >= 1 {
+				remaining += amount * val
+				picked[i] -= amount
+			}
+		}
+	}
+
+	for i := range tiers {
+		for k := 0; k < picked[i]; k++ {
+			selected = append(selected, tiers[i].items[k])
+		}
+	}
+
+	return selected, remaining
 }
 
+// TryToSmeltForChange breaks down metal or duplicate craftable weapons to resolve change problems.
+// Parity: matches @tf2autobot/tf2 duplicate weapon smelting and change breakdown.
 func (m *MetalManager) TryToSmeltForChange(ctx context.Context, needed currency.Scrap) error {
 	stock := m.fetcher.GetPureStock()
+
+	var remAfterMetal int
+	if stock.TotalScrap() >= needed {
+		_, remaining := m.bidirectionalSelect(int(needed))
+		if remaining == 0 {
+			return nil
+		}
+
+		m.logger.Info("Attempting to break metal for exact change",
+			log.Int("needed_scrap", remaining),
+			log.Int("total_requested", int(needed)),
+		)
+
+		if m.craft != nil {
+			if err := m.craft.MakeChange(ctx, DefIndexScrap, remaining); err != nil {
+				return fmt.Errorf("tf2econ: smelting failed: %w", err)
+			}
+
+			_, remAfterMetal = m.bidirectionalSelect(int(needed))
+			if remAfterMetal == 0 {
+				return nil
+			}
+		}
+	}
+
+	// Parity: evaluate duplicate weapons when pure metal is insufficient or cannot satisfy change
+	missing := needed - stock.TotalScrap()
+	if missing <= 0 {
+		missing = 1
+	}
+
+	m.logger.Info("Checking duplicate weapons for change...", log.Int("needed_scrap", int(missing)))
+
+	if err := m.SmeltDuplicates(ctx, missing); err == nil {
+		if _, afterWeapons := m.bidirectionalSelect(int(needed)); afterWeapons == 0 {
+			return nil
+		}
+	}
+
 	if stock.TotalScrap() < needed {
 		return fmt.Errorf("tf2econ: insufficient total metal value (have %d, need %d)", stock.TotalScrap(), needed)
 	}
 
-	_, remaining := m.greedySelect(int(needed))
-	if remaining == 0 {
-		return nil
+	finalRem := remAfterMetal
+	if finalRem == 0 {
+		finalRem = int(needed)
 	}
 
-	m.logger.Info("Attempting to break metal for exact change",
-		log.Int("needed_scrap", remaining),
-		log.Int("total_requested", int(needed)),
-	)
-
-	if err := m.craft.MakeChange(ctx, DefIndexScrap, remaining); err != nil {
-		return fmt.Errorf("tf2econ: smelting failed: %w", err)
-	}
-
-	_, finalRemaining := m.greedySelect(int(needed))
-	if finalRemaining > 0 {
-		m.logger.Info("Checking duplicate weapons for change...", log.Int("remaining", finalRemaining))
-
-		if err := m.SmeltDuplicates(ctx, currency.Scrap(finalRemaining)); err == nil {
-			if _, afterWeapons := m.greedySelect(int(needed)); afterWeapons == 0 {
-				return nil
-			}
-		}
-
-		return fmt.Errorf("tf2econ: smelting didn't resolve the change problem, missing %d scrap", finalRemaining)
-	}
-
-	return nil
+	return fmt.Errorf("tf2econ: smelting didn't resolve the change problem, missing %d scrap", finalRem)
 }
 
 func (m *MetalManager) SmeltDuplicates(ctx context.Context, needed currency.Scrap) error {
@@ -194,6 +305,10 @@ func (m *MetalManager) smeltClassDuplicatesForChange(
 				weapons[0].ID,
 				weapons[1].ID,
 			)
+		}
+
+		if m.craft == nil {
+			return smelted, errors.New("tf2econ: crafting client not configured")
 		}
 
 		m.logger.Info("Smelting duplicate weapons for change", log.String("class", class))

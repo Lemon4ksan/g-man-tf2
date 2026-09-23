@@ -6,9 +6,11 @@ package bptf
 
 import (
 	"context"
+	"time"
 
 	"github.com/lemon4ksan/aoni"
 	"github.com/lemon4ksan/aoni/option"
+	"github.com/lemon4ksan/aoni/resiliency"
 )
 
 // BaseURL is the default API base endpoint.
@@ -413,11 +415,24 @@ type API interface {
 type Client = API
 
 // NewClient creates a new Backpack.tf API client configured with optional apiKey (for Web API endpoints)
-// and userToken (for Classifieds listings management).
+// and userToken (for Classifieds listings management), along with default retry resilience middleware.
 func NewClient(doer any, apiKey, userToken string, opts ...aoni.ClientOption) API {
 	var defaultOpts []aoni.ClientOption
 
-	defaultOpts = append(defaultOpts, option.WithBaseURL(BaseURL))
+	retryMw := resiliency.NewRetry().
+		MaxAttempts(4).
+		ExponentialBackoff(500*time.Millisecond, 30*time.Second).
+		WithFullJitter().
+		HonorRetryAfter(true, 60*time.Second).
+		OnGatewayErrors(). // 502, 503, 504
+		OnRateLimit().     // 429
+		OnTransientErrors().
+		Build()
+
+	defaultOpts = append(defaultOpts,
+		option.WithBaseURL(BaseURL),
+		option.WithMiddleware(retryMw),
+	)
 	if userToken != "" {
 		defaultOpts = append(defaultOpts, option.WithHeader("X-Auth-Token", userToken))
 	}

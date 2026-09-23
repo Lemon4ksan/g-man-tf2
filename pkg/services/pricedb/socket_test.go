@@ -350,17 +350,21 @@ func TestSocketManager_ContextCancellationInterruptsBackoff(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
+
 	go func() {
 		done <- sm.Run(ctx)
 	}()
 
 	time.Sleep(50 * time.Millisecond)
+
 	start := time.Now()
+
 	cancel()
 
 	select {
 	case err := <-done:
 		elapsed := time.Since(start)
+
 		assert.ErrorIs(t, err, context.Canceled)
 		assert.Less(t, elapsed, 200*time.Millisecond, "Run must exit promptly on context cancel")
 	case <-time.After(1 * time.Second):
@@ -379,6 +383,7 @@ func (m *mockFallbackDialer) DialPlainForWS(ctx context.Context, addr string) (n
 	m.schemes = append(m.schemes, "ws")
 	m.targetAddrs = append(m.targetAddrs, addr)
 	m.mu.Unlock()
+
 	return nil, errors.New("mock plain dial failed")
 }
 
@@ -387,6 +392,7 @@ func (m *mockFallbackDialer) DialTLSForWS(ctx context.Context, addr string) (net
 	m.schemes = append(m.schemes, "wss")
 	m.targetAddrs = append(m.targetAddrs, addr)
 	m.mu.Unlock()
+
 	return nil, errors.New("mock tls dial failed")
 }
 
@@ -425,6 +431,7 @@ func TestSocketManager_ProtocolFallback_WStoWSS(t *testing.T) {
 				cancel()
 				return
 			}
+
 			time.Sleep(2 * time.Millisecond)
 		}
 	}()
@@ -440,4 +447,3 @@ func TestSocketManager_ProtocolFallback_WStoWSS(t *testing.T) {
 	assert.Equal(t, "ws", dialer.schemes[2])
 	assert.Equal(t, "wss", dialer.schemes[3], "4th attempt must fall back to wss (DialTLSForWS)")
 }
-

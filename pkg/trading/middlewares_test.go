@@ -347,6 +347,7 @@ func TestSmartCounterMiddleware_Overpaid_NotEnoughChange_SmeltFails_DeclinesOffe
 	fetcher.On("GetAssetIDs", currency.SKUReclaimed).Return([]uint64{})
 	fetcher.On("GetAssetIDs", currency.SKUScrap).Return([]uint64{})
 	fetcher.On("GetPureStock").Return(currency.PureStock{})
+	fetcher.On("FindWeaponsByClassForSmelting", mock.Anything).Return([]*tf2.Item{}).Maybe()
 
 	mw := SmartCounterMiddleware(nil, metalMgr, bp, invProvider, log.Discard)
 	handler := mw(func(c *engine.TradeContext) error {

@@ -30,7 +30,7 @@ func TestAutomator_Tick(t *testing.T) {
 		ctx := t.Context()
 
 		inv.On("GetMetalCount", DefIndexScrap).Return(0)
-		inv.On("GetMetalCount", DefIndexReclaimed).Return(1)
+		inv.On("GetMetalCount", DefIndexReclaimed).Return(5)
 		inv.On("GetMetalCount", DefIndexRefined).Return(1)
 
 		inv.On("FindCraftableItems", DefIndexReclaimed, 1).Return([]uint64{10})

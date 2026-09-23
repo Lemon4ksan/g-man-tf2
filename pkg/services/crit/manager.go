@@ -15,6 +15,7 @@ import (
 
 	"github.com/lemon4ksan/aoni"
 	log "github.com/lemon4ksan/foundation/async/logkit"
+	"github.com/lemon4ksan/foundation/generic"
 	"github.com/lemon4ksan/g-man/pkg/steam"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 	"github.com/lemon4ksan/g-man/pkg/steam/module"
@@ -192,15 +193,8 @@ func (m *Manager) Start(ctx context.Context) error {
 		return err
 	}
 
-	// Start worker goroutine
-	m.Go(func(ctx context.Context) {
-		m.worker(ctx)
-	})
-
-	// Start event subscription loop
-	m.Go(func(ctx context.Context) {
-		m.eventLoop(ctx)
-	})
+	m.Go(m.worker)
+	m.Go(m.eventLoop)
 
 	return nil
 }
@@ -217,9 +211,7 @@ func (m *Manager) StartAuthed(ctx context.Context, auth module.AuthContext) erro
 		log.Uint64("steam_id", m.steamID.Uint64()),
 	)
 
-	m.Go(func(ctx context.Context) {
-		m.bootstrap(ctx)
-	})
+	m.Go(m.bootstrap)
 
 	return nil
 }
@@ -236,6 +228,7 @@ func (m *Manager) bootstrap(ctx context.Context) {
 		m.listingsMu.Lock()
 
 		clear(m.listings)
+
 		for _, l := range listings {
 			m.listings[l.AssetID] = l
 		}
@@ -292,7 +285,7 @@ func (m *Manager) GetStorefrontURL(ctx context.Context) string {
 
 	if m.groupCheckFailed && time.Since(m.lastGroupCheck) < 5*time.Minute {
 		if m.steamID.IsValid() {
-			return fmt.Sprintf("https://crit.tf/profile/%d", m.steamID.Uint64())
+			return "https://crit.tf/profile/" + m.steamID.String()
 		}
 
 		return "https://crit.tf"
@@ -314,7 +307,7 @@ func (m *Manager) GetStorefrontURL(ctx context.Context) string {
 			m.checkGroup(bgCtx)
 		}()
 
-		return fmt.Sprintf("https://crit.tf/profile/%d", m.steamID.Uint64())
+		return "https://crit.tf/profile/" + m.steamID.String()
 	}
 
 	return "https://crit.tf"
@@ -719,6 +712,7 @@ func (m *Manager) FetchMyListings(ctx context.Context) ([]Listing, error) {
 	m.listingsMu.Lock()
 
 	clear(m.listings)
+
 	for _, l := range listings {
 		m.listings[l.AssetID] = l
 	}
@@ -810,10 +804,7 @@ func (m *Manager) handleGroupInfoCommand(ctx context.Context, senderID uint64, a
 	pending := []string{}
 
 	for _, member := range group.Members {
-		name := member.DisplayName
-		if name == "" {
-			name = member.SteamID
-		}
+		name := generic.Coalesce(member.DisplayName, member.SteamID)
 
 		info := fmt.Sprintf("- %s (%s) [%s]", name, member.SteamID, member.Role)
 		switch member.InviteStatus {
@@ -830,7 +821,8 @@ func (m *Manager) handleGroupInfoCommand(ctx context.Context, senderID uint64, a
 		sb.WriteString("(none)\n")
 	} else {
 		for _, info := range accepted {
-			sb.WriteString(info + "\n")
+			sb.WriteString(info);
+			sb.WriteString("\n")
 		}
 	}
 
@@ -840,7 +832,8 @@ func (m *Manager) handleGroupInfoCommand(ctx context.Context, senderID uint64, a
 		sb.WriteString("(none)\n")
 	} else {
 		for _, info := range pending {
-			sb.WriteString(info + "\n")
+			sb.WriteString(info)
+			sb.WriteString("\n")
 		}
 	}
 

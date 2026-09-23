@@ -23,8 +23,8 @@ import (
 
 	"github.com/andygrunwald/vdf"
 	"github.com/lemon4ksan/aoni"
-	"github.com/lemon4ksan/aoni/x/codec/decode"
 	"github.com/lemon4ksan/aoni/option"
+	"github.com/lemon4ksan/aoni/x/codec/decode"
 	log "github.com/lemon4ksan/foundation/async/logkit"
 	"github.com/lemon4ksan/foundation/codec/json"
 	"github.com/lemon4ksan/foundation/generic"
@@ -406,6 +406,7 @@ func (m *Manager) refreshFromGame(ctx context.Context, itemsGameURL string) erro
 	resolvedItemsGameURL := generic.Coalesce(itemsGameURL, m.config.ItemsGameMirrorURL)
 
 	itemsGameData, err := m.downloadRawURL(ctx, resolvedItemsGameURL)
+
 	var itemsGame map[string]any
 	if err == nil {
 		itemsGame, _ = m.parseItemsGameRecipesAndSeries(itemsGameData)
@@ -422,6 +423,7 @@ func (m *Manager) refreshFromGame(ctx context.Context, itemsGameURL string) erro
 	if len(itemsGameData) > 0 {
 		extraItems = m.parseItemsGameItemsFromData(ctx, itemsGameData)
 	}
+
 	if len(extraItems) > 0 {
 		existingDefindexes := make(map[int]bool, len(items))
 		for _, item := range items {
@@ -579,17 +581,6 @@ func (m *Manager) parseTfEnglish(ctx context.Context) map[string]string {
 	}
 
 	return result
-}
-
-func (m *Manager) parseItemsGameItems(ctx context.Context, url string) []*Item {
-	url = generic.Coalesce(url, m.config.ItemsGameMirrorURL)
-
-	data, err := m.downloadRawURL(ctx, url)
-	if err != nil {
-		return nil
-	}
-
-	return m.parseItemsGameItemsFromData(ctx, data)
 }
 
 func (m *Manager) parseItemsGameItemsFromData(ctx context.Context, data []byte) []*Item {

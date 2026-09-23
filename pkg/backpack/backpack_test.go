@@ -884,6 +884,7 @@ func TestBackpack_GetItemsBySKU_ConcurrentMapAccess(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+
 			for {
 				select {
 				case <-ctx.Done():
@@ -900,6 +901,7 @@ func TestBackpack_GetItemsBySKU_ConcurrentMapAccess(t *testing.T) {
 		wg.Add(1)
 		go func(id uint64) {
 			defer wg.Done()
+
 			for {
 				select {
 				case <-ctx.Done():
@@ -932,6 +934,7 @@ func TestBackpack_EventLoop_ExitsOnBusClose(t *testing.T) {
 	}()
 
 	time.Sleep(20 * time.Millisecond)
+
 	_ = bus.Close()
 
 	select {
@@ -941,4 +944,3 @@ func TestBackpack_EventLoop_ExitsOnBusClose(t *testing.T) {
 		t.Fatal("eventLoop hung after event.Bus was closed; infinite loop detected")
 	}
 }
-

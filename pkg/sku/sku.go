@@ -10,12 +10,13 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	
+
 	"github.com/lemon4ksan/foundation/silicon/pool"
 )
 
 var ErrEmptySKU = errors.New("invalid SKU: empty")
 
+// Item represents a parsed TF2 item specification containing all standard SKU attributes.
 type Item struct {
 	Defindex      int
 	Quality       int
@@ -40,6 +41,7 @@ type Item struct {
 	Seed          int
 }
 
+// GetItem retrieves a zeroed Item instance from the memory pool.
 func GetItem() *Item {
 	item := itemPool.Get()
 	item.Reset()
@@ -47,6 +49,7 @@ func GetItem() *Item {
 	return item
 }
 
+// IsValid reports whether the given string represents a valid, parseable TF2 SKU.
 func IsValid(skuStr string) bool {
 	if len(skuStr) == 0 {
 		return false
@@ -142,6 +145,7 @@ func (it *Item) Reset() {
 	it.PartValues = nil
 }
 
+// Spell represents an applied Halloween spell attribute and value pair.
 type Spell struct {
 	Attribute int
 	Value     int
@@ -161,6 +165,7 @@ var itemPool = pool.NewPerPStorage(func() *Item {
 	}
 })
 
+// ParseInto parses a semicolon-delimited SKU string directly into an existing Item instance.
 func ParseInto(skuStr string, item *Item) error {
 	if len(skuStr) == 0 {
 		return ErrEmptySKU
@@ -223,6 +228,7 @@ func ParseInto(skuStr string, item *Item) error {
 	return nil
 }
 
+// FromString parses a canonical SKU string into a pooled Item instance.
 func FromString(skuStr string) (*Item, error) {
 	item := itemPool.Get()
 	if err := ParseInto(skuStr, item); err != nil {
@@ -233,12 +239,14 @@ func FromString(skuStr string) (*Item, error) {
 	return item, nil
 }
 
+// ReleaseItem returns a previously acquired Item instance back to the memory pool.
 func ReleaseItem(item *Item) {
 	if item != nil {
 		itemPool.Put(item)
 	}
 }
 
+// FromObject formats an Item instance into a canonical semicolon-delimited SKU string.
 func FromObject(item *Item) string {
 	buf := skuBufferPool.Get()
 

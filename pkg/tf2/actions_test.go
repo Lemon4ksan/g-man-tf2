@@ -521,3 +521,40 @@ func TestTF2_ProtoActions_ValidInputs_SendsCorrectGCPackets(t *testing.T) {
 		assert.Equal(t, uint32(pb.ETFGCMsg_k_EMsgGCFreeTrial_ChooseMostHelpfulFriend), mCoord.GetLastSendMsgType())
 	})
 }
+
+func TestTF2_AcknowledgeItem_CollisionFree(t *testing.T) {
+	t.Parallel()
+	tf, _, mCoord := setupTF2(t)
+	ctx := t.Context()
+
+	// Populate cache with items occupying slots 1 and 2
+	tf.cache.items[1] = PackGCItem(&Item{ID: 1, Inventory: 1})
+	tf.cache.items[2] = PackGCItem(&Item{ID: 2, Inventory: 2})
+	tf.cache.items[3] = PackGCItem(&Item{ID: 3, Inventory: 0}) // unacknowledged
+
+	err := tf.AcknowledgeItem(ctx, 3)
+	require.NoError(t, err)
+
+	// Verify SetSingleItemPosition sent position 3 (not 1)
+	expected := make([]byte, 12)
+	binary.LittleEndian.PutUint64(expected[0:8], 3)
+	binary.LittleEndian.PutUint32(expected[8:12], 3)
+	assert.Equal(t, uint32(pb.EGCItemMsg_k_EMsgGCSetSingleItemPosition), mCoord.GetLastSendMsgType())
+	assert.Equal(t, expected, mCoord.lastSendPayload)
+}
+
+func TestTF2_AcknowledgeAll_CollisionFree(t *testing.T) {
+	t.Parallel()
+	tf, _, mCoord := setupTF2(t)
+	ctx := t.Context()
+
+	// Slots 1 and 3 occupied, unplaced items 10 and 20
+	tf.cache.items[1] = PackGCItem(&Item{ID: 1, Inventory: 1})
+	tf.cache.items[2] = PackGCItem(&Item{ID: 2, Inventory: 3})
+	tf.cache.items[10] = PackGCItem(&Item{ID: 10, Inventory: 0})
+	tf.cache.items[20] = PackGCItem(&Item{ID: 20, Inventory: 0})
+
+	err := tf.AcknowledgeAll(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(pb.EGCItemMsg_k_EMsgGCSetItemPositions), mCoord.GetLastSendMsgType())
+}

@@ -16,6 +16,7 @@ const (
 	SKUScrap     = "5000;6"
 )
 
+// PureStock tracks the counts of pure currency items (Keys, Refined, Reclaimed, Scrap).
 type PureStock struct {
 	Keys      int
 	Refined   int
@@ -23,14 +24,17 @@ type PureStock struct {
 	Scrap     int
 }
 
+// TotalScrap computes the total value of pure metal in atomic integer Scrap units.
 func (p PureStock) TotalScrap() Scrap {
 	return Scrap((p.Refined * 9) + (p.Reclaimed * 3) + p.Scrap)
 }
 
+// TotalRefined returns the total value of pure metal represented in Refined floating-point format.
 func (p PureStock) TotalRefined() float64 {
 	return ToRefined(p.TotalScrap())
 }
 
+// TotalValueScrap calculates the grand total value of both metal and keys in atomic Scrap units.
 func (p PureStock) TotalValueScrap(keyPriceRef float64) Scrap {
 	if keyPriceRef <= 0 {
 		return p.TotalScrap()
@@ -42,6 +46,7 @@ func (p PureStock) TotalValueScrap(keyPriceRef float64) Scrap {
 	return keysValueScrap + p.TotalScrap()
 }
 
+// FormatStock formats the pure currency stock into human-readable strings (e.g. ["2 keys", "5.33 ref"]).
 func (p PureStock) FormatStock() []string {
 	var result []string
 

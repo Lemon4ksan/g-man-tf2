@@ -69,6 +69,7 @@ func (m *ListingManager) Sync(ctx context.Context) error {
 	defer m.mu.Unlock()
 
 	clear(m.listings)
+
 	for i := range allListings {
 		m.listings[allListings[i].ID] = &allListings[i]
 	}

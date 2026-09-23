@@ -17,6 +17,7 @@ import (
 
 const BehaviorName = "pure_liquidator"
 
+// WithPureLiquidator registers the pure supply balancing Automator into a behavior Orchestrator.
 func WithPureLiquidator(orch *behavior.Orchestrator, mgr *Manager, inv InventoryProvider) {
 	orch.Register(NewAutomator(mgr, inv, WithLogger(orch.Logger())))
 }
@@ -36,10 +37,12 @@ type Automator struct {
 
 type Option = generic.Option[*Automator]
 
+// WithLogger sets the logger instance on the Automator.
 func WithLogger(l log.Logger) Option {
 	return func(a *Automator) { a.logger = l }
 }
 
+// NewAutomator constructs a new Automator instance with default threshold settings.
 func NewAutomator(mgr *Manager, inv InventoryProvider, opts ...Option) *Automator {
 	a := &Automator{
 		manager:       mgr,
@@ -57,8 +60,10 @@ func NewAutomator(mgr *Manager, inv InventoryProvider, opts ...Option) *Automato
 	return a
 }
 
+// Name returns the registered behavior name of the Automator.
 func (a *Automator) Name() string { return BehaviorName }
 
+// Run starts the periodic metal balancing and weapon cleanup loop.
 func (a *Automator) Run(ctx context.Context) error {
 	a.logger.Info("Pure Liquidator behavior started", log.Duration("interval", a.checkInterval))
 
@@ -93,35 +98,81 @@ func (a *Automator) performRoutine(ctx context.Context) {
 	}
 }
 
+// Tick performs batch pure supply balancing matching @tf2autobot keepMetalSupply:
+// Simultaneously computes combineScrap, combineReclaimed, smeltRefined, and smeltReclaimed,
+// executing batch balancing within a single cycle.
+//
+// Parity: matches @tf2autobot/tf2 (keepMetalSupply.ts).
 func (a *Automator) Tick(ctx context.Context) error {
 	scrapCount := a.inv.GetMetalCount(DefIndexScrap)
 	refCount := a.inv.GetMetalCount(DefIndexRefined)
 	recCount := a.inv.GetMetalCount(DefIndexReclaimed)
 
-	switch {
-	case scrapCount < a.minScrap && recCount > 0:
-		a.logger.Info("Scrap supply low, smelting Reclaimed")
-		_, err := a.manager.SmeltMetal(ctx, DefIndexReclaimed)
+	// Parity: @tf2autobot/keepMetalSupply.ts:10 - do not craft if pure metal is depleted
+	if refCount <= 0 && recCount <= 3 && scrapCount <= 3 {
+		return nil
+	}
 
-		return err
+	var combineScrap, combineRec, smeltRef, smeltRec int
 
-	case recCount < a.minRec && refCount > 0:
-		a.logger.Info("Reclaimed supply low, smelting Refined")
-		_, err := a.manager.SmeltMetal(ctx, DefIndexRefined)
+	if recCount > a.maxRec {
+		combineRec = (recCount - a.maxRec + 2) / 3
+	} else if recCount < a.minRec {
+		smeltRef = (a.minRec - recCount + 2) / 3
+	}
 
-		return err
+	if scrapCount > a.maxScrap {
+		combineScrap = (scrapCount - a.maxScrap + 2) / 3
+	} else if scrapCount < a.minScrap {
+		smeltRec = (a.minScrap - scrapCount + 2) / 3
+	}
 
-	case scrapCount > a.maxScrap:
-		a.logger.Info("Too much Scrap, combining into Reclaimed")
-		_, err := a.manager.CombineMetal(ctx, DefIndexScrap)
+	for i := 0; i < combineScrap; i++ {
+		if a.inv.GetMetalCount(DefIndexScrap) < 3 {
+			break
+		}
 
-		return err
+		a.logger.Info("Combining excess Scrap into Reclaimed", log.Int("step", i+1), log.Int("total", combineScrap))
 
-	case recCount > a.maxRec:
-		a.logger.Info("Too much Reclaimed, combining into Refined")
-		_, err := a.manager.CombineMetal(ctx, DefIndexReclaimed)
+		if _, err := a.manager.CombineMetal(ctx, DefIndexScrap); err != nil {
+			return err
+		}
+	}
 
-		return err
+	for i := 0; i < combineRec; i++ {
+		if a.inv.GetMetalCount(DefIndexReclaimed) < 3 {
+			break
+		}
+
+		a.logger.Info("Combining excess Reclaimed into Refined", log.Int("step", i+1), log.Int("total", combineRec))
+
+		if _, err := a.manager.CombineMetal(ctx, DefIndexReclaimed); err != nil {
+			return err
+		}
+	}
+
+	for i := 0; i < smeltRef; i++ {
+		if a.inv.GetMetalCount(DefIndexRefined) < 1 {
+			break
+		}
+
+		a.logger.Info("Smelting Refined into Reclaimed", log.Int("step", i+1), log.Int("total", smeltRef))
+
+		if _, err := a.manager.SmeltMetal(ctx, DefIndexRefined); err != nil {
+			return err
+		}
+	}
+
+	for i := 0; i < smeltRec; i++ {
+		if a.inv.GetMetalCount(DefIndexReclaimed) < 1 {
+			break
+		}
+
+		a.logger.Info("Smelting Reclaimed into Scrap", log.Int("step", i+1), log.Int("total", smeltRec))
+
+		if _, err := a.manager.SmeltMetal(ctx, DefIndexReclaimed); err != nil {
+			return err
+		}
 	}
 
 	return nil

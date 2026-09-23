@@ -64,6 +64,7 @@ func (f *FlatInventory) AppendItem(it *Item) {
 	if it == nil {
 		return
 	}
+
 	f.AppendPacked(PackGCItem(it))
 }
 
@@ -75,6 +76,7 @@ func (f *FlatInventory) FindAllByDefindex(defindex uint16) []uint64 {
 			results = append(results, f.AssetIDs[i])
 		}
 	}
+
 	return results
 }
 
@@ -86,6 +88,7 @@ func (f *FlatInventory) FindAllByQuality(quality uint8) []uint64 {
 			results = append(results, f.AssetIDs[i])
 		}
 	}
+
 	return results
 }
 
@@ -97,6 +100,7 @@ func (f *FlatInventory) CountMatching(defindex uint16, quality uint8) int {
 			n++
 		}
 	}
+
 	return n
 }
 
@@ -108,5 +112,6 @@ func (f *FlatInventory) FilterMatchingTradable(defindex uint16) []uint64 {
 			results = append(results, f.AssetIDs[i])
 		}
 	}
+
 	return results
 }

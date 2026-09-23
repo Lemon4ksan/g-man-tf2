@@ -905,16 +905,20 @@ func TestSOCache_RequiresFull_PreservesSheenAndScoreCount(t *testing.T) {
 
 	econ := items[0].ToEconItem()
 	assert.NotNil(t, econ)
+
 	hasSheen := false
 	hasScore := false
+
 	for _, attr := range econ.Attributes {
 		if attr.Defindex == int(AttrSheen) && attr.FloatValue == 3 {
 			hasSheen = true
 		}
+
 		if attr.Defindex == int(AttrKillEaterScoreValue) && attr.FloatValue == 542 {
 			hasScore = true
 		}
 	}
+
 	assert.True(t, hasSheen)
 	assert.True(t, hasScore)
 }
@@ -949,5 +953,3 @@ func TestSOCache_protoToItem_AustraliumAndFestivized_AsUintOrVarint(t *testing.T
 	assert.True(t, item2.Australium)
 	assert.True(t, item2.Festivized)
 }
-
-

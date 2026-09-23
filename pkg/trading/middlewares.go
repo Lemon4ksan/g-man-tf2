@@ -947,3 +947,49 @@ func hasFullUses(item *trading.Item, requiredUses string) bool {
 
 	return false
 }
+
+// CapacityProvider defines the interface to query backpack capacity and current item count.
+type CapacityProvider interface {
+	GetTotalCount() int
+	GetMaxSlots() int
+}
+
+// CapacityMiddleware returns an engine.Middleware that enforces TF2 backpack capacity limits,
+// preventing Steam EResult 15 failures.
+//
+// Parity: matches @tf2autobot/tf2 and tf2autobot-pricedb (Cart.ts).
+func CapacityMiddleware(bp CapacityProvider, logger log.Logger) engine.Middleware {
+	return func(next engine.Handler) engine.Handler {
+		return func(ctx *engine.TradeContext) error {
+			if bp == nil {
+				return next(ctx)
+			}
+
+			maxSlots := bp.GetMaxSlots()
+			if maxSlots <= 0 {
+				return next(ctx)
+			}
+
+			currentCount := bp.GetTotalCount()
+			netDelta := len(ctx.Offer.ItemsToReceive) - len(ctx.Offer.ItemsToGive)
+			projectedCount := currentCount + netDelta
+
+			if projectedCount > maxSlots && netDelta > 0 {
+				if logger != nil {
+					logger.WarnContext(ctx, "Trade offer declined: backpack capacity exceeded (EResult 15 prevention)",
+						log.Uint64("offer_id", ctx.Offer.ID),
+						log.Int("current", currentCount),
+						log.Int("delta", netDelta),
+						log.Int("max", maxSlots),
+					)
+				}
+
+				ctx.Decline(reason.DeclineOverstocked)
+
+				return nil
+			}
+
+			return next(ctx)
+		}
+	}
+}

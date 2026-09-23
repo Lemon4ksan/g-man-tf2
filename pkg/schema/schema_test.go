@@ -2345,6 +2345,7 @@ func TestSchema_DecoratedWeaponWarPaintRetention(t *testing.T) {
 	if raw.Schema.PaintKits == nil {
 		raw.Schema.PaintKits = make(map[string]string)
 	}
+
 	raw.Schema.PaintKits["205"] = "Civic Duty"
 	raw.Schema.Items = append(raw.Schema.Items, &Item{
 		Defindex:    199,
@@ -2457,10 +2458,23 @@ func TestSchema_ItemFromName_AustraliumMinigun(t *testing.T) {
 	t.Parallel()
 
 	raw := &Raw{}
-	raw.Schema.Items = append(raw.Schema.Items,
+	raw.Schema.Items = append(
+		raw.Schema.Items,
 		&Item{Defindex: 15031, Name: "teufort_minigun_warroom", ItemName: "Minigun", ItemQuality: 15},
-		&Item{Defindex: 202, Name: "Upgradeable TF_WEAPON_MINIGUN", ItemName: "Minigun", ItemQuality: 6, ItemClass: "tf_weapon_minigun"},
-		&Item{Defindex: 15, Name: "TF_WEAPON_MINIGUN", ItemName: "Minigun", ItemQuality: 0, ItemClass: "tf_weapon_minigun"},
+		&Item{
+			Defindex:    202,
+			Name:        "Upgradeable TF_WEAPON_MINIGUN",
+			ItemName:    "Minigun",
+			ItemQuality: 6,
+			ItemClass:   "tf_weapon_minigun",
+		},
+		&Item{
+			Defindex:    15,
+			Name:        "TF_WEAPON_MINIGUN",
+			ItemName:    "Minigun",
+			ItemQuality: 0,
+			ItemClass:   "tf_weapon_minigun",
+		},
 	)
 	raw.Schema.Qualities = map[string]int{
 		"Unique":  6,
@@ -2477,7 +2491,15 @@ func TestSchema_ItemFromName_AustraliumMinigun(t *testing.T) {
 	assert.Equal(t, "202;11;australium", s.SKUFromItem(parsed))
 
 	formatted := s.ItemName(parsed, true, false, false)
-	assert.Equal(t, "Australium Minigun", formatted, "Strange must be omitted from Australium weapon display name")
+	assert.Equal(
+		t,
+		"Strange Australium Minigun",
+		formatted,
+		"Strange must be retained in standard display name for Australium weapon",
+	)
+
+	formattedSCM := s.ItemName(parsed, true, false, true)
+	assert.Equal(t, "Australium Minigun", formattedSCM, "Strange must be omitted in SCM format for Australium weapon")
 }
 
 func TestSchema_IsAustraliumDefindex_Complete(t *testing.T) {
@@ -2507,4 +2529,100 @@ func TestSchema_IsAustraliumDefindex_Complete(t *testing.T) {
 	assert.False(t, s.IsAustraliumDefindex(15031))
 }
 
+func TestSchema_CrateSeries_SCM_Guard(t *testing.T) {
+	t.Parallel()
 
+	raw := &Raw{}
+	raw.Schema.Items = []*Item{
+		{
+			Defindex: 5022,
+			Name:     "Mann Co. Supply Crate",
+			ItemName: "Mann Co. Supply Crate",
+			Attributes: []ItemAttribute{
+				{Class: "supply_crate_series", Value: 1},
+			},
+		},
+		{
+			Defindex: 5040,
+			Name:     "Unlocked Winter 2016 Cosmetic Case",
+			ItemName: "Unlocked Winter 2016 Cosmetic Case",
+			// No supply_crate_series attribute
+		},
+	}
+	s := New(raw)
+
+	// Crate with supply_crate_series class: SCM format gets "Series %23<num>"
+	itemWithSeriesAttr := &sku.Item{
+		Defindex:    5022,
+		Quality:     6,
+		Craftable:   true,
+		Tradable:    true,
+		Crateseries: 40,
+	}
+	assert.Equal(t, "Mann Co. Supply Crate Series %2340", s.ItemName(itemWithSeriesAttr, true, false, true))
+	assert.Equal(t, "Mann Co. Supply Crate #40", s.ItemName(itemWithSeriesAttr, true, false, false))
+
+	// Case without supply_crate_series class: SCM format omits Series %23
+	itemWithoutSeriesAttr := &sku.Item{
+		Defindex:    5040,
+		Quality:     6,
+		Craftable:   true,
+		Tradable:    true,
+		Crateseries: 104,
+	}
+	assert.Equal(t, "Unlocked Winter 2016 Cosmetic Case", s.ItemName(itemWithoutSeriesAttr, true, false, true))
+	assert.Equal(t, "Unlocked Winter 2016 Cosmetic Case #104", s.ItemName(itemWithoutSeriesAttr, true, false, false))
+}
+
+func TestSchema_ChemistrySet_Series_Guard(t *testing.T) {
+	t.Parallel()
+
+	raw := &Raw{}
+	raw.Schema.Items = []*Item{
+		{
+			Defindex: 20000,
+			Name:     "Chemistry Set",
+			ItemName: "Chemistry Set",
+		},
+		{
+			Defindex: 20001,
+			Name:     "Killstreak Kit",
+			ItemName: "Killstreak Kit",
+		},
+	}
+	s := New(raw)
+
+	// Strangifier Chemistry Set (output 6522, target 200) on SCM gets series
+	chemSet := &sku.Item{
+		Defindex:  20000,
+		Quality:   6,
+		Craftable: true,
+		Tradable:  true,
+		Output:    6522,
+		Target:    440, // Disciplinary Action Strangifier Series #2
+	}
+	assert.Equal(t, "Chemistry Set Series %232", s.ItemName(chemSet, true, false, true))
+	// Non-SCM format does NOT leak the series tag
+	assert.Equal(t, "Chemistry Set", s.ItemName(chemSet, true, false, false))
+
+	// Non-Strangifier Chemistry Set (e.g. Collector's Chemistry Set with output 200 != 6522)
+	collChemSet := &sku.Item{
+		Defindex:  20000,
+		Quality:   6,
+		Craftable: true,
+		Tradable:  true,
+		Output:    200,
+		Target:    200,
+	}
+	assert.Equal(t, "Chemistry Set", s.ItemName(collChemSet, true, false, true))
+
+	// Non-Chemistry Set with Target (e.g. Killstreak Kit) must NOT get Series
+	ksKit := &sku.Item{
+		Defindex:  20001,
+		Quality:   6,
+		Craftable: true,
+		Tradable:  true,
+		Target:    200,
+	}
+	assert.Equal(t, "Killstreak Kit", s.ItemName(ksKit, true, false, true))
+}
