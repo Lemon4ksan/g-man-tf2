@@ -263,6 +263,29 @@ func (m *MetalManager) TryToSmeltForChange(ctx context.Context, needed currency.
 	return fmt.Errorf("tf2econ: smelting didn't resolve the change problem, missing %d scrap", finalRem)
 }
 
+// SmeltDuplicates smelts duplicate craftable weapons across all TF2 character classes
+// into scrap metal to satisfy a required scrap deficit.
+//
+// It iterates sequentially through standard TF2 classes (Scout through Spy), finding
+// pairs of craftable, tradable duplicate weapons via the AssetFetcher and executing
+// TF2 Recipe 3 (RecipeSmeltWeapons) via the Game Coordinator crafting client. Smelting
+// terminates early once accumulated scrap reaches or exceeds the requested 'needed' amount.
+//
+// Parameters:
+//   - ctx: Context for cancellation and deadline control across Game Coordinator craft calls.
+//   - needed: Target quantity of Scrap metal to generate from duplicate weapons.
+//
+// Returns:
+//   - nil if at least 'needed' scrap was successfully smelted.
+//   - ErrNoDuplicateWeapons if no duplicate craftable weapon pairs were found across any class (smelted == 0).
+//   - An error if weapon pair validation fails (e.g., untradable weapons), the crafting client
+//     is unconfigured, or a Game Coordinator craft request fails.
+//
+// Invariants:
+//   - Only tradable weapons are smelted to prevent generating untradable scrap metal.
+//   - Introduces a 500ms rate-limit pause between consecutive class craft operations.
+//
+// Parity: matches @tf2autobot/tf2 duplicate weapon smelting for trade change resolution.
 func (m *MetalManager) SmeltDuplicates(ctx context.Context, needed currency.Scrap) error {
 	smelted := 0
 

@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/lemon4ksan/aoni"
-	"github.com/lemon4ksan/aoni/option"
 	"github.com/lemon4ksan/aoni-contrib/otel"
+	"github.com/lemon4ksan/aoni/option"
 	"github.com/lemon4ksan/foundation/async/event"
 	log "github.com/lemon4ksan/foundation/async/logkit"
 	"github.com/lemon4ksan/foundation/generic"

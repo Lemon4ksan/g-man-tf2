@@ -821,7 +821,7 @@ func (m *Manager) handleGroupInfoCommand(ctx context.Context, senderID uint64, a
 		sb.WriteString("(none)\n")
 	} else {
 		for _, info := range accepted {
-			sb.WriteString(info);
+			sb.WriteString(info)
 			sb.WriteString("\n")
 		}
 	}

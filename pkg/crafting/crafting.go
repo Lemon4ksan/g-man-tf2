@@ -202,6 +202,26 @@ func (cm *Manager) smeltSingleMetalStep(ctx context.Context, targetDefIndex uint
 	}
 }
 
+// SmeltClassWeapons crafts two craftable weapons of the specified class into one Scrap metal item
+// using Team Fortress 2 Recipe 3 (RecipeSmeltWeapons).
+//
+// It queries the inventory provider for eligible craftable duplicate weapons matching the given class,
+// validates that at least two weapons exist and that both weapons are tradable, and dispatches the
+// crafting transaction to the Game Coordinator.
+//
+// Parameters:
+//   - ctx: Context for cancellation and deadline propagation to the Game Coordinator client.
+//   - class: Name of the TF2 character class (e.g., "Scout", "Soldier", "Pyro", "Demoman",
+//     "Heavy", "Engineer", "Medic", "Sniper", "Spy") whose duplicate weapons should be smelted.
+//
+// Returns:
+//   - []uint64: Slice containing the newly created Scrap metal asset ID(s) returned by the Game Coordinator.
+//   - error: Non-nil if fewer than two weapons are available, if either candidate weapon is untradable,
+//     or if the Game Coordinator rejects or fails the crafting recipe.
+//
+// Invariants:
+//   - Both input weapons must have IsTradable == true to prevent producing untradable scrap metal.
+//   - Exactly two item IDs are submitted to RecipeSmeltWeapons.
 func (cm *Manager) SmeltClassWeapons(ctx context.Context, class string) ([]uint64, error) {
 	weapons := cm.inv.FindWeaponsByClassForSmelting(class)
 	if len(weapons) < 2 {

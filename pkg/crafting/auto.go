@@ -178,6 +178,28 @@ func (a *Automator) Tick(ctx context.Context) error {
 	return nil
 }
 
+// CleanInventory sweeps the entire inventory to smelt all duplicate class weapons into scrap metal
+// and subsequently condenses all pure metal into higher denominations.
+//
+// It first iterates across all nine TF2 character classes, repeatedly finding and smelting
+// eligible pairs of craftable, tradable duplicate weapons into scrap metal (TF2 Recipe 3)
+// until fewer than two duplicate weapons remain for each class. Once weapon duplicate smelting
+// is complete, it invokes CondenseMetal to combine accumulated Scrap into Reclaimed (3:1)
+// and Reclaimed into Refined (3:1).
+//
+// Parameters:
+//   - ctx: Context for cancellation and deadline propagation across crafting operations.
+//
+// Returns:
+//   - nil on full successful inventory cleanup and metal condensation.
+//   - An error if the final metal condensation step fails.
+//
+// Invariants:
+//   - Weapon duplicate smelting errors for individual classes are logged and tolerated without
+//     aborting the sweep across subsequent classes.
+//   - Maintains a 500ms pacing delay between consecutive weapon smelting crafts to protect
+//     against Game Coordinator rate limits.
+//   - Only tradable, craftable weapons are selected for smelting.
 func (a *Automator) CleanInventory(ctx context.Context) error {
 	for _, class := range schema.Classes {
 		a.smeltAllClassDuplicates(ctx, class)

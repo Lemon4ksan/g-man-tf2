@@ -164,8 +164,8 @@ func TestPriceManager_TTLAndExpiry(t *testing.T) {
 		r := aoni.NewClient(stub, option.WithBaseURL("https://backpack.tf/api"))
 		cfg := Config{
 			CachePath:    filepath.Join(t.TempDir(), "prices.json"),
-			SyncInterval: 500 * time.Millisecond,
-			TTL:          250 * time.Millisecond,
+			SyncInterval: 1 * time.Second,
+			TTL:          600 * time.Millisecond,
 		}
 		manager := NewPriceManager(r, log.Discard, cfg)
 
@@ -184,7 +184,7 @@ func TestPriceManager_TTLAndExpiry(t *testing.T) {
 		assert.False(t, manager.IsExpired())
 		assert.Equal(t, int64(1), manager.Version())
 		assert.False(t, manager.Timestamp().IsZero())
-		assert.Equal(t, 250*time.Millisecond, manager.TTL())
+		assert.Equal(t, 600*time.Millisecond, manager.TTL())
 
 		meta := manager.Metadata()
 		assert.Equal(t, int64(1), meta.Version)
@@ -196,7 +196,7 @@ func TestPriceManager_TTLAndExpiry(t *testing.T) {
 		assert.Equal(t, float64(75), p.Value)
 
 		// Wait for TTL expiration
-		time.Sleep(300 * time.Millisecond)
+		time.Sleep(650 * time.Millisecond)
 
 		assert.True(t, manager.IsExpired())
 
