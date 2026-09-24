@@ -16,10 +16,16 @@ github.com/lemon4ksan/aoni v0.7.0-rc.1.0.20260923050730-6edfbd8d275d h1:iH5OKnK2
 github.com/lemon4ksan/aoni v0.7.0-rc.1.0.20260923050730-6edfbd8d275d/go.mod h1:GEvpMY5YCp1yiHAyWFsb+naXvvLVALu3uy+rzHlzLEo=
 github.com/lemon4ksan/aoni-contrib v0.0.0-20260923050828-ae18f4ab28fa h1:TKy9xZNE1hU9Fk9O9+YO0gFgW5Q4vhum6Gv2sb7E+Os=
 github.com/lemon4ksan/aoni-contrib v0.0.0-20260923050828-ae18f4ab28fa/go.mod h1:o0MvtMyqTKEoEWqBFZo9R5SHCcVwgAE9yZ4he4tpx88=
+github.com/lemon4ksan/aoni-contrib v0.0.0-20260924045324-5a8222650eac h1:9od4QsYQLEIacts6k1WVOhas+nuuO8DI+PnoXZFUfRM=
+github.com/lemon4ksan/aoni-contrib v0.0.0-20260924045324-5a8222650eac/go.mod h1:o0MvtMyqTKEoEWqBFZo9R5SHCcVwgAE9yZ4he4tpx88=
 github.com/lemon4ksan/foundation v0.0.0-20260923050528-dc5d9a8c9c6b h1:Kfnzk+nDCztX03T1mU9CIpVRxylF6m7prs8RC4VGfCg=
 github.com/lemon4ksan/foundation v0.0.0-20260923050528-dc5d9a8c9c6b/go.mod h1:mKZ+py0Jq9/teeK0cvjFUajx/DqJ3UiCvez0mwjhw8Y=
+github.com/lemon4ksan/foundation v0.0.0-20260924043232-ec089ea61b69 h1:EOrZniB0GSUs7rt3v24RRfUHkXkzuuyqRQhI5hHkvBw=
+github.com/lemon4ksan/foundation v0.0.0-20260924043232-ec089ea61b69/go.mod h1:mKZ+py0Jq9/teeK0cvjFUajx/DqJ3UiCvez0mwjhw8Y=
 github.com/lemon4ksan/g-man v0.14.0-rc.3.0.20260923050935-c74b3e18a327 h1:Wj7cdjkYRCymhvpxuKg02UDlaX1g1Ab2PwCW4WAdfeU=
 github.com/lemon4ksan/g-man v0.14.0-rc.3.0.20260923050935-c74b3e18a327/go.mod h1:aOZVT/gQF2HpsO2qHKCzuDosbmfmh7bUlCizVmNdaXA=
+github.com/lemon4ksan/g-man v0.14.0-rc.3.0.20260924045440-034bffeec478 h1:J3HdMPuI+9ssE/5roPESq+jEpFM+Zq4lOx+yylU0HtA=
+github.com/lemon4ksan/g-man v0.14.0-rc.3.0.20260924045440-034bffeec478/go.mod h1:M5w7AmJ11mbxzG9XZPQerA9UqrpZDUot4W0NHwS+hkY=
 github.com/lemon4ksan/mach v0.0.0-20260923050623-74d65af4cf4a h1:VvDOlTSa+FB427vVvEBSZHF0zokDoT6OfOaE/Fbh7GU=
 github.com/lemon4ksan/mach v0.0.0-20260923050623-74d65af4cf4a/go.mod h1:h/l1zrh1aT6/xUoxl9s/AZ+n0jVVz2XtLfUgshDkIxw=
 github.com/lemon4ksan/sein v0.0.0-20260921100627-4be1ad4b77a9 h1:7eVPnzfCr/4Qti4LkL2mhiAoole+SLVVzMkhe3wT2Qs=

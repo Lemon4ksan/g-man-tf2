@@ -147,6 +147,9 @@ func PackTF2Item(it *TF2Item) tf2.PackedItem {
 	}
 }
 
+// MapCEconToTF2 converts a Steam inventory.CEconItem asset and description representation into a TF2Item.
+// It extracts asset IDs, stack quantities, defindexes, qualities, wear tiers, craft numbers, crate series,
+// and custom attributes, resolving metadata against the provided schema when available.
 func MapCEconToTF2(econ inventory.CEconItem, s *schema.Schema) TF2Item {
 	asset := econ.Asset
 	desc := econ.Description

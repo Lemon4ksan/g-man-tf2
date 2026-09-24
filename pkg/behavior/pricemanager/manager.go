@@ -9,11 +9,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand/v2"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -221,16 +224,27 @@ func (m *PriceManager) Update(ctx context.Context) error {
 	m.index = newIndex
 	m.timestamp = time.Now()
 	m.version++
+	currentVersion := m.version
+	uniqueSkus := len(newIndex)
 	m.mu.Unlock()
 
 	if err := m.saveToCache(); err != nil {
 		m.logger.Warn("Failed to save prices to cache", log.Err(err))
 	}
 
-	m.logger.Info("Bptf index rebuilt", log.Int("unique_skus", len(newIndex)), log.Int64("version", m.version))
+	m.logger.Info("Bptf index rebuilt", log.Int("unique_skus", uniqueSkus), log.Int64("version", currentVersion))
 
 	return nil
 }
+
+type bptfResponseError struct {
+	err    error
+	header http.Header
+}
+
+func (e *bptfResponseError) Error() string       { return e.err.Error() }
+func (e *bptfResponseError) Unwrap() error       { return e.err }
+func (e *bptfResponseError) Header() http.Header { return e.header }
 
 func (m *PriceManager) fetchPricesWithRetry(ctx context.Context) (*bptf.V4PricesResponseExt, error) {
 	if m.r == nil {
@@ -242,9 +256,14 @@ func (m *PriceManager) fetchPricesWithRetry(ctx context.Context) (*bptf.V4Prices
 	var lastErr error
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		resp, err := m.r.GetTo[bptf.V4PricesResponseExt](ctx, "IGetPrices/v4", mod.WithQuery("raw=1"))
+		//nolint:bodyclose // body is drained and closed by aoni
+		resp, rawResp, err := m.r.GetEx[bptf.V4PricesResponseExt](ctx, "IGetPrices/v4", mod.WithQuery("raw=1"))
 		if err == nil {
 			return resp, nil
+		}
+
+		if rawResp != nil && rawResp.Header != nil {
+			err = &bptfResponseError{err: err, header: rawResp.Header}
 		}
 
 		lastErr = err
@@ -275,6 +294,28 @@ func isRetriableBptfError(err error) bool {
 		return false
 	}
 
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return true
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+
+	errStr := strings.ToLower(err.Error())
+	if strings.Contains(errStr, "unexpected eof") ||
+		strings.Contains(errStr, "connection reset") ||
+		strings.Contains(errStr, "connection refused") ||
+		strings.Contains(errStr, "broken pipe") {
+		return true
+	}
+
 	if aoni.IsRateLimited(err) || aoni.IsTimeout(err) {
 		return true
 	}
@@ -293,7 +334,16 @@ func isRetriableBptfError(err error) bool {
 	return aoni.IsServerError(err)
 }
 
-func calculateBptfRetryDelay(attempt int, _ error) time.Duration {
+func calculateBptfRetryDelay(attempt int, err error) time.Duration {
+	if err != nil {
+		var headerCarrier interface{ Header() http.Header }
+		if errors.As(err, &headerCarrier) && headerCarrier != nil {
+			if delay, ok := parseRetryAfterHeader(headerCarrier.Header().Get("Retry-After")); ok && delay > 0 {
+				return delay
+			}
+		}
+	}
+
 	base := 500 * time.Millisecond * time.Duration(1<<(attempt-1))
 	if base > 10*time.Second {
 		base = 10 * time.Second
@@ -303,6 +353,28 @@ func calculateBptfRetryDelay(attempt int, _ error) time.Duration {
 	jitter := time.Duration(rand.Int64N(int64(base / 2)))
 
 	return base/2 + jitter
+}
+
+func parseRetryAfterHeader(val string) (time.Duration, bool) {
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return 0, false
+	}
+
+	if seconds, err := strconv.ParseInt(val, 10, 64); err == nil && seconds >= 0 {
+		return time.Duration(seconds) * time.Second, true
+	}
+
+	if t, err := http.ParseTime(val); err == nil {
+		dur := time.Until(t)
+		if dur < 0 {
+			dur = 0
+		}
+
+		return dur, true
+	}
+
+	return 0, false
 }
 
 func (m *PriceManager) indexItemPrices(
@@ -473,6 +545,16 @@ func (m *PriceManager) Load() error {
 	return m.loadFromCache()
 }
 
+// Save serializes the current price cache and metadata envelope to disk at CachePath.
+// It creates a thread-safe snapshot clone of the in-memory index under read lock before
+// marshaling to JSON, preventing data races with concurrent Invalidate or Update calls.
+// Returns nil if CachePath is empty or if write succeeds; returns an error on I/O failure.
+//
+// Parity: matches tf2autobot-pricedb writeCache() persistence guarantees.
+func (m *PriceManager) Save() error {
+	return m.saveToCache()
+}
+
 type cacheFileEnvelope struct {
 	Version   int64                         `json:"version"`
 	Timestamp time.Time                     `json:"timestamp"`
@@ -486,11 +568,17 @@ func (m *PriceManager) saveToCache() error {
 	}
 
 	m.mu.RLock()
+
+	indexCopy := make(map[string]bptf.V4PricesEntry, len(m.index))
+	for k, v := range m.index {
+		indexCopy[k] = v
+	}
+
 	env := cacheFileEnvelope{
 		Version:   m.version,
 		Timestamp: m.timestamp,
 		TTL:       m.ttl,
-		Index:     m.index,
+		Index:     indexCopy,
 	}
 	m.mu.RUnlock()
 

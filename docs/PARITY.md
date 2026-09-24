@@ -208,9 +208,11 @@ The price cache is serialized to disk at `Config.CachePath` using a versioned JS
   }
 }
 ```
-`PriceManager.Load()` implements dual-format loading:
-1. Attempts to deserialize `cacheFileEnvelope` with full metadata preservation.
-2. If deserialization fails or `envelope.Index == nil`, transparently falls back to deserializing legacy un-enveloped raw maps (`map[string]bptf.V4PricesEntry`), setting `version = 1` and `timestamp = time.Now()`.
+`PriceManager` provides explicit programmatic lifecycle hooks:
+- **`Save() error`**: Serializes the current price cache and metadata envelope to disk at `CachePath`. It holds `m.mu.RLock()` across `json.Marshal(env)` to prevent data races with concurrent `Invalidate()` or `Update()` operations before performing disk I/O.
+- **`Load() error`**: Implements dual-format loading:
+  1. Attempts to deserialize `cacheFileEnvelope` with full metadata preservation.
+  2. If deserialization fails or `envelope.Index == nil`, transparently falls back to deserializing legacy un-enveloped raw maps (`map[string]bptf.V4PricesEntry`), setting `version = 1` and `timestamp = time.Now()`.
 
 ### 7.5 Master Pricing Parity Mapping Matrix
 
@@ -219,6 +221,8 @@ The price cache is serialized to disk at `Config.CachePath` using a versioned JS
 | `pricemanager.PriceManager` | `Pricelist.ts` / `Pricer.ts` | Extended | Orchestrator behavior managing full backpack.tf pricelist sync with disk caching and TTL. |
 | `PriceManager.GetPrice` | `IPricer.getPrice(sku)` | Full Parity | Retrieves item valuation; Go strictly enforces TTL expiration. |
 | `PriceManager.GetPriceStale` | `Pricelist.getPrice(sku)` (fallback) | Extended | Unchecked cache lookup for network outage fallback. |
+| `PriceManager.Save` | `Pricelist.ts` (persistence) | Extended | Thread-safe disk serialization to `CachePath` using `cacheFileEnvelope` JSON format with read-lock snapshot cloning. |
+| `PriceManager.Load` | `Pricelist.ts` (cache restore) | Extended | Dual-format backward-compatible loader restoring versioned envelopes (`version`, `timestamp`, `ttl`, `index`) or legacy raw map format (`map[string]bptf.V4PricesEntry`). |
 | `PriceManager.Invalidate` | `Pricelist.removeEntry(sku)` | Full Parity | Evicts single SKU from cache; increments version counter. |
 | `PriceManager.InvalidateAll` | `Pricelist.clear()` | Full Parity | Evicts all entries; resets timestamp; triggers reload. |
 | `PriceManager.Metadata` | `Pricer.getOptions()` / cache stats | Extended | Returns `CacheMetadata` (timestamp, TTL, version, count, isExpired). |

@@ -146,7 +146,7 @@ func (m *MetalManager) bidirectionalSelect(needed int) (selected []uint64, remai
 		val := tiers[index].value
 		avail := len(tiers[index].items)
 
-		amount := min(remaining / val, avail)
+		amount := min(remaining/val, avail)
 
 		if index == len(tiers)-1 {
 			if hasReversed {
@@ -190,7 +190,7 @@ func (m *MetalManager) bidirectionalSelect(needed int) (selected []uint64, remai
 	if remaining < 0 {
 		for i := range tiers {
 			val := tiers[i].value
-			amount := min(picked[i], (-remaining) / val)
+			amount := min(picked[i], (-remaining)/val)
 
 			if amount >= 1 {
 				remaining += amount * val

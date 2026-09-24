@@ -6,9 +6,9 @@ require (
 	github.com/PuerkitoBio/goquery v1.13.0
 	github.com/andygrunwald/vdf v1.1.0
 	github.com/lemon4ksan/aoni v0.7.0-rc.1.0.20260923050730-6edfbd8d275d
-	github.com/lemon4ksan/aoni-contrib v0.0.0-20260923050828-ae18f4ab28fa
-	github.com/lemon4ksan/foundation v0.0.0-20260923050528-dc5d9a8c9c6b
-	github.com/lemon4ksan/g-man v0.14.0-rc.3.0.20260923050935-c74b3e18a327
+	github.com/lemon4ksan/aoni-contrib v0.0.0-20260924045324-5a8222650eac
+	github.com/lemon4ksan/foundation v0.0.0-20260924043232-ec089ea61b69
+	github.com/lemon4ksan/g-man v0.14.0-rc.3.0.20260924045440-034bffeec478
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/time v0.16.0
 	google.golang.org/protobuf v1.36.12

@@ -1407,6 +1407,25 @@ func (s *Schema) ToJSON() map[string]any {
 // SECTION 6: SKU & ECON ITEM CONVERSION ENGINE
 // ============================================================
 
+// ItemName formats the human-readable display name or Steam Community Market name for a TF2 SKU item.
+//
+// Parameters:
+//   - item: The parsed *sku.Item containing attributes (defindex, quality, wear, effects, craft/paintkit, etc.).
+//     Returns an empty string if nil. If the item's defindex is not found in the schema, returns "Item #<defindex>".
+//   - proper: When true and item has no quality prefix override, preserves the leading article ("The ")
+//     if defined as proper in the schema definition.
+//   - usePipeForSkin: When true, separates war paint skin names using a pipe delimiter (" | ") instead of a space.
+//   - scmFormat: When true, generates the canonical Steam Community Market (SCM) naming format.
+//
+// Parity & Naming Invariants (Feature 20):
+//   - Australium Strange Naming: In standard display mode (scmFormat == false), Australium weapons with
+//     Quality 11 (Strange) retain the "Strange " prefix (e.g., "Strange Australium Minigun"), matching in-game
+//     display names and backpack.tf pricing keys. In SCM format (scmFormat == true), the "Strange " prefix
+//     is omitted by Valve market conventions (e.g., "Australium Minigun").
+//   - SCM vs Display Format: SCM format omits "Non-Tradable" and "Non-Craftable" prefixes, omits paint
+//     suffixes, and forces Unusual quality tags if particle effects are present.
+//
+// Parity: matches @tf2autobot/tf2-schema schema.getName and tf2autobot-pricedb item name generation.
 func (s *Schema) ItemName(item *sku.Item, proper, usePipeForSkin, scmFormat bool) string {
 	if item == nil {
 		return ""
@@ -1621,12 +1640,22 @@ func (s *Schema) ItemName(item *sku.Item, proper, usePipeForSkin, scmFormat bool
 	return buf.String()
 }
 
+// SkuFromName parses a human-readable TF2 item name into its canonical SKU string representation.
+// It resolves defindex, qualities, effects, killstreaks, australium status, festivized status,
+// wear, and craftability from name tokens against the loaded schema.
+//
+// Parity: matches @tf2autobot/tf2-schema schema.getSkuFromName.
 func (s *Schema) SkuFromName(name string) string {
 	item := s.ItemFromName(name)
 
 	return sku.FromObject(item)
 }
 
+// SKUFromItem normalizes the provided *sku.Item attributes against the schema and serializes
+// it into its canonical SKU string format (e.g., "5021;6", "199;5;u13").
+// Returns an empty string if item is nil.
+//
+// Parity: matches @tf2autobot/tf2-schema and tf2-sku Item to string conversion.
 func (s *Schema) SKUFromItem(item *sku.Item) string {
 	if item == nil {
 		return ""
@@ -1637,6 +1666,12 @@ func (s *Schema) SKUFromItem(item *sku.Item) string {
 	return sku.FromObject(item)
 }
 
+// ItemFromEconItem converts a Steam trade or inventory EconItem (*trading.Item) into a parsed *sku.Item.
+// It extracts the defindex, market names, tags, item descriptions (such as craft numbers, spells, and killstreaks),
+// wear tiers, and attributes, and normalizes the resulting item against the schema.
+// Returns nil if item or the receiver schema is nil.
+//
+// Parity: matches @tf2autobot/tf2-schema schema.getItemObject and EconItem conversion.
 func (s *Schema) ItemFromEconItem(item *trading.Item) *sku.Item {
 	if item == nil || s == nil {
 		return nil
