@@ -15,7 +15,7 @@ import (
 	"github.com/lemon4ksan/aoni/fast"
 	"github.com/lemon4ksan/aoni/mod"
 	"github.com/lemon4ksan/aoni/option"
-	"github.com/lemon4ksan/aoni/x/realtime/stream"
+	"github.com/lemon4ksan/aoni/realtime/stream"
 	"github.com/lemon4ksan/g-man/pkg/steam/id"
 
 	"github.com/lemon4ksan/g-man-tf2/pkg/services/pricedb"
