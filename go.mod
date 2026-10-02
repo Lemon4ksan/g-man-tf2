@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	github.com/PuerkitoBio/goquery v1.13.0
 	github.com/andygrunwald/vdf v1.1.0
-	github.com/lemon4ksan/aoni v0.7.0-rc.1.0.20260925054938-d3c5d2a89667
+	github.com/lemon4ksan/aoni v0.7.0-rc.1.0.20261002165534-5626675c40b5
 	github.com/lemon4ksan/aoni-contrib v0.0.0-20260925053734-a073140f97a2
 	github.com/lemon4ksan/foundation v0.0.0-20260924183451-121e9f1d1f93
 	github.com/lemon4ksan/g-man v0.14.0-rc.3.0.20260925062938-22a88ce34616
