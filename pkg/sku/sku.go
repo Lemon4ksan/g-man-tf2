@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Lemon4ksan All rights reserved.
+﻿// Copyright (c) 2026 Lemon4ksan All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -151,14 +151,14 @@ type Spell struct {
 	Value     int
 }
 
-var skuBufferPool = pool.NewPerPStorage(func() *bytes.Buffer {
+var skuBufferPool = pool.NewPerCorePool(func() *bytes.Buffer {
 	b := new(bytes.Buffer)
 	b.Grow(64)
 
 	return b
 })
 
-var itemPool = pool.NewPerPStorage(func() *Item {
+var itemPool = pool.NewPerCorePool(func() *Item {
 	return &Item{
 		Craftable: true,
 		Tradable:  true,
